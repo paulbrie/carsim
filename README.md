@@ -63,6 +63,19 @@ cabin gives less than half as much; the detailed models' panels hang loose, then
   replayed on that car in the others' sims, so everyone sees every car's dents; the server keeps
   each player's hits until they repair (a new race, a wreck reset, a reload), so a late joiner sees
   them as they are. At most 15 hits a second go out (20/s with bursts of 40 accepted, 400 kept per player).
+- **Glass** (`scripts/patches/glass.py`) breaks the way car glass does. The windscreen (laminated)
+  cracks in a spider web round the hit and stays in, a web more with each hard hit. Side, rear and
+  roof glass (tempered) bursts into small cubes that fall mostly into the cabin, leaving the frame
+  empty. Head and tail lamp lenses shatter (clear or red flakes); mirrors and the buggy's deflector
+  crack. Glass is found on any model by name (glass, window, windscreen, lens) or by what it is
+  (glTF transmission, a see-through blend), not the dashboard's screens. It is split into panes,
+  typed by where each sits and faces: lamps low at the ends; above them windscreen, rear, roof and
+  side windows; inner and outer skins together. A pane breaks from the load of a hit near it (its
+  speed, fading to nothing 60 cm from the pane) or when the dents bend it (a crushed pillar or roof).
+  A direct side-window hit bursts it from about 8–10 m/s; a door hit just below the window, from
+  10–13 m/s; a roof crush takes the side and roof glass and cracks the windscreen. It rides on
+  `bodyHit`, so bots and the other players' cars break the same panes, and repairs mend them.
+  Shards settle and go after 30 s; breaking glass has its own sound.
 - **Repair:** T (restart) or, wrecked, R / Enter; in a race, the grid at every start.
 
 ## Maps and the super admin
@@ -97,7 +110,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   **Shift+drag** or **right-drag** looks around: the chase camera swings round the car (drag right:

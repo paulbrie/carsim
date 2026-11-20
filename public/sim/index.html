@@ -119,7 +119,8 @@
   <label title="Tilt the ground under each bend toward its inside, steeper in tighter bends, up to this angle">Banking <input id="bankDeg" type="range" min="0" max="25" step="1" value="0"> <span id="bankV" class="val">off</span></label>
   <label title="Smooth the road's rise and fall along the course: cut through the dune crests, fill the troughs, and keep it flat across (but for the banking)">Level the road <input id="levelPct" type="range" min="0" max="100" step="5" value="0"> <span id="levelV" class="val">off</span></label>
   <div class="tools"><button id="eEven" title="Click it, then the first and the last waypoint of a section: the road between them rises or falls at one even grade">Even grade</button><button id="eEvenClear" disabled title="Remove every even-grade section">Clear even grades</button></div>
-  <div class="tools"><button id="eOptimise" title="Level the road fully and bank every bend for the speed it can be taken at">Optimise the road</button></div>
+  <label title="No stretch of the road steeper than this: cut through the crests and filled across the dips as far as it takes, the grade changing gently (crests and dips of 200 m radius or more)">Max. grade <input id="gradePct" type="range" min="2" max="15" step="1" value="2"> <span id="gradeV" class="val">off</span></label>
+  <div class="tools"><button id="eOptimise" title="Smooth the curves to the min. corner radius, level the road fully with no grade over 6%, and bank every bend for the speed it can be taken at">Optimise the road</button></div>
   <div class="sec">TERRAIN</div>
   <div class="tools"><button data-tool="raise">Raise</button><button data-tool="lower">Lower</button><button data-tool="flatten">Flatten</button><button data-tool="smooth">Smooth</button></div>
   <div class="sec">GROUND</div>

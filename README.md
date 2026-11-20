@@ -45,7 +45,21 @@ Besides waypoints, bridges, terrain brushes and ground paint, the SHAPE section 
   course crosses itself both branches meet at one height. On the figure-8 the steepest grade goes
   from 26% to 4%, the climb per lap from 29 m to 13 m; "Course ready" shows the grade before → after.
   Saved with the course and in maps, with its own best laps.
-- **Optimise the road**: levelling 100% and banking 25°, so every bend gets the angle its speed needs.
+- **Max. grade** (off, 3–15%): no stretch of the road steeper than that. The height profile is cut
+  and filled to the nearest one that keeps the grade (the mean of the highest profile under it and
+  the lowest above it that do, so a crest is cut and a trough filled by as much as it takes, no
+  more; an unbridged crossing counts as one point, so both branches keep one height), then eased so
+  the grade changes over at least grade × 200 m either side: crests and dips of 200 m radius or more,
+  no taking off over a crest. "Course ready" adds the sharpest crest or dip. Even-grade sections and
+  the bridges' ramps (built for 8%) keep their own grades. Saved with the course (`grade`) and in maps.
+- **Optimise the road**: Smooth curves to the min. corner radius (undoable), levelling 100%, max.
+  grade 6% (or lower if already set), and banking 25°, so every bend gets the angle its speed needs.
+  On the figure-8 map the tightest corner goes from 10 to 16 m (a hairpin opens only so far), the
+  steepest grade away from the bridges from 5% to under 2%, the sharpest crest or dip from 215 m to
+  over 1.6 km in radius.
+- A levelled road, or one with a max. grade, is graded **over the terrain strokes**: they are applied
+  first, so the road stays smooth where they cross it (off the road they stay as drawn). Without
+  either, the strokes go on top as before.
 - **Even grade**: click it, then the first and the last waypoint of a section (forward along the
   course): the road between them rises or falls at one constant grade, from the ground's height at
   the first to the height at the last (flat if they're level), cut and filled into the dunes like
@@ -153,7 +167,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Three of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63** and the

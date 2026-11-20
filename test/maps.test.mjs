@@ -54,6 +54,8 @@ test('a course is checked and trimmed like the sim reads it', () => {
   assert.deepEqual(cleanCourse({ ...course(), even: [[0, 2], [1, 1], [0, 9], [2, 'x'], [1.5, 2], 'no', [2, 0, 1], [2, 1]] }).even, [[0, 2], [2, 1]]);
   assert.deepEqual(cleanCourse(course()).even, []);
   assert.equal(cleanCourse({ ...course(), even: Array.from({ length: 60 }, () => [0, 1]) }).even.length, 40);
+  // max. grade: 0 (none) or 3-15 %
+  assert.deepEqual([undefined, 0, -4, 'x', 1, 6, 6.4, 40].map(grade => cleanCourse({ ...course(), grade }).grade), [0, 0, 0, 0, 3, 6, 6, 15]);
   assert.deepEqual(c.ops, [{ t: 'smooth', x: 1, z: 1, r: 6, s: 0.1, v: 2 }]);
   assert.deepEqual(c.bridges, [{ x: 1, z: 2 }]);
   assert.throws(() => cleanCourse({ wp: [[0, 0], [1, 1]] }), e => e.status === 400);

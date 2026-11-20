@@ -4,15 +4,15 @@ See README.md for the layout. Notes:
 
 - `public/sim/engine.js` is the original engine plus the multiplayer block. When you change the
   multiplayer hooks, change `scripts/patches/mp-block.js` / `mp-hooks.py` too, and for the editor's
-  SHAPE tools (smoothing, banking) `scripts/patches/track-shape.py` and (levelling, Optimise the road)
-  `road-level.py`, so a new drop of the sim can be
+  SHAPE tools (smoothing, banking) `scripts/patches/track-shape.py`, (levelling) `road-level.py` and
+  (Max. grade, Optimise the road, grading over the terrain strokes) `grade.py`, so a new drop of the sim can be
   re-patched; the gates (height, fade near the camera) are `scripts/patches/gates.py`, the driver's-seat
   camera `cameras.py`, the maps (a room's course, the `?edit=1` map editor) `maps.py`, car damage
   (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py`, looking
   around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`,
   the cars made from downloaded models (XJR, SL 63, 911 Turbo: specs, sounds, menus) `cars.py`
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes

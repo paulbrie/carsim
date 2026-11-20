@@ -1,0 +1,165 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: var(--font-sans);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+    /* warm sand-and-dusk palette, the sim's orange as the accent */
+    --background: oklch(0.165 0.012 60);
+    --foreground: oklch(0.975 0.008 80);
+    --card: oklch(0.21 0.014 60);
+    --card-foreground: oklch(0.975 0.008 80);
+    --popover: oklch(0.22 0.014 60);
+    --popover-foreground: oklch(0.975 0.008 80);
+    --primary: oklch(0.72 0.18 50);
+    --primary-foreground: oklch(0.18 0.03 50);
+    --secondary: oklch(0.28 0.014 60);
+    --secondary-foreground: oklch(0.975 0.008 80);
+    --muted: oklch(0.28 0.014 60);
+    --muted-foreground: oklch(0.74 0.02 70);
+    --accent: oklch(0.3 0.02 60);
+    --accent-foreground: oklch(0.975 0.008 80);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.72 0.18 50);
+    --chart-1: oklch(0.72 0.18 50);
+    --chart-2: oklch(0.7 0.12 230);
+    --chart-3: oklch(0.75 0.15 140);
+    --chart-4: oklch(0.8 0.15 90);
+    --chart-5: oklch(0.6 0.15 300);
+    --sidebar: oklch(0.21 0.014 60);
+    --sidebar-foreground: oklch(0.975 0.008 80);
+    --sidebar-primary: oklch(0.72 0.18 50);
+    --sidebar-primary-foreground: oklch(0.18 0.03 50);
+    --sidebar-accent: oklch(0.28 0.014 60);
+    --sidebar-accent-foreground: oklch(0.975 0.008 80);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.72 0.18 50);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans;
+    }
+}
+/* ui-sdk parts (unstyled by design): the segmented controls and the paint picker */
+@layer components {
+  .seg {
+    @apply relative isolate inline-flex rounded-lg bg-muted p-1 text-sm;
+  }
+  .seg-indicator {
+    @apply absolute -z-10 rounded-md bg-background shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none;
+    left: var(--segmented-control-indicator-left);
+    top: var(--segmented-control-indicator-top);
+    width: var(--segmented-control-indicator-width);
+    height: var(--segmented-control-indicator-height);
+  }
+  .seg-item {
+    @apply cursor-pointer rounded-md px-3 py-1.5 font-medium text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring data-checked:text-foreground data-disabled:cursor-not-allowed data-disabled:opacity-60;
+  }
+  .cp-area {
+    @apply relative h-24 w-full cursor-crosshair rounded-md touch-none;
+    background: var(--color-area-background);
+  }
+  .cp-slider {
+    @apply relative h-3 w-full cursor-pointer rounded-full touch-none;
+    background: var(--color-slider-background);
+  }
+  .cp-thumb {
+    @apply size-4 rounded-full border-2 border-white shadow-md outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    translate: -50% -50%;
+    background: var(--color-picker-color);
+  }
+  .cp-slider .cp-thumb { top: 50%; }
+  .cp-swatch {
+    @apply size-6 cursor-pointer rounded-full border border-white/20 outline-none focus-visible:ring-2 focus-visible:ring-ring data-selected:ring-2 data-selected:ring-white data-selected:ring-offset-2 data-selected:ring-offset-card;
+    background: var(--color-picker-color);
+  }
+}

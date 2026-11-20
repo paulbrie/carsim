@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sand Buggy</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#c9b48f;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  canvas{display:block}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;color:#3b2a14;background:#e7d3ad;z-index:10}
+  .panel{position:fixed;color:#fff;background:rgba(20,14,6,.55);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.45;pointer-events:none;text-shadow:0 1px 1px #0008}
+  #hud{top:12px;left:12px;min-width:230px}
+  #hud .big{font-size:30px;font-weight:700;letter-spacing:.5px}
+  #hud table{border-collapse:collapse;margin-top:6px}
+  #hud td{padding:1px 6px 1px 0;font-variant-numeric:tabular-nums}
+  .bar{display:inline-block;height:7px;background:#ffcf6b;border-radius:2px;vertical-align:middle}
+  .bar.slip{background:#ff7a4d}
+  #help{bottom:12px;left:12px}
+  #timer{top:12px;left:50%;transform:translateX(-50%);text-align:center;min-width:260px}
+  #timer .lt{font-size:12px;letter-spacing:2px;opacity:.85}
+  #timer .cur{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+  #timer .seg{margin:6px auto 0;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+  #timer .seg td,#timer .seg th{padding:0 7px;text-align:right;font-weight:400}
+  #timer .seg th{opacity:.8;font-size:11px;letter-spacing:1px}
+  #timer .seg td:first-child{text-align:left;opacity:.85}
+  #timer .seg .tot td{border-top:1px solid rgba(255,255,255,.3);font-weight:700}
+  #timer .row{display:flex;gap:16px;justify-content:center;font-variant-numeric:tabular-nums;opacity:.9}
+  #nav{top:118px;left:50%;transform:translateX(-50%);text-align:center;padding:6px 12px}
+  #arrow{width:0;height:0;margin:2px auto 4px;border-left:13px solid transparent;border-right:13px solid transparent;border-bottom:26px solid #3dff6a;filter:drop-shadow(0 1px 1px #000a)}
+  #toast{position:fixed;top:40%;left:50%;transform:translateX(-50%);font-size:34px;font-weight:800;text-shadow:0 2px 6px #000c;pointer-events:none;transition:opacity .2s;white-space:nowrap}
+  #mapWrap{top:12px;right:12px;padding:6px}
+  #map{display:block}
+  #menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(25,16,6,.45);z-index:5}
+  #menu .card{background:rgba(20,14,6,.85);color:#fff;border-radius:14px;padding:22px 26px;text-align:center;max-width:92vw}
+  #menu h2{margin:0 0 4px;font-size:22px} #menu p{margin:0 0 16px;opacity:.8;font-size:13px}
+  #menu button{font:inherit;font-size:16px;font-weight:700;border:0;border-radius:10px;padding:14px 22px;margin:0 6px;cursor:pointer;color:#fff;min-width:130px}
+  #menu button small{display:block;font-weight:400;font-size:12px;opacity:.85;margin-top:3px}
+  #help b{color:#ffd88a}
+  /* in a race (?mp=1) the room picks the course, ground, car and paint */
+  body.mp #editBtn,body.mp #botBtn,body.mp #bestBtn,body.mp #paintBtn,body.mp #menu,body.mp #paintPanel{display:none!important}
+  body.mp-race #replayBtn{display:none!important}
+  #vehBtns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:6px}
+  #vehBtns button{background:#ffffff1f;min-width:150px;max-width:215px;padding:10px 14px;font-size:14px;margin:0}
+  #vehBtns button.on{background:#ff5a00}
+  #replay{display:none;position:fixed;left:50%;bottom:118px;transform:translateX(-50%);min-width:320px;text-align:center;padding:8px 14px;font-size:14px}
+  #replay b{color:#ff5a3c;letter-spacing:2px;margin-right:6px}
+  #replay .bar{height:4px;background:#ffffff30;border-radius:2px;margin:6px 0 4px;width:auto}
+  #replay .bar i{display:block;height:100%;background:#ff5a00;border-radius:2px}
+  #replay small{opacity:.75;display:block}
+  #replayBtn{position:fixed;top:252px;right:12px;font:inherit;font-size:13px;font-weight:700;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(20,14,6,.65)}
+  #dmgWrap{bottom:12px;right:12px;padding:6px 8px;text-align:center}
+  #dmgWrap .t{font-size:11px;letter-spacing:2px;opacity:.85}
+  #editBtn{position:fixed;top:212px;right:12px;font:inherit;font-size:13px;font-weight:700;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(20,14,6,.65)}
+  #editBtn:hover{background:rgba(255,90,0,.85)}
+  #paintBtn{position:fixed;top:292px;right:12px;font:inherit;font-size:13px;font-weight:700;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(20,14,6,.65)}
+  #paintBtn:hover{background:rgba(255,90,0,.85)}
+  #bestBtn{position:fixed;top:332px;right:12px;font:inherit;font-size:13px;font-weight:700;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(20,14,6,.65)}
+  #bestBtn:hover{background:rgba(255,90,0,.85)}
+  #botBtn{position:fixed;top:372px;right:12px;font:inherit;font-size:13px;font-weight:700;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(20,14,6,.65)}
+  #botBtn:hover{background:rgba(255,90,0,.85)}
+  #paintPanel{position:fixed;top:412px;right:12px;display:none;padding:10px;border-radius:10px;background:rgba(20,14,6,.8);color:#fff;font-size:12px;width:168px}
+  #paintPanel .sw{display:inline-block;width:28px;height:28px;margin:2px;border-radius:6px;border:2px solid rgba(255,255,255,.35);cursor:pointer;padding:0}
+  #paintPanel .sw:hover{border-color:#fff}
+  #paintPanel label{display:flex;align-items:center;gap:8px;margin-top:8px}
+  #paintPanel input[type=color]{width:44px;height:26px;border:0;padding:0;background:none;cursor:pointer}
+  #editor{display:none;position:fixed;left:12px;top:12px;width:300px;max-width:calc(100vw - 24px);pointer-events:auto;z-index:4}
+  #editor h3{margin:0 0 6px;font-size:16px}
+  #editor .tools{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
+  #editor button{font:inherit;font-size:12px;border:0;border-radius:6px;padding:6px 9px;cursor:pointer;background:#ffffff22;color:#fff}
+  #editor button:hover{background:#ffffff38}
+  #editor button.on{background:#ff5a00}
+  #editor button.go{background:#2f9e4a;font-weight:700}
+  #editor label{display:flex;align-items:center;gap:8px;font-size:12px;margin:3px 0}
+  #editor input[type=range]{flex:1}
+  #editor .hint{font-size:12px;opacity:.85;margin:6px 0}
+  #editor .info{font-size:12px;color:#ffd88a;margin:4px 0 8px}
+  #editor .sec{font-size:11px;letter-spacing:1.5px;opacity:.7;margin-top:8px}
+  #wreck{display:none;position:fixed;inset:0;align-items:flex-end;padding-bottom:16vh;box-sizing:border-box;justify-content:center;pointer-events:none;z-index:4}
+  #wreck .card{background:rgba(60,10,6,.78);color:#fff;border-radius:14px;padding:18px 24px;text-align:center;font-size:14px} #wreck h2{margin:0 0 6px;font-size:26px;color:#ff6a50}
+  #busy{display:none;position:fixed;inset:0;align-items:center;justify-content:center;font-size:22px;color:#fff;background:rgba(25,16,6,.5);z-index:6}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="loading">Shaping the dunes…</div>
+<div id="hud" class="panel"></div>
+<canvas id="gauge" width="440" height="440" style="position:fixed;right:190px;bottom:14px;width:220px;height:220px;display:none;pointer-events:none"></canvas>
+<div id="timer" class="panel"></div>
+<div id="nav" class="panel"><div id="arrow"></div><div id="dist"></div></div>
+<div id="toast"></div>
+<div id="mapWrap" class="panel"><canvas id="map" width="190" height="190"></canvas></div>
+<div id="dmgWrap" class="panel"><div class="t">DAMAGE</div><canvas id="dmg" width="110" height="130"></canvas></div>
+<button id="editBtn" title="Course editor (E)">✎ Edit course</button>
+<button id="replayBtn" title="Replay the last lap, or the last 30 s (Y)">⟲ Replay</button>
+<button id="paintBtn" title="Paint colour (K)">🎨 Paint</button>
+<button id="bestBtn" title="Reset the best lap time of this course (B)">✕ Reset best</button>
+<button id="botBtn" title="Race against 0 to 4 bots (N)">🏁 Bots: 0</button>
+<div id="paintPanel"></div>
+<div id="busy"></div>
+<div id="wreck"><div class="card"><h2>Wrecked</h2><p>Too damaged to drive.</p><p><b>R</b> or <b>Enter</b>: repaired vehicle at the last gate (the lap clock keeps running)<br><b>T</b>: restart the lap from the start line</p></div></div>
+<div id="editor" class="panel">
+  <h3>Course editor</h3>
+  <div class="info" id="eInfo"></div>
+  <div class="sec">COURSE</div>
+  <div class="tools"><button data-tool="wp">Waypoints</button><button data-tool="bridge">Bridges</button></div>
+  <div class="sec">TERRAIN</div>
+  <div class="tools"><button data-tool="raise">Raise</button><button data-tool="lower">Lower</button><button data-tool="flatten">Flatten</button><button data-tool="smooth">Smooth</button></div>
+  <div class="sec">GROUND</div>
+  <div class="tools"><button data-tool="sand">Paint sand</button><button data-tool="earth">Paint earth</button><button data-tool="road">Paint asphalt</button><button data-tool="erase">Erase paint</button></div>
+  <label>Brush size <input id="bsize" type="range" min="2" max="30" value="8"></label>
+  <label>Strength <input id="bstr" type="range" min="1" max="10" value="4"></label>
+  <div class="hint" id="eHint"></div>
+  <div class="tools"><button id="eDone" class="go">Done, drive (E)</button><button id="eReset">Reset to figure-8</button><button id="eClear">Clear terrain edits</button></div>
+  <div class="tools"><button id="eExport">Export course</button><button id="eImport">Import course</button><input id="eFile" type="file" accept=".json,application/json" hidden></div>
+</div>
+<div id="menu"><div class="card"><h2>Choose your vehicle</h2><p>Press V any time to switch.</p><div id="vehBtns"></div><h2 style="margin-top:14px">Choose the ground</h2><p>Figure-8 course with a bridge. Press G any time to switch.</p>
+  <button data-s="sand" style="background:#c8963f">Sand<small>soft, deep ruts, roost</small></button><button data-s="earth" style="background:#6b4529">Earth<small>firm, grippy, light dust</small></button><button data-s="road" style="background:#3b3d42">Road<small>asphalt through the dunes</small></button>
+</div></div>
+<div id="help" class="panel">
+  <b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake<br>
+  <b>P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD &nbsp; <b>C</b> camera (chase / bonnet / side / under / orbit) &nbsp; <b>Y</b> replay &nbsp; <b>K</b> paint &nbsp; <b>B</b> reset best lap &nbsp; <b>N</b> bots (0-4) &nbsp; <b>R</b> back to last gate &nbsp; <b>T</b> restart lap &nbsp; <b>G</b> sand / earth &nbsp; <b>E</b> course editor &nbsp; <b>V</b> vehicle &nbsp; <b>X</b> TC/ABS &nbsp; <b>M</b> sound &nbsp; <b>H</b> hide help<br>Drive through every gate between the posts or the lap is invalid. Gate posts are solid: hits damage the vehicle (<b>T</b> restarts and repairs).
+</div>
+<script type="module" src="engine.js"></script>
+
+</body>
+</html>

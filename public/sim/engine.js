@@ -1932,6 +1932,16 @@ function steepestGrade(prof) {
   }
   return g * 100;
 }
+// Where (x, z) lies along the course, from its nearest course point pi: on the segment from point a
+// to b = a + 1, t (0-1) of the way (ticket #292: heights taken at the nearest point alone came out
+// as steps a point apart, about 1 m, ridges across the road on every slope)
+function alongCourse(pi, x, z) {
+  const P = TRACK.pts, n = P.length - 1, a = pi % n, p = P[a], q = P[a + 1];
+  let dx = q.x - p.x, dz = q.z - p.z, t = ((x - p.x) * dx + (z - p.z) * dz) / (dx * dx + dz * dz || 1);
+  if (t >= 0) return [a, a + 1, Math.min(t, 1)];
+  const b = a || n, o = P[b - 1]; dx = p.x - o.x; dz = p.z - o.z;
+  return [b - 1, b, clamp(((x - o.x) * dx + (z - o.z) * dz) / (dx * dx + dz * dz || 1), 0, 1)];
+}
 
 function trackBank() {
   const P = TRACK.pts, n = P.length - 1, out = new Float32Array(n + 1);
@@ -2009,12 +2019,14 @@ function groomTrack() {
       const a = P[(i - 1 + np) % np], c = P[(i + 1) % np], tl = Math.hypot(c.x - a.x, c.z - a.z) || 1;
       hc[i] = Bat(P[i].x, P[i].z); nx[i] = -(c.z - a.z) / tl; nz[i] = (c.x - a.x) / tl;
     }
-    const lv = COURSE.level, prof = lv ? levelProfile(hc, lv / 100) : hc;
+    const lv = COURSE.level, prof = lv ? levelProfile(hc, lv / 100) : hc, bk = TRACK.bank;
     if (lv) TRACK.grade = { before: steepestGrade(hc), after: steepestGrade(prof) };
     for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
       const k = j * V + i; if (D[k] >= (lv ? LEVEL_RAD : BANK_RAD)) continue;
-      const pi = I[k], sl = TRACK.bank[pi]; if (!sl && !lv) continue;
-      const p = P[pi], l = (-HALF + i * CELL - p.x) * nx[pi] + (-HALF + j * CELL - p.z) * nz[pi], tgt = prof[pi] + l * sl;
+      // between the two course points the cell lies by, not at the nearest one (that made ~1 m steps)
+      const x = -HALF + i * CELL, z = -HALF + j * CELL, [a, b, t] = alongCourse(I[k], x, z), at = A => lerp(A[a], A[b], t);
+      if (!lv && !bk[a] && !bk[b]) continue;
+      const sl = at(bk), l = (x - lerp(P[a].x, P[b].x, t)) * at(nx) + (z - lerp(P[a].z, P[b].z, t)) * at(nz), tgt = at(prof) + l * sl;
       if (!lv) { B[k] = lerp(B[k], tgt, 1 - smooth(clamp((D[k] - 9) / 7, 0, 1))); continue; }
       const w = 1 - smooth(clamp((D[k] - LEVEL_W) / clamp(2.5 * Math.abs(tgt - B[k]), 4, LEVEL_RAD - LEVEL_W), 0, 1));
       B[k] = lerp(B[k], tgt, w);
@@ -2033,8 +2045,11 @@ function buildEmbankments(X) {
   BRIDGES.push({ cx: X.x, cz: X.z, tx: X.tx, tz: X.tz, halfL: X.halfL, halfW: 3.6, top: g0 + DECK_H, abut: gully ? DECK_H + GULLY.depth + 1 : DECK_H + 1.5, kind: X.kind });
   const over = [], under = [];
   P.forEach((p, i) => { const u = i / n, so = arcDist(u, X.uOver), su = gully ? 99 : arcDist(u, X.uUnder);
-    if (Math.abs(so) < a0 + RAMP + 6) over.push([p.x, p.z, so]); if (Math.abs(su) < 45) under.push([p.x, p.z, su]); });
-  const nearest = (list, x, z) => { let bd = 1e9, bs = 0; for (const [px, pz, sd] of list) { const d = (px - x) ** 2 + (pz - z) ** 2; if (d < bd) { bd = d; bs = sd; } } return [Math.sqrt(bd), bs]; };
+    if (Math.abs(so) < a0 + RAMP + 6) over.push([p.x, p.z, i]); if (Math.abs(su) < 45) under.push([p.x, p.z, i]); });
+  // [distance to the course, arc distance from u0 along it], measured between course points (alongCourse)
+  const nearest = (list, x, z, u0) => { let bd = 1e9, bi = -1; for (const [px, pz, i] of list) { const d = (px - x) ** 2 + (pz - z) ** 2; if (d < bd) { bd = d; bi = i; } }
+    if (bi < 0) return [1e5, 0];
+    const [a, b, t] = alongCourse(bi, x, z); return [Math.hypot(x - lerp(P[a].x, P[b].x, t), z - lerp(P[a].z, P[b].z, t)), arcDist((a + t) / n, u0)]; };
   const R0 = a0 + RAMP + 14, rc = Math.ceil(R0 / CELL);
   for (let j = Math.max(1, cj0 - rc); j <= Math.min(N - 1, cj0 + rc); j++) for (let i = Math.max(1, ci0 - rc); i <= Math.min(N - 1, ci0 + rc); i++) {
     const x = -HALF + i * CELL, z = -HALF + j * CELL, k = j * V + i;
@@ -2044,13 +2059,13 @@ function buildEmbankments(X) {
       if (wd > 0) { B[k] = Math.min(B[k], lerp(B[k], bed, wd)); C[k] = Math.max(C[k], 0.25 * wd); if (wd > 0.15) RM[k] = 0; }   // the wash bed is never paved
       if (la < a0) continue;
     }
-    const [du, su] = nearest(under, x, z);
+    const [du, su] = nearest(under, x, z, X.uUnder);
     if (du < 9.5) {      // underpass: flat cut, fading back to the natural ground 20–40 m out
       const w = (1 - smooth(clamp((du - 7) / 2.5, 0, 1))) * (1 - smooth(clamp((Math.abs(su) - 18) / 22, 0, 1)));
       B[k] = lerp(B[k], g0, w); C[k] = Math.max(C[k], 0.35 * w);
       if (Math.abs(su) < 14) continue;
     }
-    const [dov, so] = nearest(over, x, z);
+    const [dov, so] = nearest(over, x, z, X.uOver);
     const a = Math.abs(so);
     if (a < a0 || a > a0 + RAMP || dov > 11) continue;
     const prof = g0 + DECK_H * (1 - smooth(clamp((a - a0) / RAMP, 0, 1)));      // ramp height along the course

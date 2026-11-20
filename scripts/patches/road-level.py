@@ -2,6 +2,8 @@
 # smoothed along the course (cut through the dune crests, filled across the troughs, the same height
 # where the course crosses itself), flat across but for the banking, with the cut and fill sloping
 # back into the dunes; "Optimise the road" levels it fully and banks every bend for its speed.
+# The heights under the road (levelling, banking, bridge ramps) are taken between course points, not
+# at the nearest one, so slopes are smooth instead of ~1 m steps (ticket #292).
 # Applies to public/sim/engine.js and index.html after the other patches (and mp-block.js's
 # mpCourseFrom keeps `level` too):
 #   python3 scripts/patches/road-level.py <dir with engine.js and index.html>
@@ -62,6 +64,16 @@ function steepestGrade(prof) {
   }
   return g * 100;
 }
+// Where (x, z) lies along the course, from its nearest course point pi: on the segment from point a
+// to b = a + 1, t (0-1) of the way (ticket #292: heights taken at the nearest point alone came out
+// as steps a point apart, about 1 m, ridges across the road on every slope)
+function alongCourse(pi, x, z) {
+  const P = TRACK.pts, n = P.length - 1, a = pi % n, p = P[a], q = P[a + 1];
+  let dx = q.x - p.x, dz = q.z - p.z, t = ((x - p.x) * dx + (z - p.z) * dz) / (dx * dx + dz * dz || 1);
+  if (t >= 0) return [a, a + 1, Math.min(t, 1)];
+  const b = a || n, o = P[b - 1]; dx = p.x - o.x; dz = p.z - o.z;
+  return [b - 1, b, clamp(((x - o.x) * dx + (z - o.z) * dz) / (dx * dx + dz * dz || 1), 0, 1)];
+}
 
 function trackBank() {""")
 
@@ -88,17 +100,32 @@ rep("""      hc[i] = Bat(P[i].x, P[i].z); nx[i] = -(c.z - a.z) / tl; nz[i] = (c.
       B[k] = lerp(B[k], hc[pi] + l * sl, 1 - smooth(clamp((D[k] - 9) / 7, 0, 1)));
     }""", """      hc[i] = Bat(P[i].x, P[i].z); nx[i] = -(c.z - a.z) / tl; nz[i] = (c.x - a.x) / tl;
     }
-    const lv = COURSE.level, prof = lv ? levelProfile(hc, lv / 100) : hc;
+    const lv = COURSE.level, prof = lv ? levelProfile(hc, lv / 100) : hc, bk = TRACK.bank;
     if (lv) TRACK.grade = { before: steepestGrade(hc), after: steepestGrade(prof) };
     for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
       const k = j * V + i; if (D[k] >= (lv ? LEVEL_RAD : BANK_RAD)) continue;
-      const pi = I[k], sl = TRACK.bank[pi]; if (!sl && !lv) continue;
-      const p = P[pi], l = (-HALF + i * CELL - p.x) * nx[pi] + (-HALF + j * CELL - p.z) * nz[pi], tgt = prof[pi] + l * sl;
+      // between the two course points the cell lies by, not at the nearest one (that made ~1 m steps)
+      const x = -HALF + i * CELL, z = -HALF + j * CELL, [a, b, t] = alongCourse(I[k], x, z), at = A => lerp(A[a], A[b], t);
+      if (!lv && !bk[a] && !bk[b]) continue;
+      const sl = at(bk), l = (x - lerp(P[a].x, P[b].x, t)) * at(nx) + (z - lerp(P[a].z, P[b].z, t)) * at(nz), tgt = at(prof) + l * sl;
       if (!lv) { B[k] = lerp(B[k], tgt, 1 - smooth(clamp((D[k] - 9) / 7, 0, 1))); continue; }
       const w = 1 - smooth(clamp((D[k] - LEVEL_W) / clamp(2.5 * Math.abs(tgt - B[k]), 4, LEVEL_RAD - LEVEL_W), 0, 1));
       B[k] = lerp(B[k], tgt, w);
       if (D[k] < RAD) C[k] = Math.max(C[k], 0.3 * w);     // packed ground across the graded width
     }""")
+
+# ---------------------------------------------------------------- bridge ramps: smooth between course points too (#292)
+rep("""  P.forEach((p, i) => { const u = i / n, so = arcDist(u, X.uOver), su = gully ? 99 : arcDist(u, X.uUnder);
+    if (Math.abs(so) < a0 + RAMP + 6) over.push([p.x, p.z, so]); if (Math.abs(su) < 45) under.push([p.x, p.z, su]); });
+  const nearest = (list, x, z) => { let bd = 1e9, bs = 0; for (const [px, pz, sd] of list) { const d = (px - x) ** 2 + (pz - z) ** 2; if (d < bd) { bd = d; bs = sd; } } return [Math.sqrt(bd), bs]; };""",
+    """  P.forEach((p, i) => { const u = i / n, so = arcDist(u, X.uOver), su = gully ? 99 : arcDist(u, X.uUnder);
+    if (Math.abs(so) < a0 + RAMP + 6) over.push([p.x, p.z, i]); if (Math.abs(su) < 45) under.push([p.x, p.z, i]); });
+  // [distance to the course, arc distance from u0 along it], measured between course points (alongCourse)
+  const nearest = (list, x, z, u0) => { let bd = 1e9, bi = -1; for (const [px, pz, i] of list) { const d = (px - x) ** 2 + (pz - z) ** 2; if (d < bd) { bd = d; bi = i; } }
+    if (bi < 0) return [1e5, 0];
+    const [a, b, t] = alongCourse(bi, x, z); return [Math.hypot(x - lerp(P[a].x, P[b].x, t), z - lerp(P[a].z, P[b].z, t)), arcDist((a + t) / n, u0)]; };""")
+rep("""    const [du, su] = nearest(under, x, z);""", """    const [du, su] = nearest(under, x, z, X.uUnder);""")
+rep("""    const [dov, so] = nearest(over, x, z);""", """    const [dov, so] = nearest(over, x, z, X.uOver);""")
 
 # ---------------------------------------------------------------- the editor
 rep("""  <label title="Tilt the ground under each bend toward its inside, steeper in tighter bends, up to this angle">Banking <input id="bankDeg" type="range" min="0" max="25" step="1" value="0"> <span id="bankV" class="val">off</span></label>""",

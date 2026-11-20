@@ -204,8 +204,8 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   server, which keeps each driver's fastest per map, ground and car in `<DATA_DIR>/records.json`
   (`lib/race/records.mjs`; a lap can't be longer than the server's clock says since the last one).
   The room hears its map and ground's (`records`): the panel lists them (your car / all cars), and
-  the sim's timer shows your BEST with that car, the checkpoint deltas against it and the car's
-  record. An edited map keeps its times, marked "earlier layout" (and without their splits).
+  the sim's timer shows your BEST with that car, the checkpoint deltas against it and, all the
+  time, the best lap with each car and its driver. An edited map keeps its times, marked "earlier layout" (and without their splits).
 - **Damage:** the sim posts `hit {h}` / `repair`; `server.mjs` relays them (`lib/race/hub.mjs`,
   `hit`, `repair`, and `hits` with everyone's so far on joining); `lib/client/net.ts` keeps the room's
   log for a sim that loads later, and `SimFrame` hands it over.

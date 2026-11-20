@@ -202,21 +202,31 @@ function mpMessage(m) {
 
 /* ---------- best laps (#304): the server keeps them, per map, ground, car and driver ---------- */
 // MP.records: the room's map and ground's, fastest first ({id, name, vehicle, time, splits, mv}). They are the
-// timer's BEST and its checkpoint deltas (splits: only if set on this version of the map), and the car's record.
-// Called when they come, and when the course (loadBest), the ground or the car changes.
+// timer's BEST and its checkpoint deltas (splits: only if set on this version of the map), and under it the best
+// lap with each car and who drove it (MP.recs, fastest first). Called when they come, and when the course
+// (loadBest), the ground or the car changes.
 function mpApplyBest() {
   const R = MP.records;
   if (!R || !Array.isArray(R.list)) return;
-  MP.rec = null; lap.best = null; lap.bestSplits = [];
+  MP.recs = []; lap.best = null; lap.bestSplits = [];
   if (`${R.map}@${R.v}` !== MP.courseKey || R.ground !== mpGroundNow()) return;      // not this course's (yet)
   const mine = R.list.find(e => e.id === MP.myId && e.vehicle === VEH.key);
   if (mine) { lap.best = mine.time; lap.bestSplits = mine.mv === R.v && Array.isArray(mine.splits) ? mine.splits : []; }
-  MP.rec = R.list.find(e => e.vehicle === VEH.key) || null;
+  const seen = new Set();
+  for (const e of R.list) if ((e.vehicle === 'buggy' || ROAD_CARS[e.vehicle]) && !seen.has(e.vehicle)) { seen.add(e.vehicle); MP.recs.push(e); }
 }
 const mpEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+// in the timer, all the time: the best lap with each car (at most MP_REC_ROWS, ours always), the driver's name
+const MP_REC_ROWS = 6;
 function mpRecRow() {
-  const e = MP.on && MP.rec; if (!e) return '';
-  return `<div class="row" style="font-size:12px">${mpEsc(VEH.short)} RECORD ${fmt(e.time)} · ${e.id === MP.myId ? 'you' : mpEsc(e.name)}</div>`;
+  if (!MP.on || !MP.records) return '';
+  const all = MP.recs || [], ours = all.findIndex(e => e.vehicle === VEH.key);
+  const rows = all.slice(0, MP_REC_ROWS).map(e => [e, e.vehicle === VEH.key]);
+  if (ours >= MP_REC_ROWS) rows.push([all[ours], true]);
+  if (ours < 0) rows.push([null, true]);
+  const row = ([e, our]) => `<tr style="${our ? 'color:#ffd27d;font-weight:700' : ''}"><td>${mpEsc(e ? (ROAD_CARS[e.vehicle] || BUGGY).short : VEH.short)}</td>`
+    + `<td>${e ? fmt(e.time) : '–'}</td><td style="text-align:left;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e ? mpEsc(e.name) : 'no lap yet'}</td></tr>`;
+  return `<table class="seg"><tr><th style="text-align:left">BEST LAPS</th><th></th><th></th></tr>${rows.map(row).join('')}</table>`;
 }
 
 /* ---------- damage: ours to the others, theirs onto their cars ---------- */

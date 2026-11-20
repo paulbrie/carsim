@@ -1743,7 +1743,7 @@ function saveCourse() {
 }
 const courseKey = () => { let h = 2166136261; for (const ch of JSON.stringify(COURSE.wp) + (COURSE.bank ? 'b' + COURSE.bank : '') + (COURSE.bridges?.length || COURSE.noBridge?.length ? JSON.stringify([COURSE.bridges, COURSE.noBridge]) : '')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0).toString(36); };
 
-const RAMP = 40, DECK_H = 4.4, POST_H = 3.8;
+const RAMP = 40, DECK_H = 4.4, POST_H = 6, BANNER_Y = POST_H - 0.4;   // gate posts and the banner's centre, above the ground
 const GULLY = { ramp: 16, deck: 1.1, depth: 2.6, halfL: 8.5 };   // bridge over a dug wash where the course doesn't cross itself
 function buildTrack(wp, spec = COURSE) {
   const curve = new THREE.CatmullRomCurve3(wp.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal');
@@ -2145,15 +2145,15 @@ function buildCircuit() {
     for (const s of [1, -1]) {
       const x = g.p.x + g.n.x * g.half * s, z = g.p.z + g.n.z * g.half * s, h = heightAt(x, z);
       const pivot = new THREE.Group(); pivot.position.set(x, h - 0.2, z); circuitGroup.add(pivot);
-      const post = new THREE.Mesh(postGeo, postMat); post.position.y = POST_H / 2; pivot.add(post);
+      const post = new THREE.Mesh(postGeo, g.postMat ||= postMat.clone()); post.position.y = POST_H / 2; pivot.add(post);
       g.posts.push({ x, z, y: h, pivot, tilt: 0, bend: 0, tv: 0, axis: new THREE.Vector3(1, 0, 0), down: false, hits: 0 });
     }
     const mat = new THREE.MeshStandardMaterial({ map: labelTex(i === 0 ? 'START / FINISH' : `CHECKPOINT ${i}`, i === 0), side: THREE.DoubleSide, roughness: 0.8, emissive: 0x000000 });
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(g.half * 2, 1.0), mat);
-    banner.position.set(g.p.x, (g.posts[0].y + g.posts[1].y) / 2 + 3.4, g.p.z);
+    banner.position.set(g.p.x, (g.posts[0].y + g.posts[1].y) / 2 + BANNER_Y, g.p.z);
     banner.lookAt(banner.position.clone().sub(g.t));   // readable when approaching
     circuitGroup.add(banner);
-    g.mat = mat; g.banner = banner; g.bannerQ0 = banner.quaternion.clone(); g.bannerP0 = banner.position.clone(); g.fall = null;
+    g.mat = mat; g.fadeMats = [mat, g.postMat]; g.fade = 1; g.banner = banner; g.bannerQ0 = banner.quaternion.clone(); g.bannerP0 = banner.position.clone(); g.fall = null;
   }
   // course-edge marker flags every 12 m
   const every = 12, n = Math.floor(TRACK.len / every) * 2 + 2;
@@ -2632,8 +2632,28 @@ function updateGates(dt) {
       B0.quaternion.copy(g.bannerQ0).multiply(gcV.qi.setFromAxisAngle(v1.set(1, 0, 0), -Math.PI / 2 * f.k));
     } else if (g.posts[0].hits || g.posts[1].hits) {   // follow the bent post tops
       let x = 0, y = 0, z = 0;
-      for (const P of g.posts) { v1.set(0, 3.6, 0).applyQuaternion(P.pivot.quaternion).add(P.pivot.position); x += v1.x / 2; y += v1.y / 2; z += v1.z / 2; }
+      for (const P of g.posts) { v1.set(0, POST_H - 0.2, 0).applyQuaternion(P.pivot.quaternion).add(P.pivot.position); x += v1.x / 2; y += v1.y / 2; z += v1.z / 2; }
       B0.position.set(x, y - 0.2, z);
+    }
+  }
+}
+// A gate the camera comes near fades to 25% (75% transparent): fully from 6 m to its frame (the
+// box between its posts, ground to banner), back to solid by 15 m.
+const GATE_FADE = { near: 6, far: 15, min: 0.25 };
+function fadeGates() {
+  const c = camera.position;
+  for (const g of TRACK.gates) {
+    if (!g.fadeMats) continue;
+    const a = (c.x - g.p.x) * g.t.x + (c.z - g.p.z) * g.t.z, l = Math.abs((c.x - g.p.x) * g.n.x + (c.z - g.p.z) * g.n.z) - g.half;
+    const y0 = Math.min(g.posts[0].y, g.posts[1].y) - 0.2, y1 = Math.max(g.posts[0].y, g.posts[1].y) + POST_H;
+    const d = Math.hypot(a, Math.max(0, l), c.y < y0 ? y0 - c.y : Math.max(0, c.y - y1));
+    const o = lerp(GATE_FADE.min, 1, smooth(clamp((d - GATE_FADE.near) / (GATE_FADE.far - GATE_FADE.near), 0, 1)));
+    if (Math.abs(o - g.fade) < 0.004 && (o === 1) === (g.fade === 1)) continue;
+    g.fade = o;
+    for (const m of g.fadeMats) {
+      const see = o < 0.999;
+      if (m.transparent !== see) { m.transparent = see; m.depthWrite = !see; m.needsUpdate = true; }
+      m.opacity = see ? o : 1;
     }
   }
 }
@@ -4018,6 +4038,7 @@ function frame(now) {
   updateRig(dt);
   updatePops(dt);
   updateCamera(dt);
+  fadeGates();
   updateAudio();
   updateHud(dt);
   updateLapHud(dt);

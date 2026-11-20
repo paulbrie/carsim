@@ -16,3 +16,7 @@ public/sim/vendor/
 client_secret_*.json
 # maps saved by the super admin (lib/maps/store.mjs), DATA_DIR
 /data/
+
+# downloaded car models (scripts/models/cars.mjs builds public/sim/models from them) and what it unpacks
+/models/
+.cache/

@@ -1,7 +1,7 @@
 # Sand Buggy Rally
 
 Real-time multiplayer racing on the **Sand Buggy** vehicle sim: sign in with Google, open a room,
-pick a car and a paint, and race up to eight drivers on sand, earth or road, around the figure-8 or a
+pick one of eleven cars and a paint, and race up to eight drivers on sand, earth or road, around the figure-8 or a
 map the super admin made.
 
 - **Next.js 16** (App Router) + **Tailwind 4** + **shadcn/ui** (radix-nova) for the pages
@@ -125,9 +125,15 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
+  Three of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63** and the
+  **Porsche 911 Turbo** (992), are built from downloaded models (`models/`, not in git) by
+  `scripts/models/build-car.mjs`: into the sim's axes and metres, wheels, callipers and steering wheel
+  split out, paint and glass found by name, lighter (meshoptimizer, textures ≤ 512 px), gzipped
+  (1–6 MB). Their specs are the real cars' (power, torque, gearbox, weight, drive); their bodies'
+  profiles, which the collision hull is built from, are measured off the models.
   **Shift+drag** or **right-drag** looks around: the chase camera swings round the car (drag right:
   the view turns right; down: from higher up), the cockpit view turns your head (up to ~130° each way);
   let go and it eases back behind after 0.7 s. The orbit (C) and editor cameras keep their own mouse controls.
@@ -190,6 +196,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `components/race-controls.tsx` | car, paint (UI SDK colour picker), map (UI SDK select), ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |
 | `public/sim/` | the engine |
+| `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |
 
 ## Not yet
 

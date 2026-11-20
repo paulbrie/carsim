@@ -20,6 +20,7 @@ export const groundName = (key: string) => GROUNDS.find(g => g.key === key)?.nam
 /** the colour a car shows when its driver has not painted it: the sim's factory colours */
 export const DEFAULT_PAINT: Record<string, string> = {
   buggy: '#d9360b', supra: '#b3121b', x7: '#1d4032', rs6: '#a3070c', bmw7: '#14181e', navigator: '#eeeeea', cayenne: '#2c4f46', quattroporte: '#12307a',
+  xjr: '#0f3b26', sl63: '#0d1b3a', p911: '#9a9da1',
 };
 export const paintOf = (vehicle: string, paint: string | null) => paint || DEFAULT_PAINT[vehicle] || '#888888';
 

@@ -9,10 +9,18 @@ See README.md for the layout. Notes:
   re-patched; the gates (height, fade near the camera) are `scripts/patches/gates.py`, the driver's-seat
   camera `cameras.py`, the maps (a room's course, the `?edit=1` map editor) `maps.py`, car damage
   (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py`, looking
-  around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`
+  around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`,
+  the cars made from downloaded models (XJR, SL 63, 911 Turbo: specs, sounds, menus) `cars.py`
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
+- New detailed cars: the download goes in `models/` (not in git), its recipe in
+  `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
+  `public/sim/models/<key>.glb.gz` and prints its `MODELS` entry; `.cache/models/<key>.json` has the
+  dimensions and body profiles for its `roadSpec` (the collision hull comes from those). Rename
+  materials there so `attachModel` finds them: `paint`, `glass`/`window`, `tire`, `taillight`. A
+  steering wheel buried in a cabin mesh: `--probe <box>` lists the pieces in a box. Deterministic:
+  rebuilding gives the same bytes.
 - The weather is `scripts/patches/weather.py`, after `glass.py` in the re-patch chain (it only touches the
   rendering setup, the frame loop, the Bots button's neighbour and the editor's fog lines). Its presets
   (`WEATHERS` in engine.js) and the race's list (`WEATHERS` in `lib/race/shared.mjs`) share their keys.

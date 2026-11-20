@@ -1,5 +1,6 @@
 'use client';
-import { LogOut } from 'lucide-react';
+import Link from 'next/link';
+import { LogOut, Map as MapIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -16,7 +17,7 @@ export function DriverAvatar({ name, image, className }: { name: string; image: 
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?';
 
-export function UserMenu({ user }: { user: { name: string; image: string | null } }) {
+export function UserMenu({ user }: { user: { name: string; image: string | null; admin?: boolean } }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -28,6 +29,12 @@ export function UserMenu({ user }: { user: { name: string; image: string | null 
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel className="truncate">{user.name}</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {user.admin && (
+          <>
+            <DropdownMenuItem asChild><Link href="/maps"><MapIcon /> Maps</Link></DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onSelect={() => signOutAction()}>
           <LogOut /> Sign out
         </DropdownMenuItem>

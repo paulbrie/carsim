@@ -1,10 +1,11 @@
 # Sand Buggy Rally
 
 Real-time multiplayer racing on the **Sand Buggy** vehicle sim: sign in with Google, open a room,
-pick a car and a paint, and race up to eight drivers around the figure-8 on sand, earth or road.
+pick a car and a paint, and race up to eight drivers on sand, earth or road, around the figure-8 or a
+map the super admin made.
 
 - **Next.js 16** (App Router) + **Tailwind 4** + **shadcn/ui** (radix-nova) for the pages
-- **UI SDK** (`@ui-sdk/react`) for what shadcn lacks: the paint colour picker and the segmented controls
+- **UI SDK** (`@ui-sdk/react`) for what shadcn lacks: the paint colour picker, the segmented controls and the map picker
 - **subjecto** for client state (the socket's rooms, room, standings: `lib/client/net.ts`)
 - **Auth.js** (next-auth v5) with Google; a name-only guest sign-in for development
 - **One Node.js process** (`server.mjs`): Next, the race WebSocket at `/ws`, and `/api/health`, on `$PORT`: made for Railway
@@ -38,6 +39,25 @@ Besides waypoints, bridges, terrain brushes and ground paint, the SHAPE section 
   dunes 9–16 m out. The physics feels it, and the bots' speed plan counts it. Saved with the course
   (and in Export), with its own best laps.
 
+## Maps and the super admin
+
+`SUPER_ADMIN_EMAIL` in `lib/admin.ts` (a constant: aelythe@gmail.com) is the super admin, when signed in
+with Google and that email verified by Google (`session.user.admin`, worked out on every request;
+guests never are). Only the super admin can create, edit and delete maps; anyone signed in can race them.
+
+- **`/maps`** (the user menu's *Maps*, admin only): new map (a copy of another, or an editor
+  *Export course* file), copy, delete, open in the editor. The figure-8 is built in: editable, not deletable.
+- **`/maps/[id]`**: the sim in edit mode (`/sim/index.html?edit=1`) on its course editor, with the
+  map's course and nothing saved in the browser; *Save* (or Ctrl/Cmd+S) puts the course on the
+  server. E drives the course to try it, and back.
+- **Saved** as `<DATA_DIR>/maps/<id>.json` (`lib/maps/store.mjs`, default `./data`, not in git), through
+  `/api/maps` (GET for anyone signed in; POST, PUT, DELETE for the super admin, 403 for others).
+- **In a room** the host picks the map (lobby, or New race). The page loads its course and hands it
+  to the sim as `window.__simCourse` before the iframe boots; a change goes as a `course` message and
+  the sim rebuilds the world. The room's ground still applies over the map's. A room reads its map
+  again when a race starts, so an edit saved meanwhile is what everyone races (the sims reload it on
+  the grid); a deleted map falls back to the figure-8.
+
 ## How it fits together
 
 ```
@@ -51,7 +71,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Opened without `?mp=1`, `/sim/index.html` is the single-player sim as it was (editor, bots, replays).
@@ -83,6 +103,8 @@ a domain's root (Railway). Google's redirect URI there:
    process's memory, so more replicas would split them.
 2. Variables: `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (and `AUTH_GUEST=1` only if
    guests should be allowed). `PORT` is Railway's. Node 24 (`engines`).
+   The maps are files: add a **volume** (e.g. mounted at `/data`) and set `DATA_DIR=/data`, or every
+   deploy starts again from the figure-8 alone.
 3. Generate a domain, then in Google Cloud → APIs & Services → Credentials → the OAuth client
    (Web application): authorised redirect URI `https://<domain>/api/auth/callback/google`.
 
@@ -97,15 +119,21 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `lib/race/hub.mjs` | rooms and races (transport-free, tested in `test/hub.test.mjs`) |
 | `lib/race/shared.mjs` | cars, paints, grounds, limits shared by server, UI and sim |
 | `lib/race/ticket.mjs` | WebSocket tickets (HMAC) |
+| `lib/admin.ts` | the super admin (`SUPER_ADMIN_EMAIL`) |
+| `lib/maps/store.mjs` | the maps on disk, course checks (tested in `test/maps.test.mjs`) |
+| `app/api/maps/` | the maps API |
+| `app/maps/`, `components/maps-admin.tsx`, `components/map-editor.tsx` | the admin's map list and editor |
+| `lib/client/maps.ts` | the maps from the browser: lists, a room's course |
 | `lib/client/net.ts` | the browser's socket, subjecto Subjects |
 | `components/race-room.tsx` | the race page: panel, standings, results |
 | `components/sim-frame.tsx` | the sim iframe and its postMessage bridge |
-| `components/race-controls.tsx` | car, paint (UI SDK colour picker), ground and laps (UI SDK segmented controls) |
+| `components/race-controls.tsx` | car, paint (UI SDK colour picker), map (UI SDK select), ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |
 | `public/sim/` | the engine |
 
 ## Not yet
 
 - Car-to-car contact is approximate (each side pushes only itself, against a position 120 ms old).
-- The course is the default figure-8; the single-player editor's courses aren't shared to rooms.
+- The single-player sim (`/sim/index.html`) still has its own editor, saved in that browser only;
+  its Export can be imported as a map by the super admin.
 - Rooms are in memory only: one replica, and a restart clears them.

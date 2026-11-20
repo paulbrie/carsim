@@ -1,8 +1,10 @@
 'use client';
-// Room settings and car choice: ui-sdk's SegmentedControl and ColorPicker (shadcn has neither),
-// styled in app/globals.css (.seg*, .cp-*).
+// Room settings and car choice: ui-sdk's SegmentedControl, Select and ColorPicker (shadcn has none
+// of them here), styled in app/globals.css (.seg*, .sel-*, .cp-*).
 import { useEffect, useState } from 'react';
 import { SegmentedControl, SegmentedControlIndicator, SegmentedControlItem } from '@ui-sdk/react/segmented-control';
+import { Select, SelectContent, SelectItem, SelectItemIndicator, SelectTrigger, SelectValue } from '@ui-sdk/react/select';
+import { Check, ChevronDown } from 'lucide-react';
 import {
   ColorPicker, ColorPickerArea, ColorPickerAreaThumb, ColorPickerSlider, ColorPickerSliderThumb, ColorPickerSwatches, ColorPickerSwatchItem,
 } from '@ui-sdk/react/color-picker';
@@ -10,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { GROUNDS, PAINTS, VEHICLES } from '@/lib/race/shared.mjs';
 import type { NetStatus } from '@/lib/client/net';
+import type { MapSummary } from '@/lib/maps/store.mjs';
 
 export const LAP_CHOICES = [1, 2, 3, 5, 10];
 export const vehicleName = (key: string) => VEHICLES.find(v => v.key === key)?.name ?? key;
@@ -28,6 +31,38 @@ export function GroundControl({ value, onChange, disabled, id }: { value: string
         <SegmentedControlItem key={g.key} value={g.key} className="seg-item" title={g.blurb}>{g.name}</SegmentedControlItem>
       ))}
     </SegmentedControl>
+  );
+}
+
+/** The course: the maps the super admin made (the room's own shows even before the list has loaded). */
+export function MapControl({ value, maps, onChange, disabled, id }: { value: { id: string; name: string }; maps: MapSummary[]; onChange: (id: string) => void; disabled?: boolean; id?: string }) {
+  const items = maps.map(m => ({ value: m.id, label: m.name }));
+  if (!items.some(i => i.value === value.id)) items.unshift({ value: value.id, label: value.name });
+  // the Select's hidden form field doesn't hydrate cleanly (its inline style is serialised differently
+  // on the server), so it renders in the browser only, after a look-alike
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return (
+    <button type="button" id={id} aria-label="Map" disabled className="sel-trigger">
+      <span className="truncate">{value.name}</span>
+      <ChevronDown aria-hidden className="ml-auto size-4 shrink-0 opacity-60" />
+    </button>
+  );
+  return (
+    <Select items={items} value={value.id} disabled={disabled} onValueChange={(v: string | null) => { if (v && v !== value.id) onChange(v); }}>
+      <SelectTrigger id={id} aria-label="Map" className="sel-trigger">
+        <SelectValue className="truncate" />
+        <ChevronDown aria-hidden className="ml-auto size-4 shrink-0 opacity-60" />
+      </SelectTrigger>
+      <SelectContent className="sel-content">
+        {items.map(i => (
+          <SelectItem key={i.value} value={i.value} className="sel-item">
+            <span className="truncate">{i.label}</span>
+            <SelectItemIndicator className="ml-auto"><Check className="size-4" /></SelectItemIndicator>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

@@ -5,8 +5,11 @@ export type Phase = 'lobby' | 'countdown' | 'racing' | 'results';
 export interface Me { id: string; name: string; image: string | null }
 
 export interface RoomSummary {
-  id: string; name: string; host: string; players: number; max: number; phase: Phase; ground: string; laps: number;
+  id: string; name: string; host: string; players: number; max: number; phase: Phase; ground: string; laps: number; map: string;
 }
+
+/** a room's map: v changes with every save of it (lib/maps/store.mjs) */
+export interface MapRef { id: string; name: string; v: number }
 
 export interface LapTime { time: number; valid: boolean }
 
@@ -21,7 +24,7 @@ export interface Standing {
 }
 
 export interface RoomView {
-  id: string; name: string; hostId: string; ground: string; laps: number; phase: Phase; race: number;
+  id: string; name: string; hostId: string; ground: string; laps: number; map: MapRef; phase: Phase; race: number;
   startsIn: number | null; elapsed: number | null; finishWindowLeft: number | null;
   players: PlayerView[]; standings: Standing[] | null; results: Standing[] | null;
 }

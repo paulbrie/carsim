@@ -144,6 +144,16 @@
   .seg-item {
     @apply cursor-pointer rounded-md px-3 py-1.5 font-medium text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring data-checked:text-foreground data-disabled:cursor-not-allowed data-disabled:opacity-60;
   }
+  .sel-trigger {
+    @apply inline-flex h-9 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border bg-muted/40 px-3 text-left text-sm font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring data-disabled:cursor-not-allowed data-disabled:opacity-60;
+  }
+  .sel-content {
+    @apply min-w-(--anchor-width) overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg;
+    max-height: min(320px, var(--available-height));
+  }
+  .sel-item {
+    @apply flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-selected:font-medium;
+  }
   .cp-area {
     @apply relative h-24 w-full cursor-crosshair rounded-md touch-none;
     background: var(--color-area-background);

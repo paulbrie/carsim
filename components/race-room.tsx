@@ -14,10 +14,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DriverAvatar } from '@/components/user-menu';
 import { SimFrame, type SimHandle } from '@/components/sim-frame';
 import { PHASE_LABEL } from '@/components/lobby';
-import { GroundControl, LapsControl, PaintPicker, StatusBadge, VehiclePicker, fmtTime, groundName, paintOf, vehicleName } from '@/components/race-controls';
+import { GroundControl, LapsControl, MapControl, PaintPicker, StatusBadge, VehiclePicker, fmtTime, groundName, paintOf, vehicleName } from '@/components/race-controls';
 import { cn } from '@/lib/utils';
 import { withBase } from '@/lib/base-path';
 import { LIMITS } from '@/lib/race/shared.mjs';
+import { useMaps, useRoomCourse } from '@/lib/client/maps';
 import { connect, joinRoom, leaveRoom, leaveRoomSoon, me$, onError, reclaim, room$, send, standings$, status$ } from '@/lib/client/net';
 import type { PlayerView, RoomView, Standing } from '@/lib/race/types';
 
@@ -52,6 +53,9 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
     if (phase === 'lobby') setPanel(true);
   }, [phase]);
 
+  const course = useRoomCourse(room?.id === roomId ? room.map : undefined, msg => toast.error(msg));
+  const maps = useMaps(isHost);
+
   const onSimReady = useCallback(() => setSimReady(true), []);
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(`${location.origin}${withBase(`/race/${roomId}`)}`); toast.success('Invite link copied'); }
@@ -76,7 +80,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
-      <SimFrame ref={sim} room={room} meId={me.id} onReady={onSimReady} />
+      {course && <SimFrame ref={sim} room={room} meId={me.id} course={course} onReady={onSimReady} />}
 
       {(phase === 'racing' || phase === 'countdown') && <StandingsPanel room={room} meId={me.id} />}
 
@@ -103,6 +107,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
               <Separator />
               <section className="space-y-3" aria-labelledby="race-settings">
                 <h2 id="race-settings" className="text-sm font-medium">Race {isHost ? '' : <span className="font-normal text-muted-foreground">· set by the host</span>}</h2>
+                <MapControl value={room.map} maps={maps} disabled={!isHost || phase !== 'lobby'} onChange={id => send({ t: 'settings', map: id })} />
                 <div className="flex flex-wrap items-center gap-3">
                   <GroundControl value={room.ground} disabled={!isHost || phase !== 'lobby'} onChange={g => send({ t: 'settings', ground: g })} />
                   <LapsControl value={room.laps} disabled={!isHost || phase !== 'lobby'} onChange={n => send({ t: 'settings', laps: n })} />

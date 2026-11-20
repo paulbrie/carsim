@@ -7,17 +7,20 @@ import { onGone, onSnap, send } from '@/lib/client/net';
 import { withBase } from '@/lib/base-path';
 import { paintOf } from '@/components/race-controls';
 import type { RoomView } from '@/lib/race/types';
+import type { SimCourse } from '@/lib/client/maps';
 
 export interface SimHandle { focus(): void }
 
-export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; onReady?: () => void }>(function SimFrame({ room, meId, onReady }, handle) {
+export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; course: SimCourse; onReady?: () => void }>(function SimFrame({ room, meId, course, onReady }, handle) {
   const frame = useRef<HTMLIFrameElement>(null);
   const live = useRef(false);
   const [ready, setReady] = useState(false);
   const mine = room.players.find(p => p.id === meId);
 
-  // the page loads once, with the car and ground of the moment; later changes go by message
+  // the page loads once, with the course, car and ground of the moment; later changes go by message.
+  // The course is too big for the URL: the sim reads it from this window as it boots (same origin).
   const [src] = useState(() => {
+    if (typeof window !== 'undefined') window.__simCourse = course;
     const q = new URLSearchParams({ mp: '1', ground: room.ground, vehicle: mine?.vehicle ?? 'buggy', spawn: String(Math.max(0, room.players.findIndex(p => p.id === meId))) });
     if (mine?.paint) q.set('paint', mine.paint);
     return withBase(`/sim/index.html?${q}`);
@@ -60,6 +63,12 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; on
     if (mine && (room.phase === 'lobby' || room.phase === 'results')) post({ t: 'car', vehicle: mine.vehicle, paint: mine.paint });
     post({ t: 'phase', phase: room.phase, race: room.race, startsIn: room.startsIn, slot: mine?.slot ?? -1, laps: room.laps, spectator: mine?.spectator ?? false, elapsed: room.elapsed });
   }, [ready, room, meId, mine, post]);
+
+  // the room's map: another one picked, or saved since (the sim skips the key it has)
+  useEffect(() => {
+    window.__simCourse = course;
+    if (ready) post({ t: 'course', key: course.key, course: course.course });
+  }, [ready, course, post]);
 
   return (
     <iframe ref={frame} src={src} title="Race simulation: click here, then drive with W A S D or the arrow keys"

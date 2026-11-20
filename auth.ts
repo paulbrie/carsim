@@ -3,10 +3,12 @@ import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import type { Provider } from 'next-auth/providers';
 import { withBase } from '@/lib/base-path';
+import { isSuperAdmin } from '@/lib/admin';
 
 declare module 'next-auth' {
   interface Session {
-    user: { id: string } & DefaultSession['user'];
+    /** admin: the super admin (lib/admin.ts), who creates and edits the maps */
+    user: { id: string; admin: boolean } & DefaultSession['user'];
   }
 }
 
@@ -35,14 +37,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   basePath: withBase('/api/auth'),
   pages: { signIn: withBase('/') },
   callbacks: {
-    jwt({ token, account, user }) {
+    jwt({ token, account, user, profile }) {
       // a stable id per account: "google:<sub>", or "guest:<uuid>" for this guest session
-      if (account) token.uid = `${account.provider}:${account.providerAccountId || user?.id}`;
+      if (account) {
+        token.uid = `${account.provider}:${account.providerAccountId || user?.id}`;
+        token.provider = account.provider;
+        token.emailVerified = account.provider === 'google' && profile?.email_verified === true;
+        if (account.provider !== 'google') delete token.email;
+      }
       return token;
     },
     session({ session, token }) {
       if (typeof token.uid === 'string') session.user.id = token.uid;
+      // worked out on every request from what Google said at sign-in, so a change of the constant applies at once
+      session.user.admin = isSuperAdmin({ provider: token.provider as string | undefined, email: token.email, emailVerified: token.emailVerified as boolean | undefined });
       return session;
     },
   },
 });
+
+/** The signed-in super admin's session, or null (for pages and API routes that only the admin may use). */
+export async function adminSession() {
+  const session = await auth();
+  return session?.user?.admin ? session : null;
+}

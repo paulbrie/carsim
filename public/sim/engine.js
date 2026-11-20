@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
    and talks to it with postMessage (see the MULTIPLAYER section near the end). Without ?mp=1 it is the
    single-player sim as it was. */
 const MPQ = new URLSearchParams(location.search);
-const MP = { on: MPQ.get('mp') === '1', hold: false, phase: 'free', race: 0, laps: 3, slot: -1, goAt: 0, greenSim: 0, missed: 0, finished: false,
+const MP = { on: MPQ.get('mp') === '1', edit: MPQ.get('edit') === '1', courseKey: null, sig: null, hold: false, phase: 'free', race: 0, laps: 3, slot: -1, goAt: 0, greenSim: 0, missed: 0, finished: false,
   peers: new Map(), myId: null, sendT: 0, pIdx: -1, spectator: false };
 
 /* =====================================================================
@@ -1731,13 +1731,14 @@ try {
   if (c && Array.isArray(c.wp) && c.wp.length >= 3) COURSE = { wp: c.wp, bank: bankOf(c.bank), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: Array.isArray(c.bridges) ? c.bridges.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [], noBridge: Array.isArray(c.noBridge) ? c.noBridge.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [] };
   else { const sv = localStorage.getItem('sandbuggy.surface'); if (BASES.includes(sv)) COURSE.base = sv; if (sv === 'road') COURSE.road = true; }
 } catch (e) { }
-if (MP.on) {
-  const g = MPQ.get('ground');
-  COURSE = { wp: DEFAULT_WP.map(p => p.slice()), ops: [], base: g === 'earth' ? 'earth' : 'sand', road: g === 'road', bridges: [], noBridge: [] };
+if (MP.on || MP.edit) {
+  const pc = mpParentCourse();
+  MP.courseKey = pc?.key ?? null;
+  COURSE = mpCourseFrom(pc?.course, MP.on ? MPQ.get('ground') || 'sand' : null);
 }
 SURF = SURFACES[COURSE.base]; ROAD = !!COURSE.road;
 function saveCourse() {
-  if (MP.on) return true;
+  if (MP.on || MP.edit) return true;
   try { localStorage.setItem('sandbuggy.course', JSON.stringify(COURSE)); return true; }
   catch (e) { flash('Course too big for browser storage: use Export', '#ff8a7a', 3); return false; }
 }
@@ -3925,7 +3926,7 @@ function setSurface(name) {
   SURF = road ? SURFACES.sand : SURFACES[name] || SURFACES.sand;
   ROAD = road; COURSE.road = road;
   COURSE.base = SURF === SURFACES.earth ? 'earth' : 'sand'; saveCourse();
-  if (!MP.on) try { localStorage.setItem('sandbuggy.surface', road ? 'road' : COURSE.base); } catch (e) { }
+  if (!MP.on && !MP.edit) try { localStorage.setItem('sandbuggy.surface', road ? 'road' : COURSE.base); } catch (e) { }
   pMat.uniforms.dustCol.value.setRGB(...SURF.dust);
   if (changed && TRACK.gates[0].posts) { clearSkids(); regenerateWorld(); return; }   // the road bed is graded differently
   for (const ch of chunks.values()) ch.update();
@@ -4057,13 +4058,18 @@ addEventListener('resize', () => {
    players' cars; this page drives its own car as always and reports where it is, its laps and
    its finish. Messages, both ways, by postMessage on this origin:
      in:  init {me} · car {vehicle, paint} · ground {ground} · roster {players} · snap {cars} · gone {id}
-          phase {phase, race, startsIn, slot, laps, spectator, elapsed}
+          phase {phase, race, startsIn, slot, laps, spectator, elapsed} · course {key, course}
      out: ready · s {p, q, v, st, sp, prog, lap} (20 Hz) · lap {lap, time, valid} · finish {time, missed}
+   The course is the room's map: the page sets window.__simCourse = {key, course} before it loads
+   this iframe (course null: the default figure-8), and sends a new one with course.
+   With ?edit=1 (the super admin's map editor, app/maps/[id]) the page opens on the course editor,
+   with the map from window.__simCourse, nothing saved in this browser:
+     in:  get {id}            out: ready · course {id, course, sig} (the answer to get) · sig {sig} (when the course changes) · save (Ctrl/Cmd+S)
    Other cars are drawn 120 ms behind their latest position, interpolated, and pushed against like
    the bots (each side moves only its own car).
    ===================================================================== */
 const PEER_DELAY = 120, PEER_STALE = 3000;
-function mpPost(msg) { if (MP.on && parent !== window) parent.postMessage(msg, location.origin); }
+function mpPost(msg) { if ((MP.on || MP.edit) && parent !== window) parent.postMessage(msg, location.origin); }
 const hexOf = s => typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s) ? parseInt(s.slice(1), 16) : null;
 
 function mpKeyBlocked(e) {
@@ -4197,7 +4203,7 @@ function mpSnap(cars) {
 
 function mpPhase(m) {
   const was = MP.phase;
-  MP.laps = m.laps || MP.laps; MP.spectator = !!m.spectator;
+  MP.laps = m.laps || MP.laps; MP.spectator = !!m.spectator; MP.slot = m.slot ?? -1;
   if ((m.phase === 'countdown' || m.phase === 'racing') && m.race !== MP.race) {
     // a new race: to the grid, held until green (or, joining one already running, straight off)
     MP.race = m.race; MP.finished = false; MP.missed = 0; MP.finishFlash = null; MP.cd = -1;
@@ -4229,13 +4235,54 @@ function mpMessage(m) {
     case 'snap': mpSnap(m.cars || []); break;
     case 'gone': { const pe = MP.peers.get(m.id); if (pe) mpDropPeer(pe); break; }
     case 'phase': mpPhase(m); break;
+    case 'course': mpSetCourse(m.key, m.course); break;
     case 'focus': try { window.focus(); } catch (e) { } break;
   }
 }
 
+/* ---------- the course ---------- */
+function mpParentCourse() { try { return (parent !== window && parent.__simCourse) || null; } catch (e) { return null; } }
+
+// a map's course as COURSE (checked as the editor's Import does), on the room's ground if given
+function mpCourseFrom(c, ground) {
+  const pts = a => Array.isArray(a) ? a.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [];
+  const C = c && Array.isArray(c.wp) && c.wp.length >= 3
+    ? { wp: c.wp.map(([x, z]) => [+x, +z]), bank: bankOf(c.bank), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: pts(c.bridges), noBridge: pts(c.noBridge) }
+    : { wp: DEFAULT_WP.map(p => p.slice()), ops: [], base: 'sand', road: false, bridges: [], noBridge: [] };
+  if (ground) { C.base = ground === 'earth' ? 'earth' : 'sand'; C.road = ground === 'road'; }
+  return C;
+}
+
+// the host picked another map, or it was saved since: rebuild the world on it (back on the grid if held there)
+function mpSetCourse(key, course) {
+  if (!key || key === MP.courseKey) return;
+  MP.courseKey = key;
+  COURSE = mpCourseFrom(course, ROAD ? 'road' : COURSE.base);
+  SURF = SURFACES[COURSE.base]; ROAD = COURSE.road;
+  showBusy('Loading the course…');
+  setTimeout(() => {
+    clearSkids(); regenerateWorld(); showBusy('');
+    if (MP.hold && MP.slot >= 0 && !MP.spectator) mpGrid(MP.slot);
+  }, 30);
+}
+
+// the map editor: what the page asks for, and a signature of the course so it knows when there is something to save
+function mpEditMessage(m) {
+  if (!m || typeof m !== 'object') return;
+  if (m.t === 'get') mpPost({ t: 'course', id: m.id, course: COURSE, sig: mpEditSig() });
+  else if (m.t === 'focus') try { window.focus(); } catch (e) { }
+}
+const mpEditSig = () => `${courseKey()}.${COURSE.ops.length}.${ROAD ? 'road' : COURSE.base}`;
+function mpEditFrame(dt) {
+  if ((MP.sendT += dt) < 0.5) return;
+  MP.sendT = 0;
+  const sig = mpEditSig();
+  if (sig !== MP.sig) { MP.sig = sig; mpPost({ t: 'sig', sig }); }
+}
+
 const mpQa = new THREE.Quaternion(), mpQb = new THREE.Quaternion(), mpV = new THREE.Vector3();
 function mpFrame(dt) {
-  if (!MP.on) return;
+  if (!MP.on) { if (MP.edit) mpEditFrame(dt); return; }
   const now = performance.now();
   const racing = (MP.phase === 'countdown' || MP.phase === 'racing') && !MP.finished && !MP.spectator;
   if (racing !== MP.racingCls) { MP.racingCls = racing; document.body.classList.toggle('mp-race', racing); if (racing && rp.on) stopReplay(); }
@@ -4314,6 +4361,11 @@ if (MP.on) {
   help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide this';
   addEventListener('message', e => { if (e.origin === location.origin && e.source === parent) mpMessage(e.data); });
 }
+if (MP.edit) {
+  BOTS.n = 0;
+  addEventListener('message', e => { if (e.origin === location.origin && e.source === parent) mpEditMessage(e.data); });
+  addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') { e.preventDefault(); e.stopImmediatePropagation(); mpPost({ t: 'save' }); } }, true);
+}
 
 // boot
 setTimeout(() => {
@@ -4337,4 +4389,5 @@ setTimeout(() => {
   if (BOTS.n) setBots(BOTS.n);
   requestAnimationFrame(t => { last = t; frame(t); });
   mpPost({ t: 'ready' });
+  if (MP.edit) { document.getElementById('menu').style.display = 'none'; toggleEditor(true); MP.sig = mpEditSig(); mpPost({ t: 'sig', sig: MP.sig }); }   // the map as loaded: nothing to save yet
 }, 30);

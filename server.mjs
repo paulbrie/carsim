@@ -9,6 +9,7 @@ import { WebSocketServer } from 'ws';
 import { RaceHub } from './lib/race/hub.mjs';
 import { LIMITS } from './lib/race/shared.mjs';
 import { verifyTicket } from './lib/race/ticket.mjs';
+import { mapStore } from './lib/maps/store.mjs';
 
 const dev = process.env.NODE_ENV !== 'production';
 nextEnv.loadEnvConfig(process.cwd(), dev);        // .env*, as next dev / next start would, before reading AUTH_SECRET
@@ -24,7 +25,7 @@ const handle = app.getRequestHandler();
 await app.prepare();
 const nextUpgrade = app.getUpgradeHandler();
 
-const hub = new RaceHub();
+const hub = new RaceHub({ maps: mapStore() });
 const started = Date.now();
 const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMessageDeflate: false });
 

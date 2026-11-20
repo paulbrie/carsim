@@ -12,13 +12,14 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Brand } from '@/components/brand';
 import { UserMenu } from '@/components/user-menu';
-import { GroundControl, LapsControl, StatusBadge, groundName } from '@/components/race-controls';
+import { GroundControl, LapsControl, MapControl, StatusBadge, groundName } from '@/components/race-controls';
+import { useMaps } from '@/lib/client/maps';
 import { connect, onError, room$, rooms$, send, setWantedRoom, status$ } from '@/lib/client/net';
 import type { Phase } from '@/lib/race/types';
 
 export const PHASE_LABEL: Record<Phase, string> = { lobby: 'Waiting', countdown: 'Starting', racing: 'Racing', results: 'Results' };
 
-export function Lobby({ user }: { user: { name: string; image: string | null } }) {
+export function Lobby({ user }: { user: { name: string; image: string | null; admin?: boolean } }) {
   const router = useRouter();
   const [status] = useSubject(status$);
   const [rooms] = useSubject(rooms$);
@@ -26,6 +27,8 @@ export function Lobby({ user }: { user: { name: string; image: string | null } }
   const [name, setName] = useState('');
   const [ground, setGround] = useState('sand');
   const [laps, setLaps] = useState(3);
+  const [map, setMap] = useState('figure-8');
+  const maps = useMaps();
   const [code, setCode] = useState('');
   const creating = useRef(false);
 
@@ -39,7 +42,7 @@ export function Lobby({ user }: { user: { name: string; image: string | null } }
   const create = (e: React.FormEvent) => {
     e.preventDefault();
     creating.current = true;
-    if (!send({ t: 'create', name: name.trim() || `${user.name}'s race`, ground, laps })) { creating.current = false; toast.error('Not connected to the race server yet.'); }
+    if (!send({ t: 'create', name: name.trim() || `${user.name}'s race`, ground, laps, map })) { creating.current = false; toast.error('Not connected to the race server yet.'); }
   };
   const join = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,13 +67,17 @@ export function Lobby({ user }: { user: { name: string; image: string | null } }
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Plus className="size-4" /> New race</CardTitle>
-              <CardDescription>You host it: you pick the ground and the laps, and start it when everyone is ready.</CardDescription>
+              <CardDescription>You host it: you pick the map, the ground and the laps, and start it when everyone is ready.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={create} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="room-name">Name</Label>
                   <Input id="room-name" value={name} onChange={e => setName(e.target.value)} maxLength={40} placeholder={`${user.name}'s race`} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="room-map">Map</Label>
+                  <MapControl id="room-map" value={{ id: map, name: maps.find(m => m.id === map)?.name ?? 'Figure-8' }} maps={maps} onChange={setMap} />
                 </div>
                 <div className="space-y-2">
                   <Label id="ground-label">Ground</Label>
@@ -118,7 +125,7 @@ export function Lobby({ user }: { user: { name: string; image: string | null } }
                   <TableRow>
                     <TableHead>Room</TableHead>
                     <TableHead className="hidden sm:table-cell">Host</TableHead>
-                    <TableHead>Ground</TableHead>
+                    <TableHead>Course</TableHead>
                     <TableHead className="text-right">Laps</TableHead>
                     <TableHead className="text-right">Drivers</TableHead>
                     <TableHead>Status</TableHead>
@@ -133,7 +140,10 @@ export function Lobby({ user }: { user: { name: string; image: string | null } }
                         <div className="font-mono text-xs text-muted-foreground">{r.id}</div>
                       </TableCell>
                       <TableCell className="hidden max-w-32 truncate sm:table-cell">{r.host}</TableCell>
-                      <TableCell>{groundName(r.ground)}</TableCell>
+                      <TableCell className="max-w-40">
+                        <div className="truncate">{r.map}</div>
+                        <div className="text-xs text-muted-foreground">{groundName(r.ground)}</div>
+                      </TableCell>
                       <TableCell className="text-right tabular-nums">{r.laps}</TableCell>
                       <TableCell className="text-right tabular-nums">{r.players}/{r.max}</TableCell>
                       <TableCell><Badge variant={r.phase === 'lobby' ? 'secondary' : 'outline'}>{PHASE_LABEL[r.phase]}</Badge></TableCell>

@@ -61,6 +61,10 @@ rep("""  if (e.code === 'KeyE') { if (rp.on) stopReplay(); toggleEditor(!ed.on);
     """  if (MP.on && mpKeyBlocked(e)) return;
   if (e.code === 'KeyE') { if (rp.on) stopReplay(); toggleEditor(!ed.on); return; }""")
 
+# --- the dial (speed, rpm, gear): in a race the start menu is hidden by CSS (body.mp), not by its style
+rep("""  const show = !ed.on && document.getElementById('menu').style.display === 'none';""",
+    """  const show = !ed.on && (MP.on || document.getElementById('menu').style.display === 'none');""")
+
 # --- laps and gates feed the race
 rep("""function finishLap(t, valid) {
 """, """function finishLap(t, valid) {

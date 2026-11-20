@@ -1800,7 +1800,7 @@ let hudT = 0, fps = 60;
 // Dial for the in-car view: rev counter around the rim, speed and gear in the middle
 const gaugeEl = document.getElementById('gauge'), gctx = gaugeEl.getContext('2d'); let gaugeRpm = 0;
 function drawGauge(dt) {
-  const show = !ed.on && document.getElementById('menu').style.display === 'none';
+  const show = !ed.on && (MP.on || document.getElementById('menu').style.display === 'none');
   if ((gaugeEl.style.display !== 'none') !== show) gaugeEl.style.display = show ? 'block' : 'none';
   if (!show) return;
   const helpUp = document.getElementById('help').style.display !== 'none'; gaugeEl.style.bottom = (rp.on ? 200 : helpUp ? 124 : 14) + 'px';

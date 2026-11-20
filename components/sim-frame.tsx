@@ -4,6 +4,7 @@
 // position, laps and finish come out and go to the server as they are.
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { onGone, onSnap, send } from '@/lib/client/net';
+import { withBase } from '@/lib/base-path';
 import { paintOf } from '@/components/race-controls';
 import type { RoomView } from '@/lib/race/types';
 
@@ -19,7 +20,7 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; on
   const [src] = useState(() => {
     const q = new URLSearchParams({ mp: '1', ground: room.ground, vehicle: mine?.vehicle ?? 'buggy', spawn: String(Math.max(0, room.players.findIndex(p => p.id === meId))) });
     if (mine?.paint) q.set('paint', mine.paint);
-    return `/sim/index.html?${q}`;
+    return withBase(`/sim/index.html?${q}`);
   });
 
   const post = useCallback((m: object) => {

@@ -15,6 +15,7 @@ nextEnv.loadEnvConfig(process.cwd(), dev);        // .env*, as next dev / next s
 const port = Number(process.env.PORT) || 7001;
 // not $HOSTNAME: containers set it to their own name
 const hostname = process.env.HOST || '0.0.0.0';
+const base = (process.env.BASE_PATH || '').replace(/\/+$/, '');   // e.g. /projects/carsim, see next.config.ts
 const secret = process.env.AUTH_SECRET;
 if (!secret) console.warn('[carsim] AUTH_SECRET is not set: sign-in and the race server will refuse everyone');
 
@@ -28,7 +29,7 @@ const started = Date.now();
 const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMessageDeflate: false });
 
 const server = createServer((req, res) => {
-  if (req.url === '/api/health') {
+  if (req.url === `${base}/api/health`) {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify({ ok: true, uptime: Math.round((Date.now() - started) / 1000), rooms: hub.rooms.size, clients: hub.clients.size }));
     return;
@@ -38,7 +39,7 @@ const server = createServer((req, res) => {
 
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url || '/', 'http://x');
-  if (url.pathname !== '/ws') return nextUpgrade(req, socket, head);   // Next's own (HMR in dev)
+  if (url.pathname !== `${base}/ws`) return nextUpgrade(req, socket, head);   // Next's own (HMR in dev)
   // same-origin pages only (the ticket is the real check; this stops other sites riding on one)
   const origin = req.headers.origin, host = req.headers['x-forwarded-host'] || req.headers.host;
   if (origin && host && new URL(origin).host !== String(host).split(',')[0].trim()) { socket.end('HTTP/1.1 403 Forbidden\r\n\r\n'); return; }
@@ -64,7 +65,7 @@ const heartbeat = setInterval(() => {
   for (const ws of wss.clients) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; ws.ping(); }
 }, 25_000);
 
-server.listen(port, hostname, () => console.log(`[carsim] ${dev ? 'dev' : 'production'} on http://${hostname}:${port}`));
+server.listen(port, hostname, () => console.log(`[carsim] ${dev ? 'dev' : 'production'} on http://${hostname}:${port}${base}`));
 
 // Railway sends SIGTERM on redeploy: tell the browsers to reconnect, then exit
 let stopping = false;

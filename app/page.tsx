@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Brand } from '@/components/brand';
+import { withBase } from '@/lib/base-path';
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const { next, error } = await searchParams;
@@ -15,11 +16,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
 
   async function google() {
     'use server';
-    await signIn('google', { redirectTo: to });
+    await signIn('google', { redirectTo: withBase(to) });
   }
   async function guest(form: FormData) {
     'use server';
-    await signIn('guest', { name: String(form.get('name') || ''), redirectTo: to });
+    await signIn('guest', { name: String(form.get('name') || ''), redirectTo: withBase(to) });
   }
 
   return (

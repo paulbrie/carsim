@@ -3,6 +3,7 @@
 // with what it hears kept in subjecto Subjects the React UI subscribes to (useSubject).
 // Car positions ('snap') skip the Subjects: they go straight to the sim (onSnap).
 import { Subject } from 'subjecto';
+import { withBase } from '@/lib/base-path';
 import type { CarSnap, Me, RoomSummary, RoomView, ServerMsg, Standing } from '@/lib/race/types';
 
 export type NetStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'replaced' | 'unauthorized';
@@ -37,13 +38,13 @@ async function open() {
   opening = true;
   let ticket: string;
   try {
-    const r = await fetch('/api/ws-ticket', { cache: 'no-store' });
+    const r = await fetch(withBase('/api/ws-ticket'), { cache: 'no-store' });
     if (r.status === 401) { opening = false; status$.next('unauthorized'); return; }
     ticket = (await r.json()).ticket;
   } catch { opening = false; scheduleRetry(); return; }
   opening = false;
   if (!wanted) return;
-  const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?ticket=${encodeURIComponent(ticket)}`;
+  const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${withBase('/ws')}?ticket=${encodeURIComponent(ticket)}`;
   const sock = new WebSocket(url);
   ws = sock;
   sock.onopen = () => {

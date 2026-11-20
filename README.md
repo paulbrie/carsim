@@ -50,6 +50,15 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
 - **Sign-in to socket:** `/api/ws-ticket` (behind Auth.js) signs a one-minute ticket with
   `AUTH_SECRET`; `server.mjs` checks it, and the page's origin, on the upgrade.
 
+## On the Genie box
+
+The admin's nginx routes `https://<box>/projects/carsim` to port 7001 and keeps the prefix, so
+`.env.local` there sets `BASE_PATH=/projects/carsim` (Next's basePath, also used for `/ws`,
+`/api/health`, the sim's iframe and Auth.js) and `ALLOWED_DEV_ORIGINS=<public host>` (else
+`next dev` blocks its own scripts for that host and the page never hydrates). Leave both unset at
+a domain's root (Railway). Google's redirect URI there:
+`https://<box>/projects/carsim/api/auth/callback/google`.
+
 ## Deploy on Railway
 
 1. New project → deploy from this repo. `railway.json` sets the build (`npm run build`), the start

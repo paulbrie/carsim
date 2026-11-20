@@ -2,6 +2,7 @@ import NextAuth, { type DefaultSession } from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import type { Provider } from 'next-auth/providers';
+import { withBase } from '@/lib/base-path';
 
 declare module 'next-auth' {
   interface Session {
@@ -30,8 +31,9 @@ if (guestEnabled) providers.push(Credentials({
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
   session: { strategy: 'jwt', maxAge: 30 * 24 * 3600 },
-  trustHost: true,                         // behind Railway's proxy
-  pages: { signIn: '/' },
+  trustHost: true,                         // behind Railway's proxy, or the box's nginx
+  basePath: withBase('/api/auth'),
+  pages: { signIn: withBase('/') },
   callbacks: {
     jwt({ token, account, user }) {
       // a stable id per account: "google:<sub>", or "guest:<uuid>" for this guest session

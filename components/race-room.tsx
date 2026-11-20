@@ -16,6 +16,7 @@ import { SimFrame, type SimHandle } from '@/components/sim-frame';
 import { PHASE_LABEL } from '@/components/lobby';
 import { GroundControl, LapsControl, PaintPicker, StatusBadge, VehiclePicker, fmtTime, groundName, paintOf, vehicleName } from '@/components/race-controls';
 import { cn } from '@/lib/utils';
+import { withBase } from '@/lib/base-path';
 import { LIMITS } from '@/lib/race/shared.mjs';
 import { connect, joinRoom, leaveRoom, leaveRoomSoon, me$, onError, reclaim, room$, send, standings$, status$ } from '@/lib/client/net';
 import type { PlayerView, RoomView, Standing } from '@/lib/race/types';
@@ -53,7 +54,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
 
   const onSimReady = useCallback(() => setSimReady(true), []);
   const copyLink = async () => {
-    try { await navigator.clipboard.writeText(`${location.origin}/race/${roomId}`); toast.success('Invite link copied'); }
+    try { await navigator.clipboard.writeText(`${location.origin}${withBase(`/race/${roomId}`)}`); toast.success('Invite link copied'); }
     catch { toast.message(`Room code: ${roomId}`); }
   };
   const leave = () => { leaveRoom(); router.push('/lobby'); };

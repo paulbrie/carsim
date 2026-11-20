@@ -46,9 +46,10 @@ test('create from a copy or a course, rename, save, delete', () => {
 });
 
 test('a course is checked and trimmed like the sim reads it', () => {
-  const c = cleanCourse({ ...course(), wp: [[1000, -1000], [1.234, 2], [3, 4]], bank: 99, base: 'mud', ops: [{ t: 'nuke', x: 0, z: 0, r: 5 }, { t: 'smooth', x: 1, z: 1, r: 6, s: 0.1, v: 2, extra: 'x' }], bridges: [{ x: 'a' }, { x: 1, z: 2 }] });
+  const c = cleanCourse({ ...course(), wp: [[1000, -1000], [1.234, 2], [3, 4]], bank: 99, level: 140, base: 'mud', ops: [{ t: 'nuke', x: 0, z: 0, r: 5 }, { t: 'smooth', x: 1, z: 1, r: 6, s: 0.1, v: 2, extra: 'x' }], bridges: [{ x: 'a' }, { x: 1, z: 2 }] });
   assert.deepEqual(c.wp, [[168, -168], [1.2, 2], [3, 4]]);
-  assert.equal(c.bank, 25); assert.equal(c.base, 'sand');
+  assert.equal(c.bank, 25); assert.equal(c.level, 100); assert.equal(c.base, 'sand');
+  assert.equal(cleanCourse(course()).level, 0);                        // courses from before levelling
   assert.deepEqual(c.ops, [{ t: 'smooth', x: 1, z: 1, r: 6, s: 0.1, v: 2 }]);
   assert.deepEqual(c.bridges, [{ x: 1, z: 2 }]);
   assert.throws(() => cleanCourse({ wp: [[0, 0], [1, 1]] }), e => e.status === 400);

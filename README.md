@@ -38,6 +38,14 @@ Besides waypoints, bridges, terrain brushes and ground paint, the SHAPE section 
   the slider, eased in and out over ~25 m, flat near bridges and crossings, and blended back into the
   dunes 9–16 m out. The physics feels it, and the bots' speed plan counts it. Saved with the course
   (and in Export), with its own best laps.
+- **Level the road** (off–100%): the road's rise and fall along the course is smoothed (three passes
+  of a ±32 m moving average, half a dune's wavelength each side: the crests are cut, the troughs
+  filled, the land's long slopes kept), blended in by the slider. Across, the road is flat (plus the
+  banking) to 8 m out, then the cut or fill slopes back into the dunes at about 1 in 2.5. Where the
+  course crosses itself both branches meet at one height. On the figure-8 the steepest grade goes
+  from 26% to 4%, the climb per lap from 29 m to 13 m; "Course ready" shows the grade before → after.
+  Saved with the course and in maps, with its own best laps.
+- **Optimise the road**: levelling 100% and banking 25°, so every bend gets the angle its speed needs.
 
 ## Maps and the super admin
 
@@ -71,7 +79,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Opened without `?mp=1`, `/sim/index.html` is the single-player sim as it was (editor, bots, replays).

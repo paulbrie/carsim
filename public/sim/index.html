@@ -114,6 +114,8 @@
   <label title="Smooth curves opens every bend tighter than this">Min. corner radius <input id="sRad" type="range" min="10" max="60" step="5" value="25"> <span id="sRadV" class="val">25 m</span></label>
   <div class="tools"><button id="eSmooth" title="Reshape the waypoints so no corner is tighter than the radius above">Smooth curves</button><button id="eUndoSmooth" disabled>Undo smoothing</button></div>
   <label title="Tilt the ground under each bend toward its inside, steeper in tighter bends, up to this angle">Banking <input id="bankDeg" type="range" min="0" max="25" step="1" value="0"> <span id="bankV" class="val">off</span></label>
+  <label title="Smooth the road's rise and fall along the course: cut through the dune crests, fill the troughs, and keep it flat across (but for the banking)">Level the road <input id="levelPct" type="range" min="0" max="100" step="5" value="0"> <span id="levelV" class="val">off</span></label>
+  <div class="tools"><button id="eOptimise" title="Level the road fully and bank every bend for the speed it can be taken at">Optimise the road</button></div>
   <div class="sec">TERRAIN</div>
   <div class="tools"><button data-tool="raise">Raise</button><button data-tool="lower">Lower</button><button data-tool="flatten">Flatten</button><button data-tool="smooth">Smooth</button></div>
   <div class="sec">GROUND</div>

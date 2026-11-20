@@ -78,6 +78,18 @@ cabin gives less than half as much; the detailed models' panels hang loose, then
   Shards settle and go after 30 s; breaking glass has its own sound.
 - **Repair:** T (restart) or, wrecked, R / Enter; in a race, the grid at every start.
 
+## Weather
+
+Five skies (`scripts/patches/weather.py`): **Clear** (the default), **Clouds** (sunny, fair-weather
+clouds), **Grey** (overcast: soft light, faint shadows), **Rain** (low dark clouds, light rain,
+shorter visibility) and **Sunset** (the sun 9° up, orange light and long shadows, clouds lit from
+below). The clouds are fbm noise in the sky dome, drifting; each sky also sets the sun (colour,
+strength, height), the hemisphere light, the fog, the exposure and the reflections (the environment
+map is re-rendered from it). Rain is a few thousand streaks falling around the camera; it is only
+visual (the grip is the same). Single player: **O** or the Weather button, remembered in the
+browser. A race: the host picks it with the ground and laps (`weather` in the room; the sim gets
+`?weather=` and `weather` messages), and O does nothing there.
+
 ## Maps and the super admin
 
 `SUPER_ADMIN_EMAIL` in `lib/admin.ts` (a constant: aelythe@gmail.com) is the super admin, when signed in

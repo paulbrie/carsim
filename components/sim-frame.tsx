@@ -21,7 +21,7 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
   // The course is too big for the URL: the sim reads it from this window as it boots (same origin).
   const [src] = useState(() => {
     if (typeof window !== 'undefined') window.__simCourse = course;
-    const q = new URLSearchParams({ mp: '1', ground: room.ground, vehicle: mine?.vehicle ?? 'buggy', spawn: String(Math.max(0, room.players.findIndex(p => p.id === meId))) });
+    const q = new URLSearchParams({ mp: '1', ground: room.ground, weather: room.weather ?? 'clear', vehicle: mine?.vehicle ?? 'buggy', spawn: String(Math.max(0, room.players.findIndex(p => p.id === meId))) });
     if (mine?.paint) q.set('paint', mine.paint);
     return withBase(`/sim/index.html?${q}`);
   });
@@ -65,6 +65,7 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
     post({ t: 'init', me: meId });
     post({ t: 'roster', players: room.players.map(p => ({ id: p.id, name: p.name, vehicle: p.vehicle, paint: p.paint, col: paintOf(p.vehicle, p.paint), spectator: p.spectator })) });
     post({ t: 'ground', ground: room.ground });
+    post({ t: 'weather', weather: room.weather ?? 'clear' });
     if (mine && (room.phase === 'lobby' || room.phase === 'results')) post({ t: 'car', vehicle: mine.vehicle, paint: mine.paint });
     post({ t: 'phase', phase: room.phase, race: room.race, startsIn: room.startsIn, slot: mine?.slot ?? -1, laps: room.laps, spectator: mine?.spectator ?? false, elapsed: room.elapsed });
   }, [ready, room, meId, mine, post]);

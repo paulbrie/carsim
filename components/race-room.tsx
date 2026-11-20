@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DriverAvatar } from '@/components/user-menu';
 import { SimFrame, type SimHandle } from '@/components/sim-frame';
 import { PHASE_LABEL } from '@/components/lobby';
-import { GroundControl, LapsControl, MapControl, PaintPicker, StatusBadge, VehiclePicker, fmtTime, groundName, paintOf, vehicleName } from '@/components/race-controls';
+import { GroundControl, LapsControl, MapControl, WeatherControl, PaintPicker, StatusBadge, VehiclePicker, fmtTime, groundName, paintOf, vehicleName } from '@/components/race-controls';
 import { cn } from '@/lib/utils';
 import { withBase } from '@/lib/base-path';
 import { LIMITS } from '@/lib/race/shared.mjs';
@@ -113,6 +113,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
                   <LapsControl value={room.laps} disabled={!isHost || phase !== 'lobby'} onChange={n => send({ t: 'settings', laps: n })} />
                   <span className="text-xs text-muted-foreground">laps</span>
                 </div>
+                <WeatherControl value={room.weather ?? 'clear'} disabled={!isHost || phase !== 'lobby'} onChange={w => send({ t: 'settings', weather: w })} />
               </section>
               {mine && !mine.spectator && (phase === 'lobby' || phase === 'results') && (
                 <>

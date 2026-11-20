@@ -4,6 +4,7 @@
    its finish. Messages, both ways, by postMessage on this origin:
      in:  init {me} · car {vehicle, paint} · ground {ground} · roster {players} · snap {cars} · gone {id}
           phase {phase, race, startsIn, slot, laps, spectator, elapsed} · course {key, course}
+          weather {weather} (also ?weather= at load: scripts/patches/weather.py)
           hit {id, h} · repair {id} · hits {all: {id: [h, …]}} (the others' damage: every hit so far, then each new one)
      out: ready · s {p, q, v, st, sp, prog, lap} (20 Hz) · lap {lap, time, valid} · finish {time, missed}
           hit {h} (our car struck: carHit's record, see bodyHit) · repair (our car as built again)
@@ -20,7 +21,7 @@ function mpPost(msg) { if ((MP.on || MP.edit) && parent !== window) parent.postM
 const hexOf = s => typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s) ? parseInt(s.slice(1), 16) : null;
 
 function mpKeyBlocked(e) {
-  if (['KeyE', 'KeyN', 'KeyG', 'KeyV', 'KeyK', 'KeyB'].includes(e.code)) return true;     // course, bots, ground, car and paint are the room's
+  if (['KeyE', 'KeyN', 'KeyG', 'KeyV', 'KeyK', 'KeyB', 'KeyO'].includes(e.code)) return true;     // course, bots, ground, car, paint and weather are the room's
   const race = MP.phase === 'countdown' || MP.phase === 'racing';
   if (race && !MP.finished && (e.code === 'KeyT' || e.code === 'KeyY')) return true;      // no lap restarts or replays mid-race
   if (MP.hold && (e.code === 'KeyR' || e.code === 'Enter')) return true;
@@ -186,6 +187,7 @@ function mpMessage(m) {
     case 'gone': { const pe = MP.peers.get(m.id); if (pe) mpDropPeer(pe); break; }
     case 'phase': mpPhase(m); break;
     case 'course': mpSetCourse(m.key, m.course); break;
+    case 'weather': if (m.weather !== weatherKey && setWeather(m.weather, false)) flash(WEATHERS[m.weather].name, '#fff', 1.5); break;
     case 'hit': mpPeerHit(m.id, m.h); break;
     case 'repair': mpPeerRepair(m.id); break;
     case 'hits': mpPeerHits(m.all); break;

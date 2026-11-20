@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Brand } from '@/components/brand';
 import { UserMenu } from '@/components/user-menu';
-import { GroundControl, LapsControl, MapControl, StatusBadge, groundName } from '@/components/race-controls';
+import { GroundControl, LapsControl, MapControl, StatusBadge, WeatherControl, groundName } from '@/components/race-controls';
 import { useMaps } from '@/lib/client/maps';
 import { connect, onError, room$, rooms$, send, setWantedRoom, status$ } from '@/lib/client/net';
 import type { Phase } from '@/lib/race/types';
@@ -26,6 +26,7 @@ export function Lobby({ user }: { user: { name: string; image: string | null; ad
   const [room] = useSubject(room$);
   const [name, setName] = useState('');
   const [ground, setGround] = useState('sand');
+  const [weather, setWeather] = useState('clear');
   const [laps, setLaps] = useState(3);
   const [map, setMap] = useState('figure-8');
   const maps = useMaps();
@@ -42,7 +43,7 @@ export function Lobby({ user }: { user: { name: string; image: string | null; ad
   const create = (e: React.FormEvent) => {
     e.preventDefault();
     creating.current = true;
-    if (!send({ t: 'create', name: name.trim() || `${user.name}'s race`, ground, laps, map })) { creating.current = false; toast.error('Not connected to the race server yet.'); }
+    if (!send({ t: 'create', name: name.trim() || `${user.name}'s race`, ground, weather, laps, map })) { creating.current = false; toast.error('Not connected to the race server yet.'); }
   };
   const join = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +68,7 @@ export function Lobby({ user }: { user: { name: string; image: string | null; ad
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Plus className="size-4" /> New race</CardTitle>
-              <CardDescription>You host it: you pick the map, the ground and the laps, and start it when everyone is ready.</CardDescription>
+              <CardDescription>You host it: you pick the map, the ground, the weather and the laps, and start it when everyone is ready.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={create} className="space-y-4">
@@ -82,6 +83,10 @@ export function Lobby({ user }: { user: { name: string; image: string | null; ad
                 <div className="space-y-2">
                   <Label id="ground-label">Ground</Label>
                   <div><GroundControl value={ground} onChange={setGround} /></div>
+                </div>
+                <div className="space-y-2">
+                  <Label id="weather-label">Weather</Label>
+                  <div><WeatherControl value={weather} onChange={setWeather} /></div>
                 </div>
                 <div className="space-y-2">
                   <Label>Laps</Label>

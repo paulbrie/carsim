@@ -10,7 +10,7 @@ import {
 } from '@ui-sdk/react/color-picker';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { GROUNDS, PAINTS, VEHICLES } from '@/lib/race/shared.mjs';
+import { GROUNDS, PAINTS, VEHICLES, WEATHERS } from '@/lib/race/shared.mjs';
 import type { NetStatus } from '@/lib/client/net';
 import type { MapSummary } from '@/lib/maps/store.mjs';
 
@@ -63,6 +63,17 @@ export function MapControl({ value, maps, onChange, disabled, id }: { value: { i
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+export function WeatherControl({ value, onChange, disabled, id }: { value: string; onChange: (v: string) => void; disabled?: boolean; id?: string }) {
+  return (
+    <SegmentedControl id={id} aria-label="Weather" className="seg" value={value} disabled={disabled} onValueChange={v => v && onChange(v)}>
+      <SegmentedControlIndicator className="seg-indicator" />
+      {WEATHERS.map(w => (
+        <SegmentedControlItem key={w.key} value={w.key} className="seg-item" title={w.blurb}>{w.name}</SegmentedControlItem>
+      ))}
+    </SegmentedControl>
   );
 }
 

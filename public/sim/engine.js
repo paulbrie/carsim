@@ -212,7 +212,8 @@ const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.enabled = false;
 
 const SUN_DIR = new THREE.Vector3(-0.55, 0.62, 0.35).normalize();
-scene.add(new THREE.HemisphereLight(0xa9c8ff, 0xc89a62, 0.85));
+const hemi = new THREE.HemisphereLight(0xa9c8ff, 0xc89a62, 0.85);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.8);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -220,29 +221,102 @@ Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, n
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 
-// Sky dome
+// Sky dome, with a cloud layer: fbm noise on a plane above, seen through the dome; thin toward the sun
+// side of each cloud (lit), thick away from it (shaded). The weather sets its colours and cover.
+const SKY = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: {
+    sunDir: { value: SUN_DIR }, haze: { value: HAZE }, zenith: { value: new THREE.Color(0.10, 0.24, 0.62) }, sunCol: { value: new THREE.Color(1, 0.85, 0.6) },
+    sunGlow: { value: 1 }, cover: { value: 0 }, cloudLit: { value: new THREE.Color(1, 1, 1) }, cloudDark: { value: new THREE.Color(0.6, 0.64, 0.7) }, time: { value: 0 },
+  },
+  vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix*modelViewMatrix*vec4(position,1.); gl_Position = p.xyww; }`,
+  fragmentShader: `uniform vec3 sunDir; uniform vec3 haze; uniform vec3 zenith; uniform vec3 sunCol; uniform float sunGlow; uniform float cover;
+    uniform vec3 cloudLit; uniform vec3 cloudDark; uniform float time; varying vec3 vDir;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f);
+      return mix(mix(hash(i), hash(i + vec2(1., 0.)), f.x), mix(hash(i + vec2(0., 1.)), hash(i + vec2(1., 1.)), f.x), f.y); }
+    float fbm(vec2 p){ float a = .5, s = 0.; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= .5; } return s; }
+    void main(){ vec3 d = normalize(vDir); float h = clamp(d.y,0.,1.);
+      vec3 col = mix(haze, zenith, pow(h,0.45));
+      float s = max(dot(d, sunDir), 0.), dens = 0.;
+      if (cover > 0.001 && d.y > 0.) {
+        vec2 uv = d.xz / (d.y + 0.1) * 1.4 + vec2(time * 0.006, time * 0.0025);
+        float n = fbm(uv), n2 = fbm(uv + normalize(sunDir.xz + 1e-4) * 0.09);
+        dens = smoothstep(1. - cover, 1.25 - cover * 0.9, n) * smoothstep(0., 0.1, d.y);
+        float lit = clamp(0.6 + (n - n2) * 3., 0., 1.);
+        vec3 cc = mix(cloudDark, cloudLit, lit) + sunCol * pow(s, 5.) * 0.5 * sunGlow;
+        col = mix(col, cc, dens);
+      }
+      col += sunCol * (pow(s,900.)*30. + pow(s,10.)*0.35) * sunGlow * (1. - dens);
+      gl_FragColor = vec4(col,1.);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+});
 {
-  const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { sunDir: { value: SUN_DIR }, haze: { value: HAZE } },
-    vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix*modelViewMatrix*vec4(position,1.); gl_Position = p.xyww; }`,
-    fragmentShader: `uniform vec3 sunDir; uniform vec3 haze; varying vec3 vDir;
-      void main(){ float h = clamp(vDir.y,0.,1.);
-        vec3 col = mix(haze, vec3(0.10,0.24,0.62), pow(h,0.45));
-        float s = max(dot(normalize(vDir), sunDir), 0.);
-        col += vec3(1.,.85,.6)*(pow(s,900.)*30. + pow(s,10.)*0.35);
-        gl_FragColor = vec4(col,1.);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }`
-  });
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(1500, 32, 16), mat);
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(1500, 32, 16), SKY);
   sky.frustumCulled = false; sky.renderOrder = -1;
   scene.add(sky);
-  // image-based lighting from the same sky, so paint and metal pick up reflections
-  const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(sky.geometry, mat));
-  const pm = new THREE.PMREMGenerator(renderer);
-  scene.environment = pm.fromScene(envScene, 0, 1, 3000).texture; pm.dispose();
+  SKY.userData.envScene = new THREE.Scene(); SKY.userData.envScene.add(new THREE.Mesh(sky.geometry, SKY));
+}
+/* ---------- weather ---------- */
+// sky: zenith / haze (horizon, fog) colours; sun: light colour, strength, height (rad; null = the usual 44 deg),
+// sky's sun colour and glow; hemi: sky / ground colours, strength; clouds: cover 0-1, lit / shaded colour; rain 0-1
+const WEATHERS = {
+  clear: { name: 'Clear', icon: '☀', zenith: [0.10, 0.24, 0.62], haze: [0.78, 0.66, 0.52], sun: [0xfff0d8, 2.8, null], sunCol: [1, 0.85, 0.6], glow: 1, hemi: [0xa9c8ff, 0xc89a62, 0.85], cover: 0, lit: [1, 1, 1], dark: [0.6, 0.64, 0.7], fog: [70, 280], exposure: 1, rain: 0 },
+  sunny: { name: 'Sunny, clouds', icon: '⛅', zenith: [0.12, 0.30, 0.70], haze: [0.80, 0.72, 0.62], sun: [0xfff2dc, 2.7, null], sunCol: [1, 0.88, 0.66], glow: 1, hemi: [0xb4cfff, 0xc89a62, 0.9], cover: 0.55, lit: [1, 0.99, 0.96], dark: [0.62, 0.66, 0.75], fog: [80, 320], exposure: 1, rain: 0 },
+  grey: { name: 'Grey', icon: '☁', zenith: [0.46, 0.48, 0.52], haze: [0.66, 0.64, 0.61], sun: [0xe2e6ec, 0.55, 0.9], sunCol: [0.9, 0.9, 0.9], glow: 0.15, hemi: [0xc9cfd8, 0x8a7a66, 1.55], cover: 0.97, lit: [0.76, 0.77, 0.79], dark: [0.44, 0.46, 0.5], fog: [60, 250], exposure: 1.05, rain: 0 },
+  rain: { name: 'Light rain', icon: '🌧', zenith: [0.32, 0.34, 0.38], haze: [0.50, 0.51, 0.52], sun: [0xd8e0ea, 0.35, 0.9], sunCol: [0.8, 0.8, 0.82], glow: 0, hemi: [0xaab4c4, 0x6a5e50, 1.4], cover: 1, lit: [0.56, 0.57, 0.61], dark: [0.26, 0.28, 0.32], fog: [35, 170], exposure: 1, rain: 1 },
+  sunset: { name: 'Sunset', icon: '🌇', zenith: [0.14, 0.18, 0.40], haze: [0.98, 0.60, 0.38], sun: [0xffad73, 3.0, 0.16], sunCol: [1, 0.58, 0.3], glow: 1.3, hemi: [0x9c9cd4, 0xa87452, 0.95], cover: 0.5, lit: [1, 0.66, 0.5], dark: [0.40, 0.31, 0.38], fog: [70, 300], exposure: 1.15, rain: 0 },
+};
+const SUN_AZ = new THREE.Vector3(SUN_DIR.x, 0, SUN_DIR.z).normalize(), SUN_EL = Math.asin(SUN_DIR.y);
+let WEATHER = WEATHERS.clear, weatherKey = 'clear', envTex = null;
+// rain: streaks in a box that follows the camera
+const RAIN_N = 1400, rainPos = new Float32Array(RAIN_N * 3), rainSeg = new Float32Array(RAIN_N * 6);
+for (let i = 0; i < RAIN_N; i++) { rainPos[i * 3] = (Math.random() - 0.5) * 60; rainPos[i * 3 + 1] = (Math.random() - 0.5) * 30; rainPos[i * 3 + 2] = (Math.random() - 0.5) * 60; }
+const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainSeg, 3));
+const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xc8d0da, transparent: true, opacity: 0.32, depthWrite: false }));
+rain.frustumCulled = false; rain.visible = false; scene.add(rain);
+function setWeather(key, save = true) {
+  const W = WEATHERS[key]; if (!W) return false;
+  WEATHER = W; weatherKey = key;
+  const U = SKY.uniforms;
+  U.zenith.value.setRGB(...W.zenith); HAZE.setRGB(...W.haze); U.sunCol.value.setRGB(...W.sunCol); U.sunGlow.value = W.glow;
+  U.cover.value = W.cover; U.cloudLit.value.setRGB(...W.lit); U.cloudDark.value.setRGB(...W.dark);
+  const el = W.sun[2] ?? SUN_EL; SUN_DIR.copy(SUN_AZ).multiplyScalar(Math.cos(el)).setY(Math.sin(el));
+  sun.color.setHex(W.sun[0]); sun.intensity = W.sun[1];
+  hemi.color.setHex(W.hemi[0]); hemi.groundColor.setHex(W.hemi[1]); hemi.intensity = W.hemi[2];
+  scene.fog.color.copy(HAZE);
+  let edOn = false; try { edOn = ed.on; } catch (e) { }        // (at boot the editor doesn't exist yet)
+  if (!edOn) { scene.fog.near = W.fog[0]; scene.fog.far = W.fog[1]; }
+  renderer.toneMappingExposure = W.exposure;
+  rain.visible = W.rain > 0; rain.material.opacity = 0.32 * W.rain;
+  // reflections from this sky
+  const pm = new THREE.PMREMGenerator(renderer), rt = pm.fromScene(SKY.userData.envScene, 0, 1, 3000);
+  envTex?.dispose(); envTex = rt; scene.environment = rt.texture; pm.dispose();
+  const btn = document.getElementById('wxBtn'); if (btn) btn.textContent = `${W.icon} ${W.name}`;
+  if (save) try { localStorage.setItem('sandbuggy.weather', key); } catch (e) { }
+  return true;
+}
+function updateWeather(dt) {
+  SKY.uniforms.time.value += dt;
+  if (!rain.visible) return;
+  const c = camera.position, fall = 7.5 * dt, wx = 0.9, wz = 0.4;     // light rain: ~7.5 m/s, a little wind
+  for (let i = 0; i < RAIN_N; i++) {
+    const k = i * 3;
+    let x = rainPos[k] + wx * dt, y = rainPos[k + 1] - fall, z = rainPos[k + 2] + wz * dt;
+    if (y < -15) y += 30;
+    rainPos[k] = x; rainPos[k + 1] = y; rainPos[k + 2] = z;
+    // around the camera: wrap into the box it is in
+    const X = c.x + ((((x - c.x) % 60) + 90) % 60) - 30, Y = c.y + y, Z = c.z + ((((z - c.z) % 60) + 90) % 60) - 30, o = i * 6;
+    rainSeg[o] = X; rainSeg[o + 1] = Y; rainSeg[o + 2] = Z; rainSeg[o + 3] = X - wx * 0.06; rainSeg[o + 4] = Y + 0.45; rainSeg[o + 5] = Z - wz * 0.06;
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
+{
+  let k = MP.on ? MPQ.get('weather') : null;
+  if (!MP.on) try { k = localStorage.getItem('sandbuggy.weather'); } catch (e) { }
+  setWeather(WEATHERS[k] ? k : 'clear', false);
 }
 
 // Procedural sand textures: fine grain (color) and wind ripples (bump)
@@ -1336,6 +1410,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyK') { togglePaintPanel(); return; }
   if (e.code === 'KeyB') { resetBest(); return; }
   if (e.code === 'KeyN') { document.getElementById('botBtn').click(); return; }
+  if (e.code === 'KeyO') { document.getElementById('wxBtn').click(); return; }
   if (e.code === 'KeyV') { const keys = Object.keys(VEHICLE_LIST), i = (keys.indexOf(VEH.key) + 1) % keys.length; switchVehicle(keys[i]); flash(VEH.name, '#fff', 1.8); }
   if (e.code === 'KeyX') { if (VEH.aids) { car.aids = !car.aids; flash(`Traction control and ABS ${car.aids ? 'on' : 'off'}`, '#fff', 1.6); } else flash('The buggy has no driver aids', '#fff', 1.5); }
   if (e.code === 'KeyR' || (e.code === 'Enter' && car.wrecked)) { if (car.wrecked) repairCar(); respawn(); }
@@ -2655,7 +2730,7 @@ function toggleEditor(on) {
   } else {
     orbit.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
     camMode = 0; orbit.enabled = false;
-    scene.fog.near = 70; scene.fog.far = 280;
+    scene.fog.near = WEATHER.fog[0]; scene.fog.far = WEATHER.fog[1];
     const regen = ed.wpDirty, ops = ed.opsDirty;
     saveCourse();
     if (regen) {
@@ -4468,6 +4543,15 @@ function syncBots() {
   for (const b of BOTS.list) drawBot(b);
 }
 BOTS.el = document.createElement('div'); BOTS.el.className = 'panel'; BOTS.el.style.cssText = 'left:12px;top:240px;display:none;min-width:150px'; document.body.appendChild(BOTS.el);
+{
+  const b = document.createElement('button'); b.id = 'wxBtn'; b.title = 'Weather: clear, sunny with clouds, grey, light rain, sunset (O)';
+  b.textContent = `${WEATHER.icon} ${WEATHER.name}`;
+  document.getElementById('botBtn').after(b);
+  b.addEventListener('click', e => {
+    e.currentTarget.blur(); const keys = Object.keys(WEATHERS), k = keys[(keys.indexOf(weatherKey) + 1) % keys.length];
+    setWeather(k); flash(WEATHERS[k].name, '#fff', 1.5);
+  });
+}
 document.getElementById('botBtn').addEventListener('click', e => { e.currentTarget.blur(); if (ed.on || rp.on) return; setBots((BOTS.n + 1) % 5); flash(BOTS.n ? `${BOTS.n} bot${BOTS.n > 1 ? 's' : ''}: race starts in 3` : 'Bots off', '#fff', 1.5); });
 
 function syncVisual() {
@@ -4603,6 +4687,7 @@ function frame(now) {
   updateRig(dt);
   updatePops(dt);
   updateCamera(dt);
+  updateWeather(dt);
   fadeGates();
   updateAudio();
   updateHud(dt);
@@ -4622,6 +4707,7 @@ addEventListener('resize', () => {
    its finish. Messages, both ways, by postMessage on this origin:
      in:  init {me} · car {vehicle, paint} · ground {ground} · roster {players} · snap {cars} · gone {id}
           phase {phase, race, startsIn, slot, laps, spectator, elapsed} · course {key, course}
+          weather {weather} (also ?weather= at load: scripts/patches/weather.py)
           hit {id, h} · repair {id} · hits {all: {id: [h, …]}} (the others' damage: every hit so far, then each new one)
      out: ready · s {p, q, v, st, sp, prog, lap} (20 Hz) · lap {lap, time, valid} · finish {time, missed}
           hit {h} (our car struck: carHit's record, see bodyHit) · repair (our car as built again)
@@ -4638,7 +4724,7 @@ function mpPost(msg) { if ((MP.on || MP.edit) && parent !== window) parent.postM
 const hexOf = s => typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s) ? parseInt(s.slice(1), 16) : null;
 
 function mpKeyBlocked(e) {
-  if (['KeyE', 'KeyN', 'KeyG', 'KeyV', 'KeyK', 'KeyB'].includes(e.code)) return true;     // course, bots, ground, car and paint are the room's
+  if (['KeyE', 'KeyN', 'KeyG', 'KeyV', 'KeyK', 'KeyB', 'KeyO'].includes(e.code)) return true;     // course, bots, ground, car, paint and weather are the room's
   const race = MP.phase === 'countdown' || MP.phase === 'racing';
   if (race && !MP.finished && (e.code === 'KeyT' || e.code === 'KeyY')) return true;      // no lap restarts or replays mid-race
   if (MP.hold && (e.code === 'KeyR' || e.code === 'Enter')) return true;
@@ -4804,6 +4890,7 @@ function mpMessage(m) {
     case 'gone': { const pe = MP.peers.get(m.id); if (pe) mpDropPeer(pe); break; }
     case 'phase': mpPhase(m); break;
     case 'course': mpSetCourse(m.key, m.course); break;
+    case 'weather': if (m.weather !== weatherKey && setWeather(m.weather, false)) flash(WEATHERS[m.weather].name, '#fff', 1.5); break;
     case 'hit': mpPeerHit(m.id, m.h); break;
     case 'repair': mpPeerRepair(m.id); break;
     case 'hits': mpPeerHits(m.all); break;

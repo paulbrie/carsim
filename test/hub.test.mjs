@@ -179,3 +179,19 @@ test('car damage: a player keeps at most HIT_LIMITS.perPlayer hits', async () =>
   for (let i = 0; i < HIT_LIMITS.perPlayer + 50; i++) { a.message({ t: 'hit', h: [0, 0, 1, 0, 0, -1, 3, 1] }); advance(100); }
   assert.equal(b.all('hit').length, HIT_LIMITS.perPlayer);
 });
+
+test('the weather: picked when creating, changed by the host in the lobby only, checked', () => {
+  const { connect } = setup();
+  const a = connect('a'), b = connect('b');
+  a.message({ t: 'create', weather: 'sunset' }); const id = a.last('room').room.id;
+  assert.equal(a.last('room').room.weather, 'sunset');
+  b.message({ t: 'join', room: id });
+  b.message({ t: 'settings', weather: 'rain' });                      // not the host
+  assert.equal(a.last('room').room.weather, 'sunset');
+  a.message({ t: 'settings', weather: 'hail' });                      // no such weather
+  assert.equal(a.last('room').room.weather, 'sunset');
+  a.message({ t: 'settings', weather: 'rain' });
+  assert.equal(b.last('room').room.weather, 'rain');
+  const { connect: connect2 } = setup();                              // (a hub of its own: the test hub's room codes repeat)
+  const c = connect2('c'); c.message({ t: 'create' }); assert.equal(c.last('room').room.weather, 'clear');
+});

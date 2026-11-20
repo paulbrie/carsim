@@ -24,7 +24,7 @@ export interface Standing {
 }
 
 export interface RoomView {
-  id: string; name: string; hostId: string; ground: string; laps: number; map: MapRef; phase: Phase; race: number;
+  id: string; name: string; hostId: string; ground: string; weather: string; laps: number; map: MapRef; phase: Phase; race: number;
   startsIn: number | null; elapsed: number | null; finishWindowLeft: number | null;
   players: PlayerView[]; standings: Standing[] | null; results: Standing[] | null;
 }

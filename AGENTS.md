@@ -13,6 +13,9 @@ See README.md for the layout. Notes:
   (check: extract the original `index.html` to a scratch
   dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
+- The weather is `scripts/patches/weather.py`, after `glass.py` in the re-patch chain (it only touches the
+  rendering setup, the frame loop, the Bots button's neighbour and the editor's fog lines). Its presets
+  (`WEATHERS` in engine.js) and the race's list (`WEATHERS` in `lib/race/shared.mjs`) share their keys.
 - Ground shaped along the course (banking, levelling, bridge ramps) must take its height between
   course points (`alongCourse`), not at the nearest one: they are ~1 m apart, and nearest-point
   heights make ridges across every slope (#292).

@@ -1,10 +1,11 @@
 'use client';
 // The browser's side of the race server: one WebSocket for the tab, reconnecting on its own,
 // with what it hears kept in subjecto Subjects the React UI subscribes to (useSubject).
-// Car positions ('snap') skip the Subjects: they go straight to the sim (onSnap).
+// Car positions ('snap') skip the Subjects: they go straight to the sim (onSnap); so does the cars'
+// damage (onDamage), kept here too (damageLog) for a sim that loads after it came.
 import { Subject } from 'subjecto';
 import { withBase } from '@/lib/base-path';
-import type { CarSnap, Me, RoomSummary, RoomView, ServerMsg, Standing } from '@/lib/race/types';
+import type { CarHit, CarSnap, Me, RoomSummary, RoomView, ServerMsg, Standing } from '@/lib/race/types';
 
 export type NetStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'replaced' | 'unauthorized';
 
@@ -20,6 +21,19 @@ const snapListeners = new Set<SnapListener>();
 export function onSnap(fn: SnapListener) { snapListeners.add(fn); return () => { snapListeners.delete(fn); }; }
 const goneListeners = new Set<(id: string) => void>();
 export function onGone(fn: (id: string) => void) { goneListeners.add(fn); return () => { goneListeners.delete(fn); }; }
+
+/** every player's hits since their last repair, as the server keeps them; the room's */
+const damage = new Map<string, CarHit[]>();
+export const damageLog = () => Object.fromEntries(damage);
+export type DamageMsg = { t: 'hit'; id: string; h: CarHit } | { t: 'repair'; id: string } | { t: 'hits'; all: Record<string, CarHit[]> };
+const damageListeners = new Set<(m: DamageMsg) => void>();
+export function onDamage(fn: (m: DamageMsg) => void) { damageListeners.add(fn); return () => { damageListeners.delete(fn); }; }
+function onDamageMsg(m: DamageMsg) {
+  if (m.t === 'hits') { damage.clear(); for (const [id, list] of Object.entries(m.all)) damage.set(id, [...list]); }
+  else if (m.t === 'hit') damage.set(m.id, [...(damage.get(m.id) || []), m.h]);
+  else damage.delete(m.id);
+  for (const fn of damageListeners) fn(m);
+}
 
 let ws: WebSocket | null = null;
 let wanted = false, opening = false, retry = 0, retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -79,8 +93,9 @@ function handle(m: ServerMsg) {
       break;
     case 'snap': for (const fn of snapListeners) fn(m.cars); break;
     case 'standings': standings$.next({ list: m.standings, elapsed: m.elapsed, finishWindowLeft: m.finishWindowLeft }); break;
-    case 'gone': for (const fn of goneListeners) fn(m.id); break;
-    case 'left': room$.next(null); break;
+    case 'gone': damage.delete(m.id); for (const fn of goneListeners) fn(m.id); break;
+    case 'hit': case 'repair': case 'hits': onDamageMsg(m); break;
+    case 'left': damage.clear(); room$.next(null); break;
     case 'replaced': status$.next('replaced'); wanted = false; ws?.close(); break;
     case 'error': errors$.next({ code: m.code, msg: m.msg, at: Date.now() }); break;
   }

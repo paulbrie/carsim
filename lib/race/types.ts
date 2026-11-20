@@ -30,6 +30,8 @@ export interface RoomView {
 }
 
 /** one car in a 'snap': id, x, y, z, qx, qy, qz, qw, speed, steer, wheel spin */
+/** a hit a car took, in its body space: [cx, cy, cz, dx, dy, dz, speed m/s, kind 0 post | 1 ball | 2 wall] (the sim's carHit) */
+export type CarHit = [number, number, number, number, number, number, number, number];
 export type CarSnap = [string, number, number, number, number, number, number, number, number, number, number];
 
 export type ServerMsg =
@@ -37,6 +39,9 @@ export type ServerMsg =
   | { t: 'rooms'; rooms: RoomSummary[] }
   | { t: 'room'; room: RoomView }
   | { t: 'snap'; cars: CarSnap[] }
+  | { t: 'hit'; id: string; h: CarHit }
+  | { t: 'repair'; id: string }
+  | { t: 'hits'; all: Record<string, CarHit[]> }
   | { t: 'standings'; standings: Standing[]; elapsed: number; finishWindowLeft: number | null }
   | { t: 'gone'; id: string }
   | { t: 'left' }

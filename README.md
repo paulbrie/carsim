@@ -47,6 +47,24 @@ Besides waypoints, bridges, terrain brushes and ground paint, the SHAPE section 
   Saved with the course and in maps, with its own best laps.
 - **Optimise the road**: levelling 100% and banking 25°, so every bend gets the angle its speed needs.
 
+## Damage
+
+Every car crumples where it is hit (`scripts/patches/damage.py`): gate posts crease it, other cars
+dent it, the ground folds it (a nose-dive shortens the nose and bows the bonnet up, a rollover brings
+the roof down). Dents deepen with the impact speed, up to ~45 cm; the ends are crumple zones, the
+cabin gives less than half as much; the detailed models' panels hang loose, then fly off.
+
+- **Frame:** a hit over 6 m/s also bends the frame: the axle nearest it goes out of line (both wheels
+  the same way, a thrust angle) and that corner sits lower, both pulling the car toward the side hit
+  (a 14 m/s corner hit: ~15° off line in 4 s with the wheel straight). "Frame bent · it pulls right"
+  on the hit; the damage panel draws the four wheels turned by their toe, orange when out of line.
+- **Bots** crumple where you hit them too; a restart (T) repairs everyone.
+- **In a race** each hit (`[x, y, z, push direction, speed, kind]`, body space) goes to the room and is
+  replayed on that car in the others' sims, so everyone sees every car's dents; the server keeps
+  each player's hits until they repair (a new race, a wreck reset, a reload), so a late joiner sees
+  them as they are. At most 15 hits a second go out (20/s with bursts of 40 accepted, 400 kept per player).
+- **Repair:** T (restart) or, wrecked, R / Enter; in a race, the grid at every start.
+
 ## Maps and the super admin
 
 `SUPER_ADMIN_EMAIL` in `lib/admin.ts` (a constant: aelythe@gmail.com) is the super admin, when signed in
@@ -79,7 +97,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Opened without `?mp=1`, `/sim/index.html` is the single-player sim as it was (editor, bots, replays).
@@ -92,6 +110,9 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
 - **A race:** lobby (host picks ground and laps; the others get ready) → countdown (5 s, on the
   grid, held) → racing → results → back to the grid. Late joiners watch and race the next one; a
   dropped connection keeps its seat for 20 s; a second tab takes over the seat.
+- **Damage:** the sim posts `hit {h}` / `repair`; `server.mjs` relays them (`lib/race/hub.mjs`,
+  `hit`, `repair`, and `hits` with everyone's so far on joining); `lib/client/net.ts` keeps the room's
+  log for a sim that loads later, and `SimFrame` hands it over.
 - **Sign-in to socket:** `/api/ws-ticket` (behind Auth.js) signs a one-minute ticket with
   `AUTH_SECRET`; `server.mjs` checks it, and the page's origin, on the upgrade.
 

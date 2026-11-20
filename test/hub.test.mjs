@@ -134,3 +134,48 @@ test('a second tab takes over the seat', () => {
   a.message({ t: 'start' });                                // the old tab is dead
   assert.equal(a2.last('room').room.phase, 'lobby');
 });
+
+test('car damage: hits relayed and kept, checked, rate-limited, cleared by a repair, given to a late joiner', () => {
+  const { connect, advance } = setup();
+  const a = connect('a'), b = connect('b');
+  a.message({ t: 'create' }); const id = a.last('room').room.id;
+  b.message({ t: 'join', room: id });
+  assert.deepEqual(b.last('hits').all, {});                         // nobody dented yet
+  const h = [1.2345, 0.5, 2.01, 0, 0, -1, 8.456, 2];
+  a.message({ t: 'hit', h });
+  const got = b.last('hit');
+  assert.equal(got.id, 'a'); assert.deepEqual(got.h, [1.23, 0.5, 2.01, 0, 0, -1, 8.46, 2]);   // rounded as the sims do
+  assert.equal(a.all('hit').length, 1);                              // the sender hears it too (its sim skips its own)
+  for (const bad of [[1, 2, 3], [0, 0, 0, 0, 0, 0, 5, 1], [0, 0, 0, 1, 0, 0, 5, 7], [0, 0, 0, 1, 0, 0, NaN, 1], 'x', null]) a.message({ t: 'hit', h: bad });
+  assert.equal(b.all('hit').length, 1);                              // none of those
+  a.message({ t: 'hit', h: [99, -99, 0, 1, 0, 0, 500, 1] });
+  assert.deepEqual(b.last('hit').h, [4, -2, 0, 1, 0, 0, 60, 1]);      // clamped to a car's size and a sane speed
+  // a burst is cut off, then it refills
+  for (let i = 0; i < 100; i++) a.message({ t: 'hit', h });
+  const afterBurst = b.all('hit').length;
+  assert.ok(afterBurst <= 2 + 40, `burst capped (${afterBurst})`);
+  advance(1000);
+  a.message({ t: 'hit', h });
+  assert.equal(b.all('hit').length, afterBurst + 1);
+  // a late joiner gets everyone's hits so far
+  const c = connect('c');
+  c.message({ t: 'join', room: id });
+  assert.equal(c.last('hits').all.a.length, afterBurst + 1); assert.equal(c.last('hits').all.b, undefined);
+  // a repair clears them, for everyone
+  a.message({ t: 'repair' });
+  assert.equal(b.last('repair').id, 'a'); assert.equal(c.last('repair').id, 'a');
+  const n = c.all('repair').length; a.message({ t: 'repair' }); assert.equal(c.all('repair').length, n);   // nothing to clear: no message
+  const d = connect('d'); d.message({ t: 'join', room: id });
+  assert.deepEqual(d.last('hits').all, {});
+  // not in a room: nothing
+  const e = connect('e'); e.message({ t: 'hit', h }); assert.equal(e.all('hit').length, 0);
+});
+
+test('car damage: a player keeps at most HIT_LIMITS.perPlayer hits', async () => {
+  const { HIT_LIMITS } = await import('../lib/race/hub.mjs');
+  const { connect, advance } = setup();
+  const a = connect('a'), b = connect('b');
+  a.message({ t: 'create' }); b.message({ t: 'join', room: a.last('room').room.id });
+  for (let i = 0; i < HIT_LIMITS.perPlayer + 50; i++) { a.message({ t: 'hit', h: [0, 0, 1, 0, 0, -1, 3, 1] }); advance(100); }
+  assert.equal(b.all('hit').length, HIT_LIMITS.perPlayer);
+});

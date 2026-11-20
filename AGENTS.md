@@ -7,10 +7,13 @@ See README.md for the layout. Notes:
   SHAPE tools (smoothing, banking) `scripts/patches/track-shape.py` and (levelling, Optimise the road)
   `road-level.py`, so a new drop of the sim can be
   re-patched; the gates (height, fade near the camera) are `scripts/patches/gates.py`, the driver's-seat
-  camera `cameras.py`, the maps (a room's course, the `?edit=1` map editor) `maps.py` (check: extract
+  camera `cameras.py`, the maps (a room's course, the `?edit=1` map editor) `maps.py`, car damage
+  (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py` (check: extract
   the original `index.html` to a scratch dir, run mp-hooks, track-shape, gates, cameras, maps,
-  road-level, diff
-  engine.js: it must be identical).
+  road-level, damage, diff engine.js: it must be identical).
+- Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
+  every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
+  `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).
 - `window.__sim` already has getters (TRACK, VEH, BRIDGE): adding another of the same name to it
   with Object.assign throws at boot and the sim never starts.
 - Headless Chrome here draws the sim at about a frame a second (software WebGL). To test races,

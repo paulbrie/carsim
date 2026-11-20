@@ -4,7 +4,9 @@
    its finish. Messages, both ways, by postMessage on this origin:
      in:  init {me} · car {vehicle, paint} · ground {ground} · roster {players} · snap {cars} · gone {id}
           phase {phase, race, startsIn, slot, laps, spectator, elapsed} · course {key, course}
+          hit {id, h} · repair {id} · hits {all: {id: [h, …]}} (the others' damage: every hit so far, then each new one)
      out: ready · s {p, q, v, st, sp, prog, lap} (20 Hz) · lap {lap, time, valid} · finish {time, missed}
+          hit {h} (our car struck: carHit's record, see bodyHit) · repair (our car as built again)
    The course is the room's map: the page sets window.__simCourse = {key, course} before it loads
    this iframe (course null: the default figure-8), and sends a new one with course.
    With ?edit=1 (the super admin's map editor, app/maps/[id]) the page opens on the course editor,
@@ -77,16 +79,16 @@ function mpMakeVehicle(key) {
     if (MODELS[key]) loadModel(V);
     return V;
   }
-  // the buggy is built once, so copy it, with its own paint
-  const vis = buggy.clone(true), copies = new Map(), cl = m => copies.get(m) || (copies.set(m, m.clone()), copies.get(m));
-  const wheels = car.wheels.map(W => ({ hp: W.hp.clone(), front: W.front, holder: null, spinner: null }));
+  // the buggy is built once, so copy it (as built: MP.buggyTpl, taken before ours could be dented), with its own paint
+  const vis = (MP.buggyTpl || buggy).clone(true), copies = new Map(), cl = m => copies.get(m) || (copies.set(m, m.clone()), copies.get(m));
+  const wheels = BUGGY.wheels.map(W => ({ hp: (W.hp0 || W.hp).clone(), front: W.front, holder: null, spinner: null }));
   vis.traverse(o => {
     if (o.isMesh && [].concat(o.material).some(m => m.userData.sbPaint)) o.material = Array.isArray(o.material) ? o.material.map(cl) : cl(o.material);
     if (o.userData.sbWheel != null) wheels[o.userData.sbWheel].holder = o;
     if (o.userData.sbSpin != null) wheels[o.userData.sbSpin].spinner = o;
   });
   vis.visible = true; scene.add(vis);
-  return { key: 'buggy', vis, wheels, R: BUGGY.R, REST: BUGGY.REST, K: BUGGY.K, mass: BUGGY.mass, box: BUGGY.box, paintMats: [...copies.values()], ownMats: [...copies.values()] };
+  return { key: 'buggy', vis, wheels, R: BUGGY.R, REST: BUGGY.REST, K: BUGGY.K, mass: BUGGY.mass, box: BUGGY.box, roofY: BUGGY.roofY, paintMats: [...copies.values()], ownMats: [...copies.values()] };
 }
 
 function mpLabel(text, col) {
@@ -104,6 +106,7 @@ function mpLabel(text, col) {
 
 function mpDropPeer(pe) {
   MP.peers.delete(pe.id);
+  repairBody(pe.V);                                                   // its thrown parts back on it, out of the scene with it
   scene.remove(pe.V.vis); scene.remove(pe.label);
   pe.label.material.map.dispose(); pe.label.material.dispose();
   if (pe.V.ownMats) pe.V.ownMats.forEach(m => m.dispose());          // a buggy copy shares its meshes with ours
@@ -122,6 +125,8 @@ function mpRoster(players) {
       pe = { id: pl.id, key: V.key === 'buggy' ? 'buggy' : pl.vehicle, V, buf: [], pos: new THREE.Vector3(), q: new THREE.Quaternion(), fx: 0, fz: 1, v: 0, spin: 0, steer: 0, shown: false, label: null, name: '', paint: undefined, col: '#fff' };
       if (pe.key !== pl.vehicle) pe.key = pl.vehicle;
       MP.peers.set(pl.id, pe);
+      const p0 = pe; V.onModel = () => mpReplayHits(p0);              // a detailed model arriving: the hits so far go onto it
+      mpReplayHits(pe);
     }
     if (pe.paint !== pl.paint) {
       pe.paint = pl.paint; const hex = hexOf(pl.paint);
@@ -181,8 +186,43 @@ function mpMessage(m) {
     case 'gone': { const pe = MP.peers.get(m.id); if (pe) mpDropPeer(pe); break; }
     case 'phase': mpPhase(m); break;
     case 'course': mpSetCourse(m.key, m.course); break;
+    case 'hit': mpPeerHit(m.id, m.h); break;
+    case 'repair': mpPeerRepair(m.id); break;
+    case 'hits': mpPeerHits(m.all); break;
     case 'focus': try { window.focus(); } catch (e) { } break;
   }
+}
+
+/* ---------- damage: ours to the others, theirs onto their cars ---------- */
+// MP.hits: every player's hits since their last repair, as the server keeps them; a car made later (or its detailed
+// model loaded later) gets them all. Ours go out at most MP_HIT_RATE a second (a long scrape is many small hits).
+const MP_HIT_RATE = 15, MP_HIT_MAX = 400;
+const mpHitOk = h => Array.isArray(h) && h.length === 8 && h.every(x => typeof x === 'number' && isFinite(x));
+const mpPeerVel = pe => mpV.set(pe.fx * pe.v, 0, pe.fz * pe.v);
+function mpPeerHit(id, h) {
+  if (!id || id === MP.myId || !mpHitOk(h)) return;
+  const log = MP.hits.get(id) || []; if (log.length >= MP_HIT_MAX) return;
+  log.push(h); MP.hits.set(id, log);
+  const pe = MP.peers.get(id); if (pe) bodyHit(pe.V, h, mpPeerVel(pe));
+}
+function mpPeerRepair(id) {
+  MP.hits.delete(id);
+  const pe = MP.peers.get(id); if (pe) repairBody(pe.V);
+}
+function mpPeerHits(all) {
+  MP.hits = new Map();
+  if (all && typeof all === 'object') for (const [id, list] of Object.entries(all)) if (id !== MP.myId && Array.isArray(list)) MP.hits.set(id, list.filter(mpHitOk).slice(0, MP_HIT_MAX));
+  for (const pe of MP.peers.values()) mpReplayHits(pe);
+}
+function mpReplayHits(pe) {
+  repairBody(pe.V);
+  for (const h of MP.hits.get(pe.id) || []) bodyHit(pe.V, h, mpPeerVel(pe));
+}
+function mpSendHit(h) {
+  const now = performance.now();
+  MP.hitBudget = Math.min(MP_HIT_RATE, (MP.hitBudget ?? MP_HIT_RATE) + (now - (MP.hitT || now)) / 1000 * MP_HIT_RATE); MP.hitT = now;
+  if (MP.hitBudget < 1) return;
+  MP.hitBudget--; mpPost({ t: 'hit', h });
 }
 
 /* ---------- the course ---------- */
@@ -292,7 +332,7 @@ function mpContacts(dt) {
     if (vn > 1.5 && car.grace <= 0) {
       mpQi.copy(car.q).invert(); mpN.set(nx, 0, nz).applyQuaternion(mpQi); mpB.set(-mpN.x * CAR_HW, 0.45, pc + best.sp * hlP - mpN.z * 0.9);
       const zone = Math.abs(mpN.z) >= Math.abs(mpN.x) ? (mpN.z < 0 ? 'front' : 'rear') : (mpN.x < 0 ? 'left' : 'right');
-      addDamage(zone, (vn - 1.5) ** 2 * 0.012); dentCar(mpB, mpN, vn, false); hitParts(mpB, mpN, vn);
+      addDamage(zone, (vn - 1.5) ** 2 * 0.012); carHit(mpB, mpN, vn, HIT.ball);
       audio?.node.port.postMessage({ crash: Math.min(1, vn * 0.1) });
       if (hitCooldown <= 0 && !car.wrecked) { hitCooldown = 0.6; flash(`Contact with ${pe.name} · ${zone} damage ${Math.round(car.dmg[zone] * 100)}%`, '#ff9a6a', 1.8); }
     }
@@ -302,6 +342,9 @@ function mpContacts(dt) {
 if (MP.on) {
   document.body.classList.add('mp');
   BOTS.n = 0;
+  MP.hits = new Map();
+  dentablesOf(BUGGY); MP.buggyTpl = buggy.clone(true);       // the others' buggies: copies of ours as built (its body meshes marked to dent)
+  carHitHook = mpSendHit; carRepairHook = () => mpPost({ t: 'repair' });
   const help = document.getElementById('help');
   help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide this';
   addEventListener('message', e => { if (e.origin === location.origin && e.source === parent) mpMessage(e.data); });

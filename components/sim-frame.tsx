@@ -3,7 +3,7 @@
 // and the race server: the room, the phase and the other cars go in by postMessage; our car's
 // position, laps and finish come out and go to the server as they are.
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { onGone, onSnap, send } from '@/lib/client/net';
+import { damageLog, onDamage, onGone, onSnap, send } from '@/lib/client/net';
 import { withBase } from '@/lib/base-path';
 import { paintOf } from '@/components/race-controls';
 import type { RoomView } from '@/lib/race/types';
@@ -40,18 +40,23 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
       if (e.origin !== location.origin || e.source !== frame.current?.contentWindow) return;
       const m = e.data;
       if (!m || typeof m !== 'object') return;
-      if (m.t === 'ready') { live.current = true; setReady(true); onReady?.(); }
-      else if (m.t === 's' || m.t === 'lap' || m.t === 'finish') send(m);
+      if (m.t === 'ready') {
+        live.current = true; setReady(true); onReady?.();
+        send({ t: 'repair' });                         // our car starts as built (the server may remember it dented, from before a reload)
+        post({ t: 'hits', all: damageLog() });          // and the others' as they are
+      }
+      else if (m.t === 's' || m.t === 'lap' || m.t === 'finish' || m.t === 'hit' || m.t === 'repair') send(m);
     };
     addEventListener('message', onMessage);
     return () => removeEventListener('message', onMessage);
-  }, [onReady]);
+  }, [onReady, post]);
 
   // the other cars, straight from the socket
   useEffect(() => {
     const a = onSnap(cars => post({ t: 'snap', cars }));
     const b = onGone(id => post({ t: 'gone', id }));
-    return () => { a(); b(); };
+    const c = onDamage(m => post(m));
+    return () => { a(); b(); c(); };
   }, [post]);
 
   // the room, whenever it changes (the sim ignores what it already has)

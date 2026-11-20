@@ -8,9 +8,10 @@ See README.md for the layout. Notes:
   `road-level.py`, so a new drop of the sim can be
   re-patched; the gates (height, fade near the camera) are `scripts/patches/gates.py`, the driver's-seat
   camera `cameras.py`, the maps (a room's course, the `?edit=1` map editor) `maps.py`, car damage
-  (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py` (check: extract
-  the original `index.html` to a scratch dir, run mp-hooks, track-shape, gates, cameras, maps,
-  road-level, damage, diff engine.js: it must be identical).
+  (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py`, looking
+  around the car (Shift/right-drag) `freelook.py` (check: extract the original `index.html` to a scratch
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, diff engine.js: it
+  must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - Ground shaped along the course (banking, levelling, bridge ramps) must take its height between
   course points (`alongCourse`), not at the nearest one: they are ~1 m apart, and nearest-point
   heights make ridges across every slope (#292).

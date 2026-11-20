@@ -1599,7 +1599,44 @@ function nextCam() {
   const order = rp.on ? [6, 0, 1, 4, 5, 2] : [0, 1, 4, 5, 2], i = order.indexOf(camMode);
   setCamMode(order[(i + 1) % order.length]);
 }
+/* Look around: Shift+drag or right-drag in the chase or cockpit view. look.yaw / look.pitch offset the
+   view (drag right: the view turns right, as with the orbit camera; drag down: from higher up / looking
+   down); released, it waits a moment and eases back. */
+const look = { yaw: 0, pitch: 0, drag: null, idle: 0 };
+const lookable = () => !ed.on && (camMode === 0 || camMode === 1);
+const wrapPi = a => a - Math.round(a / TAU) * TAU;
+renderer.domElement.addEventListener('pointerdown', ev => {
+  if (!lookable() || !(ev.button === 2 || (ev.button === 0 && ev.shiftKey))) return;
+  look.drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+  try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) { }
+  ev.preventDefault();
+});
+renderer.domElement.addEventListener('pointermove', ev => {
+  const g = look.drag; if (!g || ev.pointerId !== g.id) return;
+  look.yaw = wrapPi(look.yaw - (ev.clientX - g.x) * 0.006);
+  look.pitch = clamp(look.pitch + (ev.clientY - g.y) * 0.004, -0.35, 1.0);
+  g.x = ev.clientX; g.y = ev.clientY; look.idle = 0;
+});
+const lookEnd = ev => { if (look.drag && ev.pointerId === look.drag.id) look.drag = null; };
+renderer.domElement.addEventListener('pointerup', lookEnd);
+renderer.domElement.addEventListener('pointercancel', lookEnd);
+renderer.domElement.addEventListener('contextmenu', ev => { if (!ed.on) ev.preventDefault(); });   // right-drag looks; no menu
+function easeLook(dt) {
+  if (look.drag || (!look.yaw && !look.pitch)) return;
+  if ((look.idle += dt) < 0.7) return;                       // a moment to take it in, then back behind the car
+  const k = Math.exp(-4 * dt); look.yaw *= k; look.pitch *= k;
+  if (Math.abs(look.yaw) < 0.002 && Math.abs(look.pitch) < 0.002) look.yaw = look.pitch = 0;
+}
+// where the chase camera sits: behind the car, swung round it by look.yaw and up or down by look.pitch
+function chaseSpot(out) {
+  const back = VEH.cam.back, up = VEH.cam.up;
+  if (!look.yaw && !look.pitch) { out.copy(car.pos).addScaledVector(camFwd, -back); out.y += up; return out; }
+  const r = Math.hypot(back, up), e = clamp(Math.atan2(up, back) + look.pitch, -0.05, 1.45), c = Math.cos(look.yaw), sn = Math.sin(look.yaw);
+  const ox = -camFwd.x, oz = -camFwd.z, h = r * Math.cos(e);
+  return out.set(car.pos.x + (ox * c + oz * sn) * h, car.pos.y + r * Math.sin(e), car.pos.z + (oz * c - ox * sn) * h);
+}
 function setCamMode(m) {
+  look.yaw = look.pitch = 0; look.drag = null;
   camMode = m; orbit.enabled = m === 2; if (orbit.enabled) orbit.target.copy(car.pos);
   camera.fov = m === 4 || m === 5 ? 78 : m === 6 ? camera.fov : 62; camera.updateProjectionMatrix();
   const n = CAM_NAMES[m]; flash(typeof n === 'function' ? n(VEH) : n, '#fff', 1.2);
@@ -1646,21 +1683,23 @@ function updateCamera(dt) {
   if (camera.fov !== 74 && inside) { camera.fov = 74; camera.updateProjectionMatrix(); }
   if (camMode === 3) { orbit.update(); return; }
   if (camMode === 2) { orbit.target.lerp(car.pos, 1 - Math.exp(-8 * dt)); orbit.update(); return; }
+  easeLook(dt);
   if (camMode === 1) {
     camera.position.copy(v1.set(...(VEH.cam.driver || VEH.cam.cockpit)).applyQuaternion(car.q).add(car.pos));
     camera.quaternion.copy(car.q).multiply(qw.setFromAxisAngle(v2.set(0, 1, 0), Math.PI));
-    camera.rotateX(inside ? DRIVER_CAM.pitch : -0.08);
+    if (look.yaw) camera.rotateY(clamp(look.yaw, -2.3, 2.3));     // turning your head, not all the way round
+    camera.rotateX((inside ? DRIVER_CAM.pitch : -0.08) - look.pitch * 0.7);
     return;
   }
   if (camMode === 4 || camMode === 5) { carCam(camMode); return; }
   if (camMode === 6) { tvCam(dt); return; }
   v1.set(fwd.x, 0, fwd.z);
   if (v1.lengthSq() > 0.01) camFwd.lerp(v1.normalize(), 1 - Math.exp(-3 * dt)).normalize();
-  const target = v2.copy(car.pos).addScaledVector(camFwd, -VEH.cam.back); target.y += VEH.cam.up;
+  const target = chaseSpot(v2);
   target.y = Math.max(target.y, heightAt(target.x, target.z) + 1.2);
-  camPos.lerp(target, 1 - Math.exp(-6 * dt));
+  camPos.lerp(target, 1 - Math.exp(-(look.drag ? 20 : 6) * dt));   // dragging: the camera keeps up with the hand
   camera.position.copy(camPos);
-  camLook.lerp(v3.copy(car.pos).addScaledVector(camFwd, 2).add(v4.set(0, 0.8, 0)), 1 - Math.exp(-10 * dt));
+  camLook.lerp(v3.copy(car.pos).addScaledVector(camFwd, 2 * Math.max(0, Math.cos(look.yaw))).add(v4.set(0, 0.8, 0)), 1 - Math.exp(-10 * dt));
   camera.lookAt(camLook);
 }
 
@@ -4608,7 +4647,7 @@ if (MP.on) {
   dentablesOf(BUGGY); MP.buggyTpl = buggy.clone(true);       // the others' buggies: copies of ours as built (its body meshes marked to dent)
   carHitHook = mpSendHit; carRepairHook = () => mpPost({ t: 'repair' });
   const help = document.getElementById('help');
-  help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide this';
+  help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>Shift/right-drag</b> look around &nbsp; <b>P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide this';
   addEventListener('message', e => { if (e.origin === location.origin && e.source === parent) mpMessage(e.data); });
 }
 if (MP.edit) {

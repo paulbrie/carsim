@@ -1845,12 +1845,14 @@ function updateHud(dt) {
    ===================================================================== */
 const BANK_MAX = 25;                                         // degrees, the editor's Banking slider
 const bankOf = v => clamp(Math.round(+v || 0), 0, BANK_MAX);
-const levelOf = v => clamp(Math.round(+v || 0), 0, 100);       // %, the editor's Level the road slider
+const levelOf = v => clamp(Math.round(+v || 0), 0, 100);
+// even-grade sections: [first, last] waypoint indices (the road between them at one grade), at most 40
+const evenOf = v => Array.isArray(v) ? v.filter(r => Array.isArray(r) && r.length === 2 && r.every(i => Number.isInteger(i) && i >= 0) && r[0] !== r[1]).slice(0, 40).map(r => [r[0], r[1]]) : [];       // %, the editor's Level the road slider
 const DEFAULT_WP = (() => { const a = []; for (let i = 0; i < 16; i++) { const t = (i + 0.5) / 16 * TAU; a.push([+(118 * Math.sin(t)).toFixed(1), +(62 * Math.sin(2 * t)).toFixed(1)]); } return a; })();
 let COURSE = { wp: DEFAULT_WP.map(p => p.slice()), ops: [], base: 'sand', bridges: [], noBridge: [] };
 try {
   const c = JSON.parse(localStorage.getItem('sandbuggy.course') || 'null');
-  if (c && Array.isArray(c.wp) && c.wp.length >= 3) COURSE = { wp: c.wp, bank: bankOf(c.bank), level: levelOf(c.level), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: Array.isArray(c.bridges) ? c.bridges.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [], noBridge: Array.isArray(c.noBridge) ? c.noBridge.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [] };
+  if (c && Array.isArray(c.wp) && c.wp.length >= 3) COURSE = { wp: c.wp, bank: bankOf(c.bank), level: levelOf(c.level), even: evenOf(c.even), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: Array.isArray(c.bridges) ? c.bridges.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [], noBridge: Array.isArray(c.noBridge) ? c.noBridge.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [] };
   else { const sv = localStorage.getItem('sandbuggy.surface'); if (BASES.includes(sv)) COURSE.base = sv; if (sv === 'road') COURSE.road = true; }
 } catch (e) { }
 if (MP.on || MP.edit) {
@@ -1864,7 +1866,7 @@ function saveCourse() {
   try { localStorage.setItem('sandbuggy.course', JSON.stringify(COURSE)); return true; }
   catch (e) { flash('Course too big for browser storage: use Export', '#ff8a7a', 3); return false; }
 }
-const courseKey = () => { let h = 2166136261; for (const ch of JSON.stringify(COURSE.wp) + (COURSE.bank ? 'b' + COURSE.bank : '') + (COURSE.level ? 'l' + COURSE.level : '') + (COURSE.bridges?.length || COURSE.noBridge?.length ? JSON.stringify([COURSE.bridges, COURSE.noBridge]) : '')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0).toString(36); };
+const courseKey = () => { let h = 2166136261; for (const ch of JSON.stringify(COURSE.wp) + (COURSE.bank ? 'b' + COURSE.bank : '') + (COURSE.level ? 'l' + COURSE.level : '') + (COURSE.even?.length ? 'e' + JSON.stringify(COURSE.even) : '') + (COURSE.bridges?.length || COURSE.noBridge?.length ? JSON.stringify([COURSE.bridges, COURSE.noBridge]) : '')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0).toString(36); };
 
 const RAMP = 40, DECK_H = 4.4, POST_H = 6, BANNER_Y = POST_H - 0.4;   // gate posts and the banner's centre, above the ground
 const GULLY = { ramp: 16, deck: 1.1, depth: 2.6, halfL: 8.5 };   // bridge over a dug wash where the course doesn't cross itself
@@ -2043,6 +2045,44 @@ function levelProfile(hc, s) {
   const out = new Float32Array(n + 1); out.set(cur); out[n] = out[0];
   return out;
 }
+// Where each waypoint lies on TRACK.pts (an index): the nearest course point near its share of the
+// waypoint polygon's length, so a crossing of the course can't pull it onto the other branch.
+function wpPtIndex(wp, pts) {
+  const n = pts.length - 1, m = wp.length, cum = [0];
+  for (let i = 1; i <= m; i++) { const [ax, az] = wp[i - 1], [bx, bz] = wp[i % m]; cum.push(cum[i - 1] + Math.hypot(bx - ax, bz - az)); }
+  const w = Math.ceil(n * 0.08);
+  return wp.map(([x, z], i) => {
+    const c = Math.round(cum[i] / cum[m] * n); let bi = (c % n + n) % n, bd = Infinity;
+    for (let j = c - w; j <= c + w; j++) { const k = ((j % n) + n) % n, e = (pts[k].x - x) ** 2 + (pts[k].z - z) ** 2; if (e < bd) { bd = e; bi = k; } }
+    return bi;
+  });
+}
+// Even grade: in each section of COURSE.even the profile goes in a straight line from its height at the first
+// waypoint to its height at the last (in place); returns how much each course point is graded (1 inside a
+// section, eased to 0 over 8 m past its ends) and each section's grade (%), or null without sections.
+// A crossing with one branch in a section and the other not: the other is brought to the section's height.
+function evenGrade(prof) {
+  const P = TRACK.pts, n = P.length - 1, ds = TRACK.len / n, m = COURSE.wp.length;
+  const list = (COURSE.even || []).filter(([a, b]) => a < m && b < m && a !== b);
+  if (!list.length) return null;
+  const idx = wpPtIndex(COURSE.wp, P), G = new Float32Array(n + 1), grades = [], E = Math.max(1, Math.round(8 / ds));
+  for (const [a, b] of list) {
+    const ia = idx[a], ib = idx[b], span = (ib - ia + n) % n; if (span < 3) continue;
+    const h0 = prof[ia], h1 = prof[ib];
+    for (let j = 0; j <= span; j++) { const k = (ia + j) % n; prof[k] = lerp(h0, h1, j / span); G[k] = 1; }
+    for (let j = 1; j <= E; j++) { const f = 1 - smooth(j / (E + 1)), k0 = (ia - j + n) % n, k1 = (ib + j) % n; G[k0] = Math.max(G[k0], f); G[k1] = Math.max(G[k1], f); }
+    grades.push({ a, b, pct: (h1 - h0) / (span * ds) * 100, len: span * ds });
+  }
+  const K = Math.max(2, Math.round(40 / ds));
+  for (const q of TRACK.crossings) {
+    const ia = Math.round(q.uA * n) % n, ib = Math.round(q.uB * n) % n;
+    if ((G[ia] >= 1) === (G[ib] >= 1)) continue;
+    const [fix, keep] = G[ia] >= 1 ? [ib, ia] : [ia, ib], dh = prof[keep] - prof[fix];
+    for (let j = -K; j <= K; j++) { const k = (fix + j + n) % n, f = 1 - smooth(Math.abs(j) / K); prof[k] += dh * f; G[k] = Math.max(G[k], f); }
+  }
+  prof[n] = prof[0]; G[n] = G[0];
+  return { G, grades };
+}
 // steepest grade of a height profile along the course, in %, over 10 m, leaving out the bridges' ramps
 function steepestGrade(prof) {
   const n = prof.length - 1, ds = TRACK.len / n, hw = Math.max(1, Math.round(5 / ds)); let g = 0;
@@ -2096,7 +2136,7 @@ function trackBank() {
 function groomTrack() {
   // D: distance to the course; I: the nearest course point (TRACK.pts), out to 16 m for the banking
   // (out to 24 m when levelling: its cut and fill slopes reach further)
-  const D = new Float32Array(V * V).fill(99), I = new Int32Array(V * V), RAD = 10, BANK_RAD = 16, LEVEL_RAD = 24, LEVEL_W = 8, rc = Math.ceil((COURSE.level ? LEVEL_RAD : COURSE.bank ? BANK_RAD : RAD) / CELL);
+  const D = new Float32Array(V * V).fill(99), I = new Int32Array(V * V), RAD = 10, BANK_RAD = 16, LEVEL_RAD = 24, LEVEL_W = 8, rc = Math.ceil((COURSE.level || COURSE.even?.length ? LEVEL_RAD : COURSE.bank ? BANK_RAD : RAD) / CELL);
   TRACK.pts.forEach((p, pi) => {
     const ci = Math.round((p.x + HALF) / CELL), cj = Math.round((p.z + HALF) / CELL);
     for (let dj = -rc; dj <= rc; dj++) for (let di = -rc; di <= rc; di++) {
@@ -2131,8 +2171,8 @@ function groomTrack() {
   // Levelling (COURSE.level): the centre line follows levelProfile instead, the road is that height
   // across (plus the banking) to 8 m out, and the cut or fill slopes back into the dunes at about
   // 1 in 2.5 (4 to 16 m wide).
-  TRACK.bank = trackBank(); TRACK.grade = null;
-  if (COURSE.bank || COURSE.level) {
+  TRACK.bank = trackBank(); TRACK.grade = null; TRACK.even = null;
+  if (COURSE.bank || COURSE.level || COURSE.even?.length) {
     const P = TRACK.pts, np = P.length - 1, hc = new Float32Array(np + 1), nx = new Float32Array(np + 1), nz = new Float32Array(np + 1);
     const Bat = (x, z) => { const fx = clamp((x + HALF) / CELL, 0, N - 1e-4), fz = clamp((z + HALF) / CELL, 0, N - 1e-4), i = fx | 0, j = fz | 0, tx = fx - i, tz = fz - j, k = j * V + i;
       return (B[k] * (1 - tx) + B[k + 1] * tx) * (1 - tz) + (B[k + V] * (1 - tx) + B[k + V + 1] * tx) * tz; };
@@ -2140,18 +2180,20 @@ function groomTrack() {
       const a = P[(i - 1 + np) % np], c = P[(i + 1) % np], tl = Math.hypot(c.x - a.x, c.z - a.z) || 1;
       hc[i] = Bat(P[i].x, P[i].z); nx[i] = -(c.z - a.z) / tl; nz[i] = (c.x - a.x) / tl;
     }
-    const lv = COURSE.level, prof = lv ? levelProfile(hc, lv / 100) : hc, bk = TRACK.bank;
+    const lv = COURSE.level, prof = lv ? levelProfile(hc, lv / 100) : Float32Array.from(hc), bk = TRACK.bank;
+    const EV = evenGrade(prof), G = EV?.G; TRACK.even = EV?.grades || null;     // even-grade sections, on top of the levelling
     if (lv) TRACK.grade = { before: steepestGrade(hc), after: steepestGrade(prof) };
     for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
-      const k = j * V + i; if (D[k] >= (lv ? LEVEL_RAD : BANK_RAD)) continue;
+      const k = j * V + i; if (D[k] >= (lv || G ? LEVEL_RAD : BANK_RAD)) continue;
       // between the two course points the cell lies by, not at the nearest one (that made ~1 m steps)
       const x = -HALF + i * CELL, z = -HALF + j * CELL, [a, b, t] = alongCourse(I[k], x, z), at = A => lerp(A[a], A[b], t);
-      if (!lv && !bk[a] && !bk[b]) continue;
+      const gr = lv ? 1 : G ? at(G) : 0;                 // how much this is graded road (levelled, or an even-grade section)
+      if (!gr && !bk[a] && !bk[b]) continue;
       const sl = at(bk), l = (x - lerp(P[a].x, P[b].x, t)) * at(nx) + (z - lerp(P[a].z, P[b].z, t)) * at(nz), tgt = at(prof) + l * sl;
-      if (!lv) { B[k] = lerp(B[k], tgt, 1 - smooth(clamp((D[k] - 9) / 7, 0, 1))); continue; }
+      if (!gr) { B[k] = lerp(B[k], tgt, 1 - smooth(clamp((D[k] - 9) / 7, 0, 1))); continue; }
       const w = 1 - smooth(clamp((D[k] - LEVEL_W) / clamp(2.5 * Math.abs(tgt - B[k]), 4, LEVEL_RAD - LEVEL_W), 0, 1));
-      B[k] = lerp(B[k], tgt, w);
-      if (D[k] < RAD) C[k] = Math.max(C[k], 0.3 * w);     // packed ground across the graded width
+      B[k] = lerp(B[k], tgt, w * gr);
+      if (D[k] < RAD) C[k] = Math.max(C[k], 0.3 * w * gr);     // packed ground across the graded width
     }
   }
   BRIDGES.length = 0;
@@ -2502,7 +2544,7 @@ function updateLapHud(dt) {
 /* =====================================================================
    COURSE EDITOR (E): waypoints, terrain brushes, surface paint
    ===================================================================== */
-const ed = { on: false, tool: 'wp', size: 8, str: 4, rMin: 25, undoWp: null, drag: -1, sel: -1, painting: false, lastOp: 0, hit: null, wpDirty: false, opsDirty: false, farT: 0, flatH: 0 };
+const ed = { even: null, undoEven: null, on: false, tool: 'wp', size: 8, str: 4, rMin: 25, undoWp: null, drag: -1, sel: -1, painting: false, lastOp: 0, hit: null, wpDirty: false, opsDirty: false, farT: 0, flatH: 0 };
 const edEl = document.getElementById('editor'), edHint = document.getElementById('eHint');
 const edGroup = new THREE.Group(); edGroup.visible = false; scene.add(edGroup);
 const wpMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, transparent: true });
@@ -2536,7 +2578,7 @@ document.getElementById('eFile').addEventListener('change', async e => {
   try {
     const c = JSON.parse(await e.target.files[0].text());
     if (!Array.isArray(c.wp) || c.wp.length < 3) throw new Error('no waypoints');
-    COURSE = { wp: c.wp.map(([x, z]) => [+x, +z]), bank: bankOf(c.bank), level: levelOf(c.level), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: Array.isArray(c.bridges) ? c.bridges.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [], noBridge: Array.isArray(c.noBridge) ? c.noBridge.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [] }; ROAD = COURSE.road;
+    COURSE = { wp: c.wp.map(([x, z]) => [+x, +z]), bank: bankOf(c.bank), level: levelOf(c.level), even: evenOf(c.even), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: Array.isArray(c.bridges) ? c.bridges.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [], noBridge: Array.isArray(c.noBridge) ? c.noBridge.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [] }; ROAD = COURSE.road;
     ed.wpDirty = true; updatePreview(); flash('Course imported', '#7dff9a', 2);
   } catch (err) { flash('Could not read that course file', '#ff8a7a', 2.5); }
   e.target.value = '';
@@ -2549,7 +2591,22 @@ const showShape = () => {
   document.getElementById('bankV').textContent = COURSE.bank ? `${COURSE.bank}°` : 'off';
   document.getElementById('levelV').textContent = COURSE.level ? `${COURSE.level}%` : 'off';
   document.getElementById('eUndoSmooth').disabled = !ed.undoWp;
+  const nE = COURSE.even?.length || 0;
+  document.getElementById('eEvenClear').disabled = !nE;
+  document.getElementById('eEvenClear').textContent = nE ? `Clear even grades (${nE})` : 'Clear even grades';
+  document.getElementById('eEven').classList.toggle('on', !!ed.even);
 };
+function endEvenPick() { ed.even = null; document.getElementById('eEven').classList.remove('on'); }
+document.getElementById('eEven').addEventListener('click', e => {
+  e.currentTarget.blur();
+  if (ed.even) { endEvenPick(); ed.sel = -1; updatePreview(); flash('Even grade: cancelled', '#fff', 1.2); return; }
+  ed.even = { a: null }; e.currentTarget.classList.add('on');
+  flash('Even grade: click the first waypoint of the section', '#fff', 2.4);
+});
+document.getElementById('eEvenClear').addEventListener('click', e => {
+  e.currentTarget.blur(); if (!COURSE.even?.length) return;
+  COURSE.even = []; ed.wpDirty = true; updatePreview(); showShape(); flash('Even-grade sections cleared (built when you close the editor)', '#fff', 2.2);
+});
 sRadEl.addEventListener('input', e => { ed.rMin = +e.target.value; showShape(); });
 bankEl.addEventListener('input', e => { COURSE.bank = bankOf(e.target.value); ed.wpDirty = true; showShape(); });
 bankEl.addEventListener('change', () => flash(COURSE.bank ? `Bends banked up to ${COURSE.bank}° (built when you close the editor)` : 'Banking off', '#fff', 2.2));
@@ -2565,12 +2622,15 @@ document.getElementById('eSmooth').addEventListener('click', () => {
   const r = smoothCourse(COURSE.wp, ed.rMin), was = Math.round(r.before), now = Math.round(r.after);
   if (r.before >= ed.rMin * 0.97) { flash(`No corner is tighter than ${ed.rMin} m (tightest: ${was} m)`, '#ffd88a', 2.4); return; }
   const lost = buildTrack(r.wp, { ...COURSE, wp: r.wp }).rejected.length - (ed.track?.rejected.length || 0);
+  ed.undoEven = null;
+  if (COURSE.even?.length && r.wp.length !== COURSE.wp.length) { ed.undoEven = COURSE.even; COURSE.even = []; }   // refitted waypoints: the sections' ends are gone (Undo brings them back)
   ed.undoWp = COURSE.wp; COURSE.wp = r.wp; ed.sel = -1; ed.wpDirty = true; updatePreview(); showShape();
   const short = r.after < ed.rMin * 0.85 ? ' · a hairpin this tight opens only so far: move its straights apart for more' : '';
-  flash(`Curves smoothed: tightest corner ${was} m → ${now} m${short}${lost > 0 ? ` · ${lost} bridge${lost > 1 ? 's' : ''} no longer fit` : ''}`, '#7dff9a', short ? 5 : 3);
+  flash(`Curves smoothed: tightest corner ${was} m → ${now} m${ed.undoEven ? ' · even-grade sections cleared (Undo smoothing restores them)' : ''}${short}${lost > 0 ? ` · ${lost} bridge${lost > 1 ? 's' : ''} no longer fit` : ''}`, '#7dff9a', short ? 5 : 3);
 });
 document.getElementById('eUndoSmooth').addEventListener('click', () => {
   if (!ed.undoWp) return;
+  if (ed.undoEven) { COURSE.even = ed.undoEven; ed.undoEven = null; }
   COURSE.wp = ed.undoWp; ed.undoWp = null; ed.sel = -1; ed.wpDirty = true; updatePreview(); showShape(); flash('Smoothing undone', '#fff', 1.5);
 });
 
@@ -2601,12 +2661,31 @@ function toggleBridgeAt(p) {
 function deleteWaypoint(i) {
   if (i == null || i < 0 || i >= COURSE.wp.length) { flash('Click a waypoint first', '#ffd88a', 1.5); return; }
   if (COURSE.wp.length <= 4) { flash('A course needs at least 4 waypoints', '#ff8a7a', 2); return; }
-  COURSE.wp.splice(i, 1); ed.sel = -1; ed.drag = -1; ed.wpDirty = true; updatePreview();
+  COURSE.wp.splice(i, 1); shiftEven(i, -1); ed.sel = -1; ed.drag = -1; ed.wpDirty = true; updatePreview(); showShape();
 }
-const wpSelMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+const wpSelMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false }), wpEvenMat = new THREE.MeshBasicMaterial({ color: 0x3fd0ff, depthTest: false });
+// waypoints in an even-grade section (its ends included), for their colour
+function evenWps() {
+  const m = COURSE.wp.length, on = new Set();
+  for (const [a, b] of COURSE.even || []) { if (a >= m || b >= m) continue; for (let i = a; ; i = (i + 1) % m) { on.add(i); if (i === b) break; } }
+  return on;
+}
+// the waypoints' indices after one is inserted at i (+1) or removed from i (-1): a section keeps its stretch of road
+function shiftEven(i, dir) {
+  const m = COURSE.wp.length;                         // after the change
+  COURSE.even = (COURSE.even || []).map(([a, b]) => dir > 0 ? [a >= i ? a + 1 : a, b >= i ? b + 1 : b]
+    : [a > i ? a - 1 : a === i ? i % m : a, b > i ? b - 1 : b === i ? (i - 1 + m) % m : b]).filter(([a, b]) => a !== b && a < m && b < m);
+}
+// a section's grade as it stands (the ground under the waypoints, along their polygon)
+function evenEstimate(a, b) {
+  const W = COURSE.wp, m = W.length; let len = 0;
+  for (let i = a; i !== b; i = (i + 1) % m) { const [x0, z0] = W[i], [x1, z1] = W[(i + 1) % m]; len += Math.hypot(x1 - x0, z1 - z0); }
+  return { len, pct: (heightAt(W[b][0], W[b][1]) - heightAt(W[a][0], W[a][1])) / Math.max(len, 1) * 100 };
+}
 function updatePreview() {
   for (const m of wpMeshes) edGroup.remove(m);
-  wpMeshes = COURSE.wp.map(([x, z], i) => { const m = new THREE.Mesh(wpGeo, i === ed.sel ? wpSelMat : i === 0 ? wpStartMat : wpMat); m.position.set(x, heightAt(x, z) + 1.6, z); m.renderOrder = 11; edGroup.add(m); return m; });
+  const evenSet = evenWps();
+  wpMeshes = COURSE.wp.map(([x, z], i) => { const m = new THREE.Mesh(wpGeo, i === ed.sel ? wpSelMat : i === 0 ? wpStartMat : evenSet.has(i) ? wpEvenMat : wpMat); m.position.set(x, heightAt(x, z) + 1.6, z); m.renderOrder = 11; edGroup.add(m); return m; });
   if (previewLine) { edGroup.remove(previewLine); previewLine.geometry.dispose(); }
   const t = buildTrack(COURSE.wp), arr = [];
   ed.track = t;
@@ -2619,7 +2698,8 @@ function updatePreview() {
   for (const p of t.pts) arr.push(p.x, heightAt(p.x, p.z) + 0.6, p.z);
   previewLine = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)), new THREE.LineBasicMaterial({ color: 0xffe14d, depthTest: false, transparent: true }));
   previewLine.renderOrder = 9; edGroup.add(previewLine);
-  edEl.querySelector('#eInfo').textContent = `${COURSE.wp.length} waypoints · ${(t.len / 1000).toFixed(2)} km · tightest corner ${Math.round(tightestCorner(t.pts.slice(0, -1).map(p => [p.x, p.z]), t.len / (t.pts.length - 1)))} m · ${t.gates.length} gates · ${t.bridges.length} bridge${t.bridges.length === 1 ? '' : 's'}${t.crossings.length ? ` · ${t.crossings.length} crossing${t.crossings.length === 1 ? '' : 's'}` : ''} · ${COURSE.ops.length} terrain strokes`;
+  edEl.querySelector('#eInfo').textContent = `${COURSE.wp.length} waypoints · ${(t.len / 1000).toFixed(2)} km · tightest corner ${Math.round(tightestCorner(t.pts.slice(0, -1).map(p => [p.x, p.z]), t.len / (t.pts.length - 1)))} m · ${t.gates.length} gates · ${t.bridges.length} bridge${t.bridges.length === 1 ? '' : 's'}${t.crossings.length ? ` · ${t.crossings.length} crossing${t.crossings.length === 1 ? '' : 's'}` : ''} · ${COURSE.ops.length} terrain strokes`
+    + (COURSE.even?.length ? ` · even grade: ${COURSE.even.map(([a, b]) => { const g = TRACK?.even?.find(q => q.a === a && q.b === b); return `${a + 1}→${b + 1}${g ? ` ${g.pct >= 0 ? '+' : ''}${g.pct.toFixed(1)}%` : ''}`; }).join(', ')}` : '');
 }
 
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -2654,6 +2734,18 @@ function terrainOp(p) {
 }
 renderer.domElement.addEventListener('pointerdown', ev => {
   if (!ed.on || ev.button !== 0) return;
+  if (ed.even) {                                      // Even grade: the section's first waypoint, then its last
+    let bi = -1, bd = 26;
+    COURSE.wp.forEach(([x, z], i) => { const d = screenDist(ev, x, heightAt(x, z) + 1.6, z); if (d < bd) { bd = d; bi = i; } });
+    if (bi < 0) { flash('Click a waypoint', '#ffd88a', 1.5); return; }
+    if (ed.even.a == null) { ed.even.a = bi; ed.sel = bi; updatePreview(); flash('Now click the last waypoint of the section (forward along the course)', '#fff', 2.6); return; }
+    const a = ed.even.a; endEvenPick();
+    if (bi === a) { flash('Pick two different waypoints', '#ffd88a', 1.8); return; }
+    COURSE.even = [...(COURSE.even || []), [a, bi]].slice(-40); ed.wpDirty = true; ed.sel = -1; updatePreview(); showShape();
+    const e = evenEstimate(a, bi);
+    flash(`Even grade ${a + 1}→${bi + 1}: ${Math.round(e.len)} m at ${e.pct >= 0 ? '+' : ''}${e.pct.toFixed(1)}% · built on closing`, '#7dff9a', 3.2);
+    return;
+  }
   if (ed.tool === 'wp') {
     let bi = -1, bd = 26;
     COURSE.wp.forEach(([x, z], i) => { const d = screenDist(ev, x, heightAt(x, z) + 1.6, z); if (d < bd) { bd = d; bi = i; } });
@@ -2673,7 +2765,7 @@ renderer.domElement.addEventListener('pointerdown', ev => {
       const t = clamp(((p.x - ax) * vx + (p.z - az) * vz) / (vx * vx + vz * vz || 1), 0, 1), d = Math.hypot(ax + vx * t - p.x, az + vz * t - p.z);
       if (d < bdist) { bdist = d; best = i; }
     }
-    W.splice(best + 1, 0, [+clamp(p.x, -168, 168).toFixed(1), +clamp(p.z, -168, 168).toFixed(1)]);
+    W.splice(best + 1, 0, [+clamp(p.x, -168, 168).toFixed(1), +clamp(p.z, -168, 168).toFixed(1)]); shiftEven(best + 1, 1);
     ed.wpDirty = true; ed.drag = best + 1; updatePreview();
   } else {
     ed.painting = true; ed.flatH = heightAt(p.x, p.z); ed.lastOp = 0; ed.hit = p;
@@ -5040,7 +5132,7 @@ function mpParentCourse() { try { return (parent !== window && parent.__simCours
 function mpCourseFrom(c, ground) {
   const pts = a => Array.isArray(a) ? a.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [];
   const C = c && Array.isArray(c.wp) && c.wp.length >= 3
-    ? { wp: c.wp.map(([x, z]) => [+x, +z]), bank: bankOf(c.bank), level: levelOf(c.level), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: pts(c.bridges), noBridge: pts(c.noBridge) }
+    ? { wp: c.wp.map(([x, z]) => [+x, +z]), bank: bankOf(c.bank), level: levelOf(c.level), even: evenOf(c.even), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: pts(c.bridges), noBridge: pts(c.noBridge) }
     : { wp: DEFAULT_WP.map(p => p.slice()), ops: [], base: 'sand', road: false, bridges: [], noBridge: [] };
   if (ground) { C.base = ground === 'earth' ? 'earth' : 'sand'; C.road = ground === 'road'; }
   return C;

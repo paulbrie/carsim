@@ -46,6 +46,14 @@ Besides waypoints, bridges, terrain brushes and ground paint, the SHAPE section 
   from 26% to 4%, the climb per lap from 29 m to 13 m; "Course ready" shows the grade before → after.
   Saved with the course and in maps, with its own best laps.
 - **Optimise the road**: levelling 100% and banking 25°, so every bend gets the angle its speed needs.
+- **Even grade**: click it, then the first and the last waypoint of a section (forward along the
+  course): the road between them rises or falls at one constant grade, from the ground's height at
+  the first to the height at the last (flat if they're level), cut and filled into the dunes like
+  the levelling, banking on top; where it crosses another branch, that one is brought to its height.
+  The section's waypoints turn blue, the info line lists each section and its grade once built;
+  **Clear even grades** removes them. Sections are waypoint indices (`even` in the course, in maps,
+  in Export), kept through adding and deleting waypoints; Smooth curves sets them aside (Undo brings
+  them back).
 
 ## Damage
 
@@ -125,7 +133,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Three of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63** and the

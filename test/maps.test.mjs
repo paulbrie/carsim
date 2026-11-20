@@ -50,6 +50,10 @@ test('a course is checked and trimmed like the sim reads it', () => {
   assert.deepEqual(c.wp, [[168, -168], [1.2, 2], [3, 4]]);
   assert.equal(c.bank, 25); assert.equal(c.level, 100); assert.equal(c.base, 'sand');
   assert.equal(cleanCourse(course()).level, 0);                        // courses from before levelling
+  // even-grade sections: pairs of distinct waypoints of this course, at most 40
+  assert.deepEqual(cleanCourse({ ...course(), even: [[0, 2], [1, 1], [0, 9], [2, 'x'], [1.5, 2], 'no', [2, 0, 1], [2, 1]] }).even, [[0, 2], [2, 1]]);
+  assert.deepEqual(cleanCourse(course()).even, []);
+  assert.equal(cleanCourse({ ...course(), even: Array.from({ length: 60 }, () => [0, 1]) }).even.length, 40);
   assert.deepEqual(c.ops, [{ t: 'smooth', x: 1, z: 1, r: 6, s: 0.1, v: 2 }]);
   assert.deepEqual(c.bridges, [{ x: 1, z: 2 }]);
   assert.throws(() => cleanCourse({ wp: [[0, 0], [1, 1]] }), e => e.status === 400);

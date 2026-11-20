@@ -1649,7 +1649,7 @@ function updateCamera(dt) {
   if (camMode === 1) {
     camera.position.copy(v1.set(...(VEH.cam.driver || VEH.cam.cockpit)).applyQuaternion(car.q).add(car.pos));
     camera.quaternion.copy(car.q).multiply(qw.setFromAxisAngle(v2.set(0, 1, 0), Math.PI));
-    camera.rotateX(inside ? -0.04 : -0.08);
+    camera.rotateX(inside ? DRIVER_CAM.pitch : -0.08);
     return;
   }
   if (camMode === 4 || camMode === 5) { carCam(camMode); return; }
@@ -3626,6 +3626,7 @@ function loadModel(V) {
     } catch (err) { console.warn('model', V.key, err); V.modelState = 'failed'; if (V === VEH) flash(`Detailed ${V.short} model could not load (${err.message}): using the built-in body`, '#ffd88a', 4); }
   })();
 }
+const DRIVER_CAM = { fwd: 0.3, up: 0.05, pitch: -0.065 };   // from the driver's eyes: metres forward / up, radians down
 function attachModel(V, root, D) {
   const S = ROAD_CARS[V.key], b = V.built, a = S.wheels[0].z, hubY = S.yG + S.tireR;
   const dz = (a - D.zF + (S.wheels[2].z - D.zR)) / 2, dy = hubY - D.hubY;
@@ -3635,7 +3636,7 @@ function attachModel(V, root, D) {
   for (const o of Object.values(parts)) o.parent.remove(o);
   const bb = new THREE.Box3().setFromObject(root), wbm = D.zF - D.zR;
   const eye = D.eye || [0.38, bb.max.y - 0.37, (D.zF + D.zR) / 2 - 0.09 * wbm];      // driver's eyes, in model space (left-hand drive)
-  V.cam.driver = [eye[0], eye[1] + dy, eye[2] + dz]; V.winGlass = [];
+  V.cam.driver = [eye[0], eye[1] + dy + DRIVER_CAM.up, eye[2] + dz + DRIVER_CAM.fwd]; V.winGlass = [];
   root.position.set(0, dy, dz); b.group.add(root);
   const keyOf = ['LF', 'RF', 'LB', 'RB'];                          // wheel order FL, FR, RL, RR
   V.wheels.forEach((W, i) => {
@@ -4332,7 +4333,7 @@ setTimeout(() => {
   document.getElementById('loading').remove();
   window.__sim = { car, H, B, C, M, carCondition, debris, get TRACK() { return TRACK; }, lap, ed, COURSE: () => COURSE, toggleEditor, regenerateWorld, applyOp, updatePreview, collideGates, repairAll, damagePower, get BRIDGE() { return BRIDGES[0] || { top: 0, cx: 0, cz: 0, tx: 1, tz: 0 }; }, BRIDGES, toggleBridgeAt, setSurface, surfaceAt, restartRun, respawn, camera, orbit, heightAt, override: null, get PRESSURES() { return PRESSURES; }, get VEH() { return VEH; }, switchVehicle, VEHICLES, ROAD_CARS, resetCar, bootMs: performance.now() - t0, paused: false, get simTime() { return simTime; }, run(sec) { for (let t = 0; t < sec; t += 1 / 60) simulate(1 / 60); }, setCam: m => { camMode = m; orbit.enabled = m === 2; }, rp, startReplay, stopReplay, resetBest, BOTS, setBots, setPaint, togglePaintPanel, get camMode() { return camMode; } };
   // for tests and the console: step the physics without drawing (headless browsers draw at a frame a second)
-  Object.assign(window.__sim, { MP, placeAtGate, resetCar, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
+  Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   if (BOTS.n) setBots(BOTS.n);
   requestAnimationFrame(t => { last = t; frame(t); });
   mpPost({ t: 'ready' });

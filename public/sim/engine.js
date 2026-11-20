@@ -5294,17 +5294,18 @@ function mpMessage(m) {
 /* ---------- best laps (#304): the server keeps them, per map, ground, car and driver ---------- */
 // MP.records: the room's map and ground's, fastest first ({id, name, vehicle, time, splits, mv}). They are the
 // timer's BEST and its checkpoint deltas (splits: only if set on this version of the map), and under it the best
-// lap with each car and who drove it (MP.recs, fastest first). Called when they come, and when the course
-// (loadBest), the ground or the car changes.
+// lap with each car and who drove it (MP.recs, fastest first); right of the timer every driver's with our car
+// (MP.carRecs, #309). Called when they come, and when the course (loadBest), the ground or the car changes.
 function mpApplyBest() {
   const R = MP.records;
   if (!R || !Array.isArray(R.list)) return;
-  MP.recs = []; lap.best = null; lap.bestSplits = [];
+  MP.recs = []; MP.carRecs = []; lap.best = null; lap.bestSplits = [];
   if (`${R.map}@${R.v}` !== MP.courseKey || R.ground !== mpGroundNow()) return;      // not this course's (yet)
   const mine = R.list.find(e => e.id === MP.myId && e.vehicle === VEH.key);
   if (mine) { lap.best = mine.time; lap.bestSplits = mine.mv === R.v && Array.isArray(mine.splits) ? mine.splits : []; }
   const seen = new Set();
   for (const e of R.list) if ((e.vehicle === 'buggy' || ROAD_CARS[e.vehicle]) && !seen.has(e.vehicle)) { seen.add(e.vehicle); MP.recs.push(e); }
+  MP.carRecs = R.list.filter(e => e.vehicle === VEH.key);
 }
 const mpEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 // in the timer, all the time: the best lap with each car (at most MP_REC_ROWS, ours always), the driver's name
@@ -5318,6 +5319,57 @@ function mpRecRow() {
   const row = ([e, our]) => `<tr style="${our ? 'color:#ffd27d;font-weight:700' : ''}"><td>${mpEsc(e ? (ROAD_CARS[e.vehicle] || BUGGY).short : VEH.short)}</td>`
     + `<td>${e ? fmt(e.time) : '–'}</td><td style="text-align:left;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e ? mpEsc(e.name) : 'no lap yet'}</td></tr>`;
   return `<table class="seg"><tr><th style="text-align:left">BEST LAPS</th><th></th><th></th></tr>${rows.map(row).join('')}</table>`;
+}
+
+// right of the timer (#309): every driver's best lap with the car we drive, on this map and ground, fastest first
+// (the first MP_BEST_ROWS, and ours wherever it is), with the gap to the fastest. Where the window is too narrow
+// for it between the timer and the minimap, it goes under the minimap with fewer rows (as many as fit above the
+// speed dial), and the Replay button under it.
+const MP_BEST_ROWS = 10, MP_BEST_ROWS_NARROW = 5;
+const mpBestEl = document.createElement('div');
+mpBestEl.id = 'bestLaps'; mpBestEl.className = 'panel'; mpBestEl.style.cssText = 'display:none;top:12px;min-width:190px;max-width:270px';
+document.head.insertAdjacentHTML('beforeend', `<style>
+  #bestLaps .lt{font-size:12px;letter-spacing:2px;opacity:.85;text-align:center;white-space:nowrap}
+  #bestLaps .sub{font-size:11px;opacity:.7;text-align:center;margin-bottom:4px;white-space:nowrap}
+  #bestLaps table{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;width:100%}
+  #bestLaps td{padding:1px 4px;text-align:right;white-space:nowrap}
+  #bestLaps td.n{text-align:left;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+  #bestLaps td.p,#bestLaps td.g{opacity:.7} #bestLaps td.g{font-size:11px}
+  #bestLaps tr.me td{color:#ffd27d;font-weight:700;opacity:1}
+  #bestLaps .none{font-size:12px;opacity:.75;text-align:center;max-width:200px;white-space:normal}
+</style>`);
+document.body.appendChild(mpBestEl);
+let mpBestT = 0, mpBestHtml = '';
+function mpBestFrame(dt) {
+  if ((mpBestT += dt) < 0.1) return; mpBestT = 0;
+  const show = MP.on && !!MP.records && !ed.on && timerEl.offsetWidth > 0, replayBtn = document.getElementById('replayBtn');
+  mpBestEl.style.display = show ? '' : 'none';
+  if (!show) { if (replayBtn) replayBtn.style.top = ''; return; }
+  const t = timerEl.getBoundingClientRect(), m = document.getElementById('mapWrap').getBoundingClientRect();
+  const wide = t.right + 10 + Math.max(mpBestEl.offsetWidth, 214) <= m.left - 10;
+  let n = wide ? MP_BEST_ROWS : MP_BEST_ROWS_NARROW;
+  const all = MP.carRecs || [], here = MP.records && `${MP.records.map}@${MP.records.v}` === MP.courseKey && MP.records.ground === mpGroundNow();
+  const me = all.findIndex(e => e.id === MP.myId);
+  if (!wide) {                                                         // under the minimap: no lower than the speed dial
+    const g = document.getElementById('gauge'), gr = g && g.offsetWidth ? g.getBoundingClientRect() : null;
+    const bottom = gr && gr.right > innerWidth - 12 - mpBestEl.offsetWidth ? gr.top - 10 : innerHeight - 12;
+    const trs = mpBestEl.querySelectorAll('tr'), rowH = trs[0]?.offsetHeight || 20, rest = trs.length ? mpBestEl.offsetHeight - trs.length * rowH : 76;
+    const room = Math.floor((bottom - m.bottom - 10 - rest) / rowH);
+    n = Math.max(1, Math.min(n, room - (me >= n ? 1 : 0)));
+  }
+  const rows = all.slice(0, n).map((e, i) => [e, i]);
+  if (me >= n) rows.push([all[me], me]);
+  const lead = all[0]?.time, old = e => e.mv != null && e.mv !== MP.records.v;
+  const row = ([e, i]) => `<tr class="${e.id === MP.myId ? 'me' : ''}"><td class="p">${i + 1}</td><td class="n">${mpEsc(e.name)}${e.id === MP.myId ? ' (you)' : ''}${old(e) ? ' *' : ''}</td>`
+    + `<td>${fmt(e.time)}</td><td class="g">${i ? '+' + (e.time - lead).toFixed(3) : ''}</td></tr>`;
+  const html = `<div class="lt">BEST LAPS</div><div class="sub">${mpEsc(VEH.short)} · ${mpEsc(groundName())}</div>`
+    + (!here ? '<div class="none">Loading…</div>' : !all.length ? `<div class="none">No lap yet with the ${mpEsc(VEH.short)} here. A lap counts when it passes every gate.</div>`
+      : `<table>${rows.map(row).join('')}</table>${rows.some(([e]) => old(e)) ? '<div class="sub" style="margin:4px 0 0">* on an earlier layout of the map</div>' : ''}`);
+  if (html !== mpBestHtml) { mpBestHtml = html; mpBestEl.innerHTML = html; }
+  // right of the timer, or under the minimap (and the Replay button under it)
+  if (wide) { mpBestEl.style.left = (t.right + 10) + 'px'; mpBestEl.style.right = ''; mpBestEl.style.top = '12px'; }
+  else { mpBestEl.style.left = ''; mpBestEl.style.right = '12px'; mpBestEl.style.top = (m.bottom + 10) + 'px'; }
+  if (replayBtn) replayBtn.style.top = wide ? '' : (m.bottom + 20 + mpBestEl.offsetHeight) + 'px';
 }
 
 /* ---------- damage: ours to the others, theirs onto their cars ---------- */
@@ -5435,6 +5487,7 @@ const mpQa = new THREE.Quaternion(), mpQb = new THREE.Quaternion(), mpV = new TH
 function mpFrame(dt) {
   if (!MP.on) { if (MP.edit) mpEditFrame(dt); return; }
   const now = performance.now();
+  mpBestFrame(dt);
   const racing = (MP.phase === 'countdown' || MP.phase === 'racing') && !MP.finished && !MP.spectator;
   if (racing !== MP.racingCls) { MP.racingCls = racing; document.body.classList.toggle('mp-race', racing); if (racing && rp.on) stopReplay(); }
   // countdown on the grid

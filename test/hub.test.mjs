@@ -62,11 +62,13 @@ test('a race: countdown, positions, laps, finish, results, again', () => {
   assert.equal(a.last('room').room.phase, 'racing');
 
   a.message({ t: 's', p: [1, 2, 3], q: [0, 0, 0, 1], v: 10, st: 0.1, sp: 4, prog: 50, lap: 1 });
-  b.message({ t: 's', p: [4, 5, 6], q: [0, 0, 0, 1], v: 9, st: 0, sp: 3, prog: 80, lap: 1 });
+  b.message({ t: 's', p: [4, 5, 6], q: [0, 0, 0, 1], v: 9, st: 0, sp: 3, prog: 80, lap: 1, sk: 0x0f30 });
   advance(LIMITS.tickMs);
   const snap = a.last('snap');
   assert.deepEqual(snap.cars.map(c => c[0]).sort(), ['a', 'b']);
   assert.deepEqual(snap.cars.find(c => c[0] === 'b').slice(1, 4), [4, 5, 6]);
+  assert.equal(snap.cars.find(c => c[0] === 'b')[11], 0x0f30);            // the skid marks (#306) go round as sent
+  assert.equal(snap.cars.find(c => c[0] === 'a')[11], 0);                 // none sent: none
   for (let i = 0; i < 5; i++) advance(LIMITS.tickMs);
   assert.deepEqual(a.last('standings').standings.map(s => s.id), ['b', 'a']);   // b is further on
 

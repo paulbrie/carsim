@@ -132,6 +132,17 @@ visual (the grip is the same). Single player: **O** or the Weather button, remem
 browser. A race: the host picks it with the ground and laps (`weather` in the room; the sim gets
 `?weather=` and `weather` messages), and O does nothing there.
 
+## Skid marks
+
+A tire that slides or spins on asphalt or a bridge deck leaves rubber on it (`scripts/patches/skids.py`):
+locked wheels, wheelspin, a handbrake turn, a car drifting or understeering past its grip. A mark starts
+once the contact patch slides 0.5 m/s faster than a gripping tire creeps anyway (1 m/s plus 10% of the
+speed) and is darkest at 6 m/s past it; a lightly loaded wheel leaves a fainter one. They are as wide
+as the tread rolling and narrower sliding sideways, with soft edges and the tread's streaks. Sand and
+earth keep their ruts instead. The last ~12,000 pieces stay (the oldest go first), until the course or
+ground changes. In a race the other players' cars leave them too: each car's state carries its four
+wheels' marks (`sk`, 4 bits a wheel), relayed by the server.
+
 ## Maps and the super admin
 
 `SUPER_ADMIN_EMAIL` in `lib/admin.ts` (a constant: aelythe@gmail.com) is the super admin, when signed in
@@ -167,7 +178,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Three of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63** and the
@@ -182,7 +193,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   Opened without `?mp=1`, `/sim/index.html` is the single-player sim as it was (editor, bots, replays).
 - **Physics run in each browser.** A client reports its car 20 times a second; the server relays
   the positions to the room; the others draw it 120 ms in the past, interpolated, and push against
-  it like the sim's bots (each side moves only its own car). Laps and the finish come from the
+  it like the sim's bots (each side moves only its own car), and draw its skid marks under its wheels. Laps and the finish come from the
   sim's own gate timing; the server keeps the order and the clock (a finish time far from the
   server's own measure is replaced by it), adds 5 s per gate missed, and ends the race when all
   have finished or left, or 60 s after the winner.

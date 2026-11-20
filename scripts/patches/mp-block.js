@@ -7,8 +7,8 @@
           weather {weather} (also ?weather= at load: scripts/patches/weather.py)
           hit {id, h} · repair {id} · hits {all: {id: [h, …]}} (the others' damage: every hit so far, then each new one)
           records {map, v, ground, list} (the best laps on the room's map and ground, #304)
-     out: ready · s {p, q, v, st, sp, prog, lap} (20 Hz) · lap {lap, time, valid, splits} (every lap, raced or not: the
-          server keeps the best valid ones) · finish {time, missed}
+     out: ready · s {p, q, v, st, sp, prog, lap, sk} (20 Hz; sk: the four wheels' skid marks, 4 bits each, #306)
+          lap {lap, time, valid, splits} (every lap, raced or not: the server keeps the best valid ones) · finish {time, missed}
           hit {h} (our car struck: carHit's record, see bodyHit) · repair (our car as built again)
    The course is the room's map: the page sets window.__simCourse = {key, course} before it loads
    this iframe (course null: the default figure-8), and sends a new one with course.
@@ -110,7 +110,7 @@ function mpLabel(text, col) {
 }
 
 function mpDropPeer(pe) {
-  MP.peers.delete(pe.id);
+  MP.peers.delete(pe.id); mpPeerSkids(pe, 0);
   repairBody(pe.V);                                                   // its thrown parts back on it, out of the scene with it
   scene.remove(pe.V.vis); scene.remove(pe.label);
   pe.label.material.map.dispose(); pe.label.material.dispose();
@@ -151,7 +151,7 @@ function mpSnap(cars) {
   const now = performance.now();
   for (const c of cars) {
     const pe = MP.peers.get(c[0]); if (!pe) continue;
-    pe.buf.push({ t: now, p: [c[1], c[2], c[3]], q: [c[4], c[5], c[6], c[7]], v: c[8], st: c[9], w: c[10] });
+    pe.buf.push({ t: now, p: [c[1], c[2], c[3]], q: [c[4], c[5], c[6], c[7]], v: c[8], st: c[9], w: c[10], sk: c[11] || 0 });
     if (pe.buf.length > 40) pe.buf.splice(0, pe.buf.length - 40);
   }
 }
@@ -310,6 +310,26 @@ function mpEditFrame(dt) {
   }
 }
 
+// skid marks (#306): ours as 4 bits a wheel (0-15, how dark: the darkest since the last state sent), theirs drawn
+// under their wheels from the same
+const mpSkMax = [0, 0, 0, 0];
+function mpSkidsOut() {
+  const n = mpSkMax.reduce((n, a, i) => n + Math.round(clamp(a / 0.85, 0, 1) * 15) * 16 ** i, 0);
+  mpSkMax.fill(0); return n;
+}
+const mpSk = new THREE.Vector3(), mpSkF = new THREE.Vector3();
+function mpPeerSkids(pe, sk) {
+  const V = pe.V, hw = (V.pressures?.[V.pIdx ?? 1]?.w ?? 0.33) * 0.45, tRest = V.REST - V.mass * 9.81 / 4 / V.K;
+  V.wheels.forEach((W, i) => {
+    const key = `${pe.id}:${i}`, a = i < 4 ? (Math.floor(sk / 16 ** i) % 16) / 15 * 0.85 : 0;
+    if (!a) { skidPoint(key, 0, 0, 0, 0, 1, hw, 0); return; }
+    mpSk.set(W.hp.x, W.hp.y - tRest, W.hp.z).applyQuaternion(pe.q).add(pe.pos);
+    const yHub = mpSk.y; mpSk.set(W.hp.x, W.hp.y - tRest - V.R, W.hp.z).applyQuaternion(pe.q).add(pe.pos);
+    const st = W.front ? pe.steer : 0; mpSkF.set(Math.sin(st), 0, Math.cos(st)).applyQuaternion(pe.q);
+    skidPoint(key, mpSk.x, surfaceAt(mpSk.x, mpSk.z, yHub) + 0.012, mpSk.z, mpSkF.x, mpSkF.z, hw, a);
+  });
+}
+
 const mpQa = new THREE.Quaternion(), mpQb = new THREE.Quaternion(), mpV = new THREE.Vector3();
 function mpFrame(dt) {
   if (!MP.on) { if (MP.edit) mpEditFrame(dt); return; }
@@ -329,7 +349,7 @@ function mpFrame(dt) {
     const B = pe.buf, V = pe.V;
     const show = B.length > 0 && now - B[B.length - 1].t < PEER_STALE && !(pe.spectator && !MP.spectator && MP.phase !== 'lobby' && MP.phase !== 'results');
     if (show !== pe.shown) { pe.shown = show; V.vis.visible = show; if (pe.label) pe.label.visible = show; }
-    if (!show) continue;
+    if (!show) { mpPeerSkids(pe, 0); continue; }
     while (B.length > 2 && B[1].t <= rt) B.shift();
     const A = B[0], C = B[1] || A, f = C.t > A.t ? clamp((rt - A.t) / (C.t - A.t), 0, 1.25) : 0;
     pe.pos.set(lerp(A.p[0], C.p[0], f), lerp(A.p[1], C.p[1], f), lerp(A.p[2], C.p[2], f));
@@ -344,12 +364,15 @@ function mpFrame(dt) {
       if (W.spinner) W.spinner.rotation.x = pe.spin;
     }
     if (pe.label) pe.label.position.set(pe.pos.x, pe.pos.y + 2.4, pe.pos.z);
+    mpPeerSkids(pe, (f < 0.5 ? A : C).sk);
   }
+  flushSkids();
   // ours, to the others
+  car.wheels.forEach((W, i) => { if (i < 4) mpSkMax[i] = Math.max(mpSkMax[i], W.skid || 0); });
   if ((MP.sendT += dt) >= 0.05 && !rp.on && !ed.on) {
     MP.sendT = 0;
     const R = car.wheels[2];
-    mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo });
+    mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo, sk: mpSkidsOut() });
   }
 }
 

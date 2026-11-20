@@ -35,10 +35,10 @@ export interface BestLap { id: string; name: string; image: string | null; vehic
 /** the room's map (version v) and ground's best laps, fastest first */
 export interface Records { map: string; v: number; ground: string; list: BestLap[] }
 
-/** one car in a 'snap': id, x, y, z, qx, qy, qz, qw, speed, steer, wheel spin */
 /** a hit a car took, in its body space: [cx, cy, cz, dx, dy, dz, speed m/s, kind 0 post | 1 ball | 2 wall] (the sim's carHit) */
 export type CarHit = [number, number, number, number, number, number, number, number];
-export type CarSnap = [string, number, number, number, number, number, number, number, number, number, number];
+/** one car in a 'snap': id, x, y, z, qx, qy, qz, qw, speed, steer, wheel spin, skid marks (4 bits a wheel, 0-15: how dark) */
+export type CarSnap = [string, number, number, number, number, number, number, number, number, number, number, number];
 
 export type ServerMsg =
   | { t: 'hello'; me: Me; limits: Record<string, number> }

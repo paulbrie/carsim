@@ -1115,7 +1115,7 @@ function stepCar(dt) {
     if (input.handbrake && !W.front) Tb = 4000;
 
     if (!touching) {
-      W.contact = false; W.load = 0; W.slipSpeed = 0; W.sink = 0; W.slip = 0; W.sx = 0;
+      W.contact = false; W.load = 0; W.slipSpeed = 0; W.sink = 0; W.slip = 0; W.sx = 0; W.slide = 0;
       W.omega += Td / car.Iw * dt;
       applyBrake(W, Tb, dt);
       continue;
@@ -1193,6 +1193,7 @@ function stepCar(dt) {
 
     W.slip = s; W.sx = W.omega * R - vLong; W.fx = Fx; W.fm = Fmax; W.td = Td;
     W.slipSpeed = Math.abs(W.omega * R - vLong) + 0.6 * Math.abs(vLat);
+    W.slide = Math.max(0, Math.hypot(W.omega * R - vLong, vLat) - 1 - 0.1 * Math.abs(vLong));   // past the creep of a gripping tire
 
     // ---- deform the ground ----
     const excess = Math.max(0, Math.abs(s) - 0.25) * Math.abs(W.omega * R - vLong) + 0.6 * Math.max(0, Math.abs(vLat) - 0.8);
@@ -1339,32 +1340,82 @@ function updateParticles(dt) {
   pGeo.attributes.position.needsUpdate = pGeo.attributes.aSize.needsUpdate = pGeo.attributes.aAlpha.needsUpdate = true;
 }
 const emitAcc = new Float32Array(8);
-// skid marks: dark ribbons left on asphalt by sliding or spinning tires
-const SKID_MAX = 4000, skidPos = new Float32Array(SKID_MAX * 18), skidCol = new Float32Array(SKID_MAX * 24);
+// skid marks (#306): rubber left on asphalt and bridge decks by a tire that slides or spins, ours and (in a race) the
+// other players' cars'. A strip per wheel, made of quads joined end to end across the way the tire travels (as wide as
+// its tread rolling, as long as its contact patch sliding sideways), in one ring for all the cars: the oldest go first.
+const SKID_MAX = 12000, skidPos = new Float32Array(SKID_MAX * 18), skidCol = new Float32Array(SKID_MAX * 24), skidUv = new Float32Array(SKID_MAX * 12);
 const skidGeo = new THREE.BufferGeometry();
-skidGeo.setAttribute('position', new THREE.BufferAttribute(skidPos, 3)); skidGeo.setAttribute('color', new THREE.BufferAttribute(skidCol, 4));
+skidGeo.setAttribute('position', new THREE.BufferAttribute(skidPos, 3).setUsage(THREE.DynamicDrawUsage));
+skidGeo.setAttribute('color', new THREE.BufferAttribute(skidCol, 4).setUsage(THREE.DynamicDrawUsage));
+skidGeo.setAttribute('uv', new THREE.BufferAttribute(skidUv, 2).setUsage(THREE.DynamicDrawUsage));
 skidGeo.setDrawRange(0, 0);
-const skidMesh = new THREE.Mesh(skidGeo, new THREE.MeshBasicMaterial({ color: 0x0a0a0a, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+// the mark's texture: soft edges, the tread's streaks along it, blotches where the rubber went down thicker
+const skidTex = (() => {
+  const W = 32, H = 128, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'), im = g.createImageData(W, H);
+  let seed = 306; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const col = Array.from({ length: W }, () => 0.62 + 0.38 * rnd());
+  for (const c of [8, 15, 16, 23]) col[c] *= 0.45;                                  // the tread's grooves
+  const wave = Array.from({ length: 6 }, (_, k) => [rnd() * 0.12, rnd() * 6.283, k + 1]);
+  for (let y = 0; y < H; y++) {
+    let b = 0.86; for (const [a, ph, k] of wave) b += a * Math.sin(ph + y / H * 6.283 * k);   // repeats along v
+    for (let x = 0; x < W; x++) {
+      const u = (x + 0.5) / W, e = smooth(clamp(u / 0.2, 0, 1)) * smooth(clamp((1 - u) / 0.2, 0, 1)), o = (y * W + x) * 4;
+      im.data[o] = im.data[o + 1] = im.data[o + 2] = 255; im.data[o + 3] = Math.round(255 * clamp(e * col[x] * b, 0, 1));
+    }
+  }
+  g.putImageData(im, 0, 0);
+  const t = new THREE.CanvasTexture(cv); t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return t;
+})();
+const skidMesh = new THREE.Mesh(skidGeo, new THREE.MeshBasicMaterial({ color: 0x0c0b0a, map: skidTex, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
 skidMesh.frustumCulled = false; skidMesh.renderOrder = 1; scene.add(skidMesh);
-let skidN = 0, skidCount = 0;
-const skidLast = [];
-function clearSkids() { skidN = 0; skidCount = 0; skidGeo.setDrawRange(0, 0); skidLast.length = 0; }
+let skidN = 0, skidCount = 0, skidLo = -1, skidHi = -1;
+const skidLast = new Map();                         // a strip's last point, by wheel: 0-3 ours, `${id}:${i}` the others'
+const SKID_V0 = 0.5, SKID_V1 = 6;                   // sliding speed (m/s, W.slide) where a mark starts, and where it is darkest
+const skidAlpha = slide => slide > SKID_V0 ? 0.2 + 0.6 * smooth(clamp((slide - SKID_V0) / (SKID_V1 - SKID_V0), 0, 1)) : 0;
+function clearSkids() { skidN = 0; skidCount = 0; skidLo = skidHi = -1; skidGeo.setDrawRange(0, 0); skidLast.clear(); }
+// a strip's next point: the contact at (x, y, z), the tire heading (fx, fz), its tread's half-width, the mark's darkness
+function skidPoint(key, x, y, z, fx, fz, hw, a) {
+  const L = skidLast.get(key);
+  if (!a) { if (L) skidLast.delete(key); return; }
+  if (L && Math.hypot(x - L.x, z - L.z) < 0.3) return;
+  const d = L ? Math.hypot(x - L.x, z - L.z) : 0;
+  if (!L || d > 4 || Math.abs(y - L.y) > 0.6) {                // a new strip (or a jump: a respawn, a bridge's deck)
+    skidLast.set(key, { x, y, z, a, v: 0, first: true }); return;
+  }
+  const mx = (x - L.x) / d, mz = (z - L.z) / d, fl = Math.hypot(fx, fz) || 1, c = Math.abs((fx * mx + fz * mz) / fl);
+  const w = hw * c + 0.1 * Math.sqrt(1 - c * c), sx = -mz, sz = mx, v = L.v + d / 1.6;
+  if (L.first) { L.sx = sx; L.sz = sz; L.hw = w; }                // the strip's start: across the way it goes too
+  const q = [[L.x + L.sx * L.hw, L.y, L.z + L.sz * L.hw, L.a, 0, L.v], [L.x - L.sx * L.hw, L.y, L.z - L.sz * L.hw, L.a, 1, L.v],
+    [x + sx * w, y, z + sz * w, a, 0, v], [x - sx * w, y, z - sz * w, a, 1, v]];
+  const o = skidN * 18, oc = skidN * 24, ou = skidN * 12;
+  [0, 2, 1, 1, 2, 3].forEach((k, n) => {                     // counter-clockwise seen from above (the original's faced down: culled)
+    const p = q[k]; skidPos[o + n * 3] = p[0]; skidPos[o + n * 3 + 1] = p[1]; skidPos[o + n * 3 + 2] = p[2]; skidCol.set([1, 1, 1, p[3]], oc + n * 4); skidUv[ou + n * 2] = p[4]; skidUv[ou + n * 2 + 1] = p[5]; });
+  if (skidLo < 0) skidLo = skidHi = skidN; else if (skidN === 0) skidLo = 0; skidHi = Math.max(skidHi, skidN);
+  skidN = (skidN + 1) % SKID_MAX; skidCount = Math.min(skidCount + 1, SKID_MAX);
+  skidLast.set(key, { x, y, z, sx, sz, hw: w, a, v: v % 64 });
+}
+// the quads written since the last call go to the GPU at the next render (only those; three clears the ranges once
+// they are uploaded, and the physics may step several times between two renders: a range not yet sent grows)
+function flushSkids() {
+  if (skidLo < 0) return;
+  const n = skidHi - skidLo + 1;
+  for (const [name, k] of [['position', 18], ['color', 24], ['uv', 12]]) {
+    const A = skidGeo.attributes[name], R = A.updateRanges, last = R[R.length - 1];
+    if (last && last.start + last.count === skidLo * k) last.count += n * k; else A.addUpdateRange(skidLo * k, n * k);
+    A.needsUpdate = true;
+  }
+  skidGeo.setDrawRange(0, skidCount * 6); skidLo = skidHi = -1;
+}
 function updateSkids() {
+  const m = car.mass * G / (car.wheels.length || 4), hw = PRESSURES[car.pIdx].w * 0.45;
   car.wheels.forEach((W, i) => {
-    const on = W.contact && !W.deck && W.surf?.rigid && W.slipSpeed > 2.2;
-    const L = skidLast[i];
-    if (!on) { skidLast[i] = null; return; }
-    const sx = -W.fwd.z, sz = W.fwd.x, hw = PRESSURES[car.pIdx].w * 0.45, y = W.P.y + 0.012, a = clamp((W.slipSpeed - 2.2) / 7, 0.15, 0.7);
-    const cur = { x: W.P.x, z: W.P.z, y, sx, sz, hw, a };
-    if (!L) { skidLast[i] = cur; return; }
-    if (Math.hypot(cur.x - L.x, cur.z - L.z) < 0.35) return;
-    const q = [[L.x + L.sx * L.hw, L.y, L.z + L.sz * L.hw, L.a], [L.x - L.sx * L.hw, L.y, L.z - L.sz * L.hw, L.a], [cur.x + sx * hw, y, cur.z + sz * hw, a], [cur.x - sx * hw, y, cur.z - sz * hw, a]];
-    const o = skidN * 18, oc = skidN * 24;
-    [0, 1, 2, 2, 1, 3].forEach((v, n) => { skidPos.set(q[v].slice(0, 3), o + n * 3); skidCol.set([1, 1, 1, q[v][3]], oc + n * 4); });
-    skidN = (skidN + 1) % SKID_MAX; skidCount = Math.min(skidCount + 1, SKID_MAX);
-    skidGeo.setDrawRange(0, skidCount * 6); skidGeo.attributes.position.needsUpdate = skidGeo.attributes.color.needsUpdate = true;
-    skidLast[i] = cur;
+    const hard = W.contact && (W.deck || W.surf?.rigid);
+    W.skid = hard ? skidAlpha(W.slide || 0) * clamp(0.35 + 0.65 * W.load / m, 0.35, 1.15) : 0;   // a light wheel leaves less
+    skidPoint(i, W.P.x, W.P.y + 0.012, W.P.z, W.fwd.x, W.fwd.z, hw, Math.min(W.skid, 0.85));
   });
+  flushSkids();
 }
 function emitFromWheels(dt) {
   const R = car.R;
@@ -5047,8 +5098,8 @@ addEventListener('resize', () => {
           weather {weather} (also ?weather= at load: scripts/patches/weather.py)
           hit {id, h} · repair {id} · hits {all: {id: [h, …]}} (the others' damage: every hit so far, then each new one)
           records {map, v, ground, list} (the best laps on the room's map and ground, #304)
-     out: ready · s {p, q, v, st, sp, prog, lap} (20 Hz) · lap {lap, time, valid, splits} (every lap, raced or not: the
-          server keeps the best valid ones) · finish {time, missed}
+     out: ready · s {p, q, v, st, sp, prog, lap, sk} (20 Hz; sk: the four wheels' skid marks, 4 bits each, #306)
+          lap {lap, time, valid, splits} (every lap, raced or not: the server keeps the best valid ones) · finish {time, missed}
           hit {h} (our car struck: carHit's record, see bodyHit) · repair (our car as built again)
    The course is the room's map: the page sets window.__simCourse = {key, course} before it loads
    this iframe (course null: the default figure-8), and sends a new one with course.
@@ -5150,7 +5201,7 @@ function mpLabel(text, col) {
 }
 
 function mpDropPeer(pe) {
-  MP.peers.delete(pe.id);
+  MP.peers.delete(pe.id); mpPeerSkids(pe, 0);
   repairBody(pe.V);                                                   // its thrown parts back on it, out of the scene with it
   scene.remove(pe.V.vis); scene.remove(pe.label);
   pe.label.material.map.dispose(); pe.label.material.dispose();
@@ -5191,7 +5242,7 @@ function mpSnap(cars) {
   const now = performance.now();
   for (const c of cars) {
     const pe = MP.peers.get(c[0]); if (!pe) continue;
-    pe.buf.push({ t: now, p: [c[1], c[2], c[3]], q: [c[4], c[5], c[6], c[7]], v: c[8], st: c[9], w: c[10] });
+    pe.buf.push({ t: now, p: [c[1], c[2], c[3]], q: [c[4], c[5], c[6], c[7]], v: c[8], st: c[9], w: c[10], sk: c[11] || 0 });
     if (pe.buf.length > 40) pe.buf.splice(0, pe.buf.length - 40);
   }
 }
@@ -5350,6 +5401,26 @@ function mpEditFrame(dt) {
   }
 }
 
+// skid marks (#306): ours as 4 bits a wheel (0-15, how dark: the darkest since the last state sent), theirs drawn
+// under their wheels from the same
+const mpSkMax = [0, 0, 0, 0];
+function mpSkidsOut() {
+  const n = mpSkMax.reduce((n, a, i) => n + Math.round(clamp(a / 0.85, 0, 1) * 15) * 16 ** i, 0);
+  mpSkMax.fill(0); return n;
+}
+const mpSk = new THREE.Vector3(), mpSkF = new THREE.Vector3();
+function mpPeerSkids(pe, sk) {
+  const V = pe.V, hw = (V.pressures?.[V.pIdx ?? 1]?.w ?? 0.33) * 0.45, tRest = V.REST - V.mass * 9.81 / 4 / V.K;
+  V.wheels.forEach((W, i) => {
+    const key = `${pe.id}:${i}`, a = i < 4 ? (Math.floor(sk / 16 ** i) % 16) / 15 * 0.85 : 0;
+    if (!a) { skidPoint(key, 0, 0, 0, 0, 1, hw, 0); return; }
+    mpSk.set(W.hp.x, W.hp.y - tRest, W.hp.z).applyQuaternion(pe.q).add(pe.pos);
+    const yHub = mpSk.y; mpSk.set(W.hp.x, W.hp.y - tRest - V.R, W.hp.z).applyQuaternion(pe.q).add(pe.pos);
+    const st = W.front ? pe.steer : 0; mpSkF.set(Math.sin(st), 0, Math.cos(st)).applyQuaternion(pe.q);
+    skidPoint(key, mpSk.x, surfaceAt(mpSk.x, mpSk.z, yHub) + 0.012, mpSk.z, mpSkF.x, mpSkF.z, hw, a);
+  });
+}
+
 const mpQa = new THREE.Quaternion(), mpQb = new THREE.Quaternion(), mpV = new THREE.Vector3();
 function mpFrame(dt) {
   if (!MP.on) { if (MP.edit) mpEditFrame(dt); return; }
@@ -5369,7 +5440,7 @@ function mpFrame(dt) {
     const B = pe.buf, V = pe.V;
     const show = B.length > 0 && now - B[B.length - 1].t < PEER_STALE && !(pe.spectator && !MP.spectator && MP.phase !== 'lobby' && MP.phase !== 'results');
     if (show !== pe.shown) { pe.shown = show; V.vis.visible = show; if (pe.label) pe.label.visible = show; }
-    if (!show) continue;
+    if (!show) { mpPeerSkids(pe, 0); continue; }
     while (B.length > 2 && B[1].t <= rt) B.shift();
     const A = B[0], C = B[1] || A, f = C.t > A.t ? clamp((rt - A.t) / (C.t - A.t), 0, 1.25) : 0;
     pe.pos.set(lerp(A.p[0], C.p[0], f), lerp(A.p[1], C.p[1], f), lerp(A.p[2], C.p[2], f));
@@ -5384,12 +5455,15 @@ function mpFrame(dt) {
       if (W.spinner) W.spinner.rotation.x = pe.spin;
     }
     if (pe.label) pe.label.position.set(pe.pos.x, pe.pos.y + 2.4, pe.pos.z);
+    mpPeerSkids(pe, (f < 0.5 ? A : C).sk);
   }
+  flushSkids();
   // ours, to the others
+  car.wheels.forEach((W, i) => { if (i < 4) mpSkMax[i] = Math.max(mpSkMax[i], W.skid || 0); });
   if ((MP.sendT += dt) >= 0.05 && !rp.on && !ed.on) {
     MP.sendT = 0;
     const R = car.wheels[2];
-    mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo });
+    mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo, sk: mpSkidsOut() });
   }
 }
 
@@ -5459,6 +5533,7 @@ setTimeout(() => {
   window.__sim = { car, H, B, C, M, carCondition, debris, get TRACK() { return TRACK; }, lap, ed, COURSE: () => COURSE, toggleEditor, regenerateWorld, applyOp, updatePreview, collideGates, repairAll, damagePower, get BRIDGE() { return BRIDGES[0] || { top: 0, cx: 0, cz: 0, tx: 1, tz: 0 }; }, BRIDGES, toggleBridgeAt, setSurface, surfaceAt, restartRun, respawn, camera, orbit, heightAt, override: null, get PRESSURES() { return PRESSURES; }, get VEH() { return VEH; }, switchVehicle, VEHICLES, ROAD_CARS, resetCar, bootMs: performance.now() - t0, paused: false, get simTime() { return simTime; }, run(sec) { for (let t = 0; t < sec; t += 1 / 60) simulate(1 / 60); }, setCam: m => { camMode = m; orbit.enabled = m === 2; }, rp, startReplay, stopReplay, resetBest, BOTS, setBots, setPaint, togglePaintPanel, get camMode() { return camMode; } };
   Object.assign(window.__sim, { HIT, carHit, bodyHit, repairBody, repairCar, dentablesOf, framePull, frameSag });
   Object.assign(window.__sim, { glassOf, glassHit, repairGlass, isGlassMat, SH });
+  Object.assign(window.__sim, { skidMarks: () => ({ count: skidCount, strips: [...skidLast.keys()] }), clearSkids });
   // for tests and the console: step the physics without drawing (headless browsers draw at a frame a second)
   Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   if (BOTS.n) setBots(BOTS.n);

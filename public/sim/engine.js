@@ -1488,7 +1488,8 @@ class EngineSynth extends AudioWorkletProcessor {
   }
   config(c) {
     this.c = c; this.nc = c.fire.length;
-    this.hdrL = new Pipe(c.hdr[0], 0.62, 0.55); this.hdrR = new Pipe(c.hdr[1], 0.62, 0.55);
+    const hr = c.hdrRef || [0.62, 0.55];   // how much the manifolds' ends reflect, and how dully: a turbine reflects less
+    this.hdrL = new Pipe(c.hdr[0], hr[0], hr[1]); this.hdrR = new Pipe(c.hdr[1], hr[0], hr[1]);
     this.coll = new Pipe(c.coll, 0.42, 0.7); this.tail = new Pipe(c.tail, 0.3, 0.4);
     this.body.set('peak', c.body[0], 0.9, c.body[1]); this.honk.set('peak', c.honk[0], 1.4, c.honk[1]);
     // optional: a second pipe per bank (dual exhaust: each bank keeps its own uneven pulse train, the V8 burble),
@@ -1497,6 +1498,8 @@ class EngineSynth extends AudioWorkletProcessor {
     this.sub = new Biquad(); this.sub.set('peak', c.sub ? c.sub[0] : 100, 1.1, c.sub ? c.sub[1] : 0);
     this.raspF = new Biquad().set('bp', c.raspF || 2600, 1.2); this.raspHp = new Biquad().set('hp', 900, 0.7);
     this.cyl = c.fire.map((_, i) => 1 + (c.cylVar || 0) * Math.sin(i * 2.4 + 0.7));
+    // optional: the rush of air and gas through the turbos under boost, breathing with the firing pulses
+    this.rushF = new Biquad(); this.rushLp = new Biquad().set('lp', 2600, 0.6); this.rushE = 0;
   }
   process(_, outputs) {
     const oL = outputs[0][0], oR = outputs[0][1] || oL; if (!oL) return true;
@@ -1519,6 +1522,8 @@ class EngineSynth extends AudioWorkletProcessor {
     this.pres.set('peak', c.pres, 0.7, 3 + 8 * load);
     this.cabLp.set('lp', 2400 - 1500 * s.cab, 0.7);
     this.whoosh.set('bp', 1600 + 2600 * this.spool, 1.1);
+    const rushA = c.rush ? c.rush * this.spool * (0.25 + 0.75 * load) * (0.5 + 0.5 * rn) : 0;
+    if (rushA) this.rushF.set('bp', 480 + 700 * this.spool * rn, 0.45);
     this.sand2.set('lp', 500 + Math.min(s.slip, 14) * 160, 0.7);
     const overrun = load < 0.06 && s.rpm > 2200;
     const exW = c.exW + 0.04 * load, inW = 0.2 * 4 / Math.max(nc, 4) + 0.05;
@@ -1574,6 +1579,7 @@ class EngineSynth extends AudioWorkletProcessor {
         this.whPh += whF / sr; if (this.whPh > 1) this.whPh -= 1;
         turbo = Math.sin(this.whPh * 6.2832) * this.spool * this.spool * (0.2 + load) * 0.016 * c.turbo
           + this.whoosh.run(n) * this.spool * (0.25 + load) * 0.09 * c.turbo;
+        if (rushA > 0.0004) { this.rushE += (Math.min(Math.abs(raw), 1.5) - this.rushE) * 0.012; turbo += this.rushLp.run(this.rushF.run(n)) * rushA * (1.4 + 3.2 * this.rushE); }
         if (this.bov > 0.01) { const fl = c.bov > 0.5 ? 1 : (Math.sin(this.whPh * 6.2832 * 0.004) > 0 ? 1 : 0.25); turbo += this.bovF.run(Math.random() * 2 - 1) * this.bov * 0.2 * fl; this.bov *= 0.99982; }
       }
       // transmission whine
@@ -4477,9 +4483,12 @@ const SOUNDS = {
   v8sc: { fire: [0, 1, 2, 3, 4, 5, 6, 7].map(k => k / 8), bank: [0, 1, 0, 1, 1, 0, 0, 1], hdr: [0.0049, 0.0055], bankPipe: [0.0098, 0.0112], coll: 0.0026, tail: 0.019, muff: [420, 2400, 1200], body: [80, 5], honk: [400, 3], pres: 1600,
     sub: [125, 4], dual: 0.6, cylVar: 0.12, rasp: 0.2, raspF: 2400,
     level: 0.86, turbo: 0, bov: 0, limiter: 6250, exW: 0.085, drive: [1.2, 2.8], intake: 0.4, mech: 0.35, whine: 0.3, burble: 0.35 },
-  // Porsche 3.7 flat-six, twin turbo: even firing alternating banks, short pipes, a hard metallic edge
-  f6tt: { fire: [0, 1, 2, 3, 4, 5].map(k => k / 6), bank: [0, 1, 0, 1, 0, 1], hdr: [0.005, 0.0055], coll: 0.0024, tail: 0.015, muff: [600, 3600, 1600], body: [100, 4], honk: [560, 4], pres: 1800,
-    level: 0.95, turbo: 0.8, bov: 0.3, limiter: 7200, exW: 0.08, drive: [1.4, 3.0], intake: 0.45, mech: 0.7, whine: 0.12, burble: 0.4 },
+  // Porsche 3.7 flat-six, twin turbo: three cylinders a side, each bank through its own short manifold, turbo and
+  // pipe, never quite alike (the boxer's half-order growl, wide in stereo); the firing note leads all the way up
+  // the revs (pipes too short to cancel it), deep rather than buzzy, with the turbos' rush over it under boost
+  f6tt: { fire: [0, 1, 2, 3, 4, 5].map(k => k / 6), bank: [0, 1, 0, 1, 0, 1], hdr: [0.00105, 0.0012], hdrRef: [0.4, 0.25], bankPipe: [0.0023, 0.0026], coll: 0.0019, tail: 0.0125, muff: [500, 3000, 1600], body: [75, 5], honk: [900, 3], pres: 1500,
+    sub: [110, 4], dual: 0.5, cylVar: 0.12, rasp: 0.2, raspF: 1900, rush: 0.5,
+    level: 0.95, turbo: 0.8, bov: 0.3, limiter: 7200, exW: 0.11, drive: [1.3, 2.7], intake: 0.35, mech: 0.7, whine: 0.05, burble: 0.3 },
   v8p: { fire: [0, 1, 2, 3, 4, 5, 6, 7].map(k => k / 8), bank: [0, 1, 0, 1, 1, 0, 0, 1], hdr: [0.0046, 0.0051], coll: 0.0023, tail: 0.016, muff: [650, 3800, 1700], body: [90, 5], honk: [480, 4], pres: 1700,
     level: 0.95, turbo: 0.7, bov: 0.2, limiter: 6800, exW: 0.08, drive: [1.4, 3.1], intake: 0.4, mech: 0.45, whine: 0.07, burble: 0.45 },
 };

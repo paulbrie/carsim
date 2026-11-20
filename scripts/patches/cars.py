@@ -1,7 +1,8 @@
 # The cars built from downloaded models (ticket #294): Jaguar XJR, Mercedes-AMG SL 63, Porsche 911 Turbo.
 # Their models are public/sim/models/<key>.glb.gz, made by scripts/models/build-car.mjs from the files
 # in models/ (not in git); their specs (ROAD_CARS: the real cars' figures, the body's profiles as the
-# script measured them), two engine sounds, and their places in the menus and the bots' pool.
+# script measured them), two engine sounds (and the parts of the synth the flat-six needs), and their places in
+# the menus and the bots' pool.
 # Applies to public/sim/engine.js at the end of the chain:
 #   python3 scripts/patches/cars.py <dir with engine.js>
 import sys, os
@@ -114,11 +115,34 @@ SOUNDS = """  // Jaguar 4.0 V8 with an Eaton supercharger: the luxury V8's burbl
   v8sc: { fire: [0, 1, 2, 3, 4, 5, 6, 7].map(k => k / 8), bank: [0, 1, 0, 1, 1, 0, 0, 1], hdr: [0.0049, 0.0055], bankPipe: [0.0098, 0.0112], coll: 0.0026, tail: 0.019, muff: [420, 2400, 1200], body: [80, 5], honk: [400, 3], pres: 1600,
     sub: [125, 4], dual: 0.6, cylVar: 0.12, rasp: 0.2, raspF: 2400,
     level: 0.86, turbo: 0, bov: 0, limiter: 6250, exW: 0.085, drive: [1.2, 2.8], intake: 0.4, mech: 0.35, whine: 0.3, burble: 0.35 },
-  // Porsche 3.7 flat-six, twin turbo: even firing alternating banks, short pipes, a hard metallic edge
-  f6tt: { fire: [0, 1, 2, 3, 4, 5].map(k => k / 6), bank: [0, 1, 0, 1, 0, 1], hdr: [0.005, 0.0055], coll: 0.0024, tail: 0.015, muff: [600, 3600, 1600], body: [100, 4], honk: [560, 4], pres: 1800,
-    level: 0.95, turbo: 0.8, bov: 0.3, limiter: 7200, exW: 0.08, drive: [1.4, 3.0], intake: 0.45, mech: 0.7, whine: 0.12, burble: 0.4 },
+  // Porsche 3.7 flat-six, twin turbo: three cylinders a side, each bank through its own short manifold, turbo and
+  // pipe, never quite alike (the boxer's half-order growl, wide in stereo); the firing note leads all the way up
+  // the revs (pipes too short to cancel it), deep rather than buzzy, with the turbos' rush over it under boost
+  f6tt: { fire: [0, 1, 2, 3, 4, 5].map(k => k / 6), bank: [0, 1, 0, 1, 0, 1], hdr: [0.00105, 0.0012], hdrRef: [0.4, 0.25], bankPipe: [0.0023, 0.0026], coll: 0.0019, tail: 0.0125, muff: [500, 3000, 1600], body: [75, 5], honk: [900, 3], pres: 1500,
+    sub: [110, 4], dual: 0.5, cylVar: 0.12, rasp: 0.2, raspF: 1900, rush: 0.5,
+    level: 0.95, turbo: 0.8, bov: 0.3, limiter: 7200, exW: 0.11, drive: [1.3, 2.7], intake: 0.35, mech: 0.7, whine: 0.05, burble: 0.3 },
 """
 rep("""  v8p: { fire:""", SOUNDS + """  v8p: { fire:""")
+
+# The synth's parts the flat-six needs (ticket #303), all optional so the other engines sound as they did:
+# `hdrRef` [reflection, damping] of the manifolds (a turbine at the end of a short one reflects less than an
+# open collector), `rush` the air and gas through the turbos under boost, breathing with the firing pulses.
+rep("""    this.hdrL = new Pipe(c.hdr[0], 0.62, 0.55); this.hdrR = new Pipe(c.hdr[1], 0.62, 0.55);
+""", """    const hr = c.hdrRef || [0.62, 0.55];   // how much the manifolds' ends reflect, and how dully: a turbine reflects less
+    this.hdrL = new Pipe(c.hdr[0], hr[0], hr[1]); this.hdrR = new Pipe(c.hdr[1], hr[0], hr[1]);
+""")
+rep("""    this.cyl = c.fire.map((_, i) => 1 + (c.cylVar || 0) * Math.sin(i * 2.4 + 0.7));
+""", """    this.cyl = c.fire.map((_, i) => 1 + (c.cylVar || 0) * Math.sin(i * 2.4 + 0.7));
+    // optional: the rush of air and gas through the turbos under boost, breathing with the firing pulses
+    this.rushF = new Biquad(); this.rushLp = new Biquad().set('lp', 2600, 0.6); this.rushE = 0;
+""")
+rep("""    this.whoosh.set('bp', 1600 + 2600 * this.spool, 1.1);
+""", """    this.whoosh.set('bp', 1600 + 2600 * this.spool, 1.1);
+    const rushA = c.rush ? c.rush * this.spool * (0.25 + 0.75 * load) * (0.5 + 0.5 * rn) : 0;
+    if (rushA) this.rushF.set('bp', 480 + 700 * this.spool * rn, 0.45);
+""")
+rep("""        if (this.bov > 0.01) { const fl""", """        if (rushA > 0.0004) { this.rushE += (Math.min(Math.abs(raw), 1.5) - this.rushE) * 0.012; turbo += this.rushLp.run(this.rushF.run(n)) * rushA * (1.4 + 3.2 * this.rushE); }
+        if (this.bov > 0.01) { const fl""")
 
 rep("""  quattroporte: { name: ROAD_CARS.quattroporte.name, blurb: ROAD_CARS.quattroporte.blurb },
 """, """  quattroporte: { name: ROAD_CARS.quattroporte.name, blurb: ROAD_CARS.quattroporte.blurb },

@@ -112,10 +112,10 @@
   <h3>Course editor</h3>
   <div class="info" id="eInfo"></div>
   <div class="sec">COURSE</div>
-  <div class="tools"><button data-tool="wp">Waypoints</button><button data-tool="bridge">Bridges</button></div>
+  <div class="tools"><button data-tool="wp">Waypoints</button><button data-tool="bridge">Bridges</button><button id="eStraight" title="Put the waypoints near each bridge on its deck's line, so the road runs straight over it and its approaches">Straighten at bridges</button></div>
   <div class="sec">SHAPE</div>
   <label title="Smooth curves opens every bend tighter than this">Min. corner radius <input id="sRad" type="range" min="10" max="60" step="5" value="25"> <span id="sRadV" class="val">25 m</span></label>
-  <div class="tools"><button id="eSmooth" title="Reshape the waypoints so no corner is tighter than the radius above">Smooth curves</button><button id="eUndoSmooth" disabled>Undo smoothing</button></div>
+  <div class="tools"><button id="eSmooth" title="Reshape the waypoints so no corner is tighter than the radius above">Smooth curves</button><button id="eUndoSmooth" disabled title="Undo the last Smooth curves or Straighten at bridges">Undo</button></div>
   <label title="Tilt the ground under each bend toward its inside, steeper in tighter bends, up to this angle">Banking <input id="bankDeg" type="range" min="0" max="25" step="1" value="0"> <span id="bankV" class="val">off</span></label>
   <label title="Smooth the road's rise and fall along the course: cut through the dune crests, fill the troughs, and keep it flat across (but for the banking)">Level the road <input id="levelPct" type="range" min="0" max="100" step="5" value="0"> <span id="levelV" class="val">off</span></label>
   <div class="tools"><button id="eEven" title="Click it, then the first and the last waypoint of a section: the road between them rises or falls at one even grade">Even grade</button><button id="eEvenClear" disabled title="Remove every even-grade section">Clear even grades</button></div>

@@ -12,7 +12,7 @@ See README.md for the layout. Notes:
   around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`,
   the cars made from downloaded models (XJR, SL 63, 911 Turbo: specs, sounds, menus) `cars.py`
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -21,6 +21,8 @@ See README.md for the layout. Notes:
   materials there so `attachModel` finds them: `paint`, `glass`/`window`, `tire`, `taillight`. A
   steering wheel buried in a cabin mesh: `--probe <box>` lists the pieces in a box. Deterministic:
   rebuilding gives the same bytes.
+- Bridges' earthworks (`scripts/patches/bridges.py`, after even.py): a bridged crossing keeps its two branches'
+  heights apart (`bridgedCrossing`): any profile code that brings crossing branches to one height must skip it.
 - Even-grade sections (`COURSE.even`, `scripts/patches/even.py`, last in the chain) are waypoint indices:
   anything that inserts, removes or refits waypoints must keep them pointing at the same stretch (`shiftEven`).
 - The weather is `scripts/patches/weather.py`, after `glass.py` in the re-patch chain (it only touches the

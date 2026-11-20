@@ -1895,7 +1895,9 @@ function buildTrack(wp, spec = COURSE) {
   const crossBridge = (q, uOver, uUnder, auto) => {
     const to = curve.getTangentAt(uOver).setY(0).normalize(), tu = curve.getTangentAt(uUnder).setY(0).normalize();
     const sinA = Math.abs(to.x * tu.z - to.z * tu.x), halfL = clamp(9.5 / Math.max(sinA, 0.3) + 1, 10.5, 33);
-    return { kind: 'cross', x: q.x, z: q.z, uOver, uUnder, halfL, tx: to.x, tz: to.z, deckH: DECK_H, ramp: RAMP, auto, reach: halfL + RAMP + 6 };
+    // the deck is straight: along the chord of the road across it (on a bend the tangent at the crossing points off it)
+    const c0 = curve.getPointAt(((uOver - halfL / len) % 1 + 1) % 1), c1 = curve.getPointAt((uOver + halfL / len) % 1), cl = Math.hypot(c1.x - c0.x, c1.z - c0.z) || 1;
+    return { kind: 'cross', x: q.x, z: q.z, uOver, uUnder, halfL, tx: (c1.x - c0.x) / cl, tz: (c1.z - c0.z) / cl, deckH: DECK_H, ramp: RAMP, auto, reach: halfL + RAMP + 6 };
   };
   // bridges: the ones placed in the editor, then one at every crossing that hasn't been removed
   const bridges = [], rejected = [], used = new Set();
@@ -2027,6 +2029,7 @@ function respace(P, m) {
 // three passes of a ±32 m moving average (half a dune's wavelength each side: the crests go, the
 // long slopes of the land stay), blended with hc by s (0-1). Where the course crosses itself, both
 // branches are brought to the same height, eased in over 40 m either side.
+const bridgedCrossing = q => TRACK.bridges.some(b => b.kind === 'cross' && Math.hypot(b.x - q.x, b.z - q.z) < 14);
 function levelProfile(hc, s) {
   const n = hc.length - 1, ds = TRACK.len / n, w = Math.max(1, Math.round(32 / ds));
   let cur = Float32Array.from(hc.subarray(0, n));
@@ -2039,6 +2042,7 @@ function levelProfile(hc, s) {
   for (let i = 0; i < n; i++) cur[i] = lerp(hc[i], cur[i], s);
   const K = Math.max(2, Math.round(40 / ds));
   for (const q of TRACK.crossings) {
+    if (bridgedCrossing(q)) continue;                 // a bridge keeps the two branches apart: no common height (#301)
     const ia = Math.round(q.uA * n) % n, ib = Math.round(q.uB * n) % n, hm = (cur[ia] + cur[ib]) / 2, da = hm - cur[ia], db = hm - cur[ib];
     for (let j = -K; j <= K; j++) { const f = 1 - smooth(Math.abs(j) / K); cur[(ia + j + n) % n] += da * f; cur[(ib + j + n) % n] += db * f; }
   }
@@ -2076,7 +2080,7 @@ function evenGrade(prof) {
   const K = Math.max(2, Math.round(40 / ds));
   for (const q of TRACK.crossings) {
     const ia = Math.round(q.uA * n) % n, ib = Math.round(q.uB * n) % n;
-    if ((G[ia] >= 1) === (G[ib] >= 1)) continue;
+    if (bridgedCrossing(q) || (G[ia] >= 1) === (G[ib] >= 1)) continue;
     const [fix, keep] = G[ia] >= 1 ? [ib, ia] : [ia, ib], dh = prof[keep] - prof[fix];
     for (let j = -K; j <= K; j++) { const k = (fix + j + n) % n, f = 1 - smooth(Math.abs(j) / K); prof[k] += dh * f; G[k] = Math.max(G[k], f); }
   }
@@ -2200,41 +2204,66 @@ function groomTrack() {
   for (const X of TRACK.bridges) buildEmbankments(X);
 }
 
-// Bridge earthworks: ramps up to the abutments on the over-pass, a flat cut for the under-pass
+// Bridge earthworks (#301). Over-pass: ramps of one even grade (rounded off over their ends) from the
+// road's own height RAMP m out (up to 1.5 x RAMP, for 8%) to the deck. Under-pass of a crossing: a cutting, CUT m below the ground at
+// the crossing under the deck, on even grades of at most 7% in and out, banks of 1 in 1.5; the deck stands
+// CLEAR m above its bed (4 m under the girders). A gully bridge digs its wash and ramps up the same way.
+const CUT = 2.4, CLEAR = 5.0;
+// 0 → 1 at one even grade, rounded off over the first and last e (zero slope at both ends)
+const evenRamp = (t, e) => {
+  t = clamp(t, 0, 1); const v = 1 / (1 - e);
+  if (t < e) return v * t * t / (2 * e);
+  if (t > 1 - e) { const r = 1 - t; return 1 - v * r * r / (2 * e); }
+  return v * (t - e / 2);
+};
 function buildEmbankments(X) {
-  const P = TRACK.pts, n = P.length - 1, a0 = X.halfL - 0.5, RAMP = X.ramp, DECK_H = X.deckH, gully = X.kind === 'gully';
+  const P = TRACK.pts, n = P.length - 1, ds = TRACK.len / n, a0 = X.halfL - 0.5, RAMP = X.ramp, gully = X.kind === 'gully';
   const ci0 = Math.round((X.x + HALF) / CELL), cj0 = Math.round((X.z + HALF) / CELL);
-  const g0 = B[cj0 * V + ci0], bed = g0 - GULLY.depth;
-  BRIDGES.push({ cx: X.x, cz: X.z, tx: X.tx, tz: X.tz, halfL: X.halfL, halfW: 3.6, top: g0 + DECK_H, abut: gully ? DECK_H + GULLY.depth + 1 : DECK_H + 1.5, kind: X.kind });
+  const g0 = B[cj0 * V + ci0], bed = g0 - (gully ? GULLY.depth : CUT), top = gully ? g0 + X.deckH : bed + CLEAR;
+  BRIDGES.push({ cx: X.x, cz: X.z, tx: X.tx, tz: X.tz, halfL: X.halfL, halfW: 3.6, top, abut: top - bed + 0.6, kind: X.kind });
+  // the ground as it is before any of this, along the course s metres from u0
+  const Bat = (x, z) => { const fx = clamp((x + HALF) / CELL, 0, N - 1e-4), fz = clamp((z + HALF) / CELL, 0, N - 1e-4), i = fx | 0, j = fz | 0, tx = fx - i, tz = fz - j, k = j * V + i;
+    return (B[k] * (1 - tx) + B[k + 1] * tx) * (1 - tz) + (B[k + V] * (1 - tx) + B[k + V + 1] * tx) * tz; };
+  const hAlong = (u0, s) => { const p = P[((Math.round(u0 * n + s / ds)) % n + n) % n]; return Bat(p.x, p.z); };
+  // each ramp: long enough for 8% if it can be (up to 1.5 x RAMP), from the road's own height where it starts
+  const foot = [0, 0], RL = [RAMP, RAMP];
+  for (const [i, sg] of [[0, -1], [1, 1]]) for (let it = 0; it < 2; it++) { foot[i] = hAlong(X.uOver, sg * (a0 + RL[i])); RL[i] = clamp(Math.abs(top - foot[i]) / 0.08, RAMP, RAMP * 1.5); }
+  // the cutting: flat under the deck (±F), then up at ≤ 7% to the road's own height at ±Lc
+  const F = 9, Lc = [0, 0], hu = [0, 0];
+  if (!gully) for (const [i, sg] of [[0, -1], [1, 1]]) {
+    let h = hAlong(X.uUnder, sg * 45); Lc[i] = clamp(F + Math.max(0, h - bed) / 0.07, 24, 45);
+    h = hAlong(X.uUnder, sg * Lc[i]); hu[i] = h; Lc[i] = clamp(F + Math.max(0, h - bed) / 0.07, 24, 45);
+  }
   const over = [], under = [];
   P.forEach((p, i) => { const u = i / n, so = arcDist(u, X.uOver), su = gully ? 99 : arcDist(u, X.uUnder);
-    if (Math.abs(so) < a0 + RAMP + 6) over.push([p.x, p.z, i]); if (Math.abs(su) < 45) under.push([p.x, p.z, i]); });
+    if (Math.abs(so) < a0 + RAMP * 1.5 + 6) over.push([p.x, p.z, i]); if (Math.abs(su) < 52) under.push([p.x, p.z, i]); });
   // [distance to the course, arc distance from u0 along it], measured between course points (alongCourse)
   const nearest = (list, x, z, u0) => { let bd = 1e9, bi = -1; for (const [px, pz, i] of list) { const d = (px - x) ** 2 + (pz - z) ** 2; if (d < bd) { bd = d; bi = i; } }
     if (bi < 0) return [1e5, 0];
     const [a, b, t] = alongCourse(bi, x, z); return [Math.hypot(x - lerp(P[a].x, P[b].x, t), z - lerp(P[a].z, P[b].z, t)), arcDist((a + t) / n, u0)]; };
-  const R0 = a0 + RAMP + 14, rc = Math.ceil(R0 / CELL);
+  const R0 = Math.max(a0 + RAMP * 1.5 + 14, gully ? 0 : 45 + 16), rc = Math.ceil(R0 / CELL);
   for (let j = Math.max(1, cj0 - rc); j <= Math.min(N - 1, cj0 + rc); j++) for (let i = Math.max(1, ci0 - rc); i <= Math.min(N - 1, ci0 + rc); i++) {
     const x = -HALF + i * CELL, z = -HALF + j * CELL, k = j * V + i;
     if (gully) {         // a dry wash dug across the course under the deck, with sloping banks
       const la = Math.abs((x - X.x) * X.tx + (z - X.z) * X.tz), lb = Math.abs((z - X.z) * X.tx - (x - X.x) * X.tz);
       const wd = (1 - smooth(clamp((la - (a0 - 4.5)) / 4, 0, 1))) * (1 - smooth(clamp((lb - 20) / 14, 0, 1)));
       if (wd > 0) { B[k] = Math.min(B[k], lerp(B[k], bed, wd)); C[k] = Math.max(C[k], 0.25 * wd); if (wd > 0.15) RM[k] = 0; }   // the wash bed is never paved
-      if (la < a0) continue;
-    }
-    const [du, su] = nearest(under, x, z, X.uUnder);
-    if (du < 9.5) {      // underpass: flat cut, fading back to the natural ground 20–40 m out
-      const w = (1 - smooth(clamp((du - 7) / 2.5, 0, 1))) * (1 - smooth(clamp((Math.abs(su) - 18) / 22, 0, 1)));
-      B[k] = lerp(B[k], g0, w); C[k] = Math.max(C[k], 0.35 * w);
-      if (Math.abs(su) < 14) continue;
+    } else {
+      const [du, su] = nearest(under, x, z, X.uUnder), as = Math.abs(su), sd = su < 0 ? 0 : 1;
+      if (as < Lc[sd] && du < 5.5 + 12) {          // the cutting: the road at its grade, banks of 1 in 1.5 up to the ground
+        const t = as <= F ? bed : bed + (hu[sd] - bed) * evenRamp((as - F) / (Lc[sd] - F), 0.25);
+        if (du < 5.5) { B[k] = t; C[k] = Math.max(C[k], 0.35); }
+        else B[k] = Math.min(B[k], t + (du - 5.5) / 1.5);
+      }
     }
     const [dov, so] = nearest(over, x, z, X.uOver);
     const a = Math.abs(so);
-    if (a < a0 || a > a0 + RAMP || dov > 11) continue;
-    const prof = g0 + DECK_H * (1 - smooth(clamp((a - a0) / RAMP, 0, 1)));      // ramp height along the course
-    const wl = 1 - smooth(clamp((dov - 5) / 6, 0, 1));                           // flat top 5 m each side, then a side slope
-    const wa = 1 - smooth(clamp((a - (a0 + RAMP - 14)) / 14, 0, 1));             // blend into the natural ground at the foot
-    B[k] = lerp(B[k], prof, wl * wa); C[k] = Math.max(C[k], 0.5 * wl * wa);
+    const sd = so < 0 ? 0 : 1;
+    if (a < a0 || a > a0 + RL[sd] || dov > 11) continue;
+    const prof = top - (top - foot[sd]) * evenRamp((a - a0) / RL[sd], 0.2);           // even grade, down from the deck
+    const wl = 1 - smooth(clamp((dov - 5) / 6, 0, 1));                               // flat top 5 m each side, then a side slope
+    const we = dov <= 4.8 ? 1 : smooth(clamp((a - a0) / 4, 0, 1));                    // past the abutment's width: a sloped end, not a cliff
+    B[k] = lerp(B[k], prof, wl * we); C[k] = Math.max(C[k], 0.5 * wl * we);
   }
 }
 
@@ -2628,10 +2657,19 @@ document.getElementById('eSmooth').addEventListener('click', () => {
   const short = r.after < ed.rMin * 0.85 ? ' · a hairpin this tight opens only so far: move its straights apart for more' : '';
   flash(`Curves smoothed: tightest corner ${was} m → ${now} m${ed.undoEven ? ' · even-grade sections cleared (Undo smoothing restores them)' : ''}${short}${lost > 0 ? ` · ${lost} bridge${lost > 1 ? 's' : ''} no longer fit` : ''}`, '#7dff9a', short ? 5 : 3);
 });
+document.getElementById('eStraight').addEventListener('click', e => {
+  e.currentTarget.blur();
+  const wp0 = COURSE.wp.map(p => p.slice()), ev0 = COURSE.even?.map(r => r.slice()), before = buildTrack(COURSE.wp).bridges.length;
+  const k = straightenBridges();
+  if (!k) { flash(before ? 'Nothing to straighten (a bridge by the start waypoint is left as it is)' : 'No bridges on this course', '#ffd88a', 2.2); return; }
+  if (buildTrack(COURSE.wp).bridges.length < before) { COURSE.wp = wp0; if (ev0) COURSE.even = ev0; flash('Straightening would lose a bridge: left as it was', '#ff8a7a', 2.4); return; }
+  ed.undoWp = wp0; ed.undoEven = ev0 ?? null; ed.sel = -1; ed.wpDirty = true; updatePreview(); showShape();
+  flash(`The road straightened at ${k} bridge${k > 1 ? 's' : ''} (Undo puts it back)`, '#7dff9a', 2.4);
+});
 document.getElementById('eUndoSmooth').addEventListener('click', () => {
   if (!ed.undoWp) return;
   if (ed.undoEven) { COURSE.even = ed.undoEven; ed.undoEven = null; }
-  COURSE.wp = ed.undoWp; ed.undoWp = null; ed.sel = -1; ed.wpDirty = true; updatePreview(); showShape(); flash('Smoothing undone', '#fff', 1.5);
+  COURSE.wp = ed.undoWp; ed.undoWp = null; ed.sel = -1; ed.wpDirty = true; updatePreview(); showShape(); flash('Undone', '#fff', 1.5);
 });
 
 // add a bridge where the course is clicked, or remove the bridge that was clicked
@@ -2654,9 +2692,36 @@ function toggleBridgeAt(p) {
   }
   const nb = t2.bridges.find(b => b.src === pb);
   if (nb.kind === 'cross') COURSE.noBridge = COURSE.noBridge.filter(r => Math.hypot(r.x - nb.x, r.z - nb.z) >= 14);
-  ed.wpDirty = true; updatePreview(); flash(nb.kind === 'cross' ? 'Bridge added: this branch goes over' : 'Bridge added over a dug wash', '#7dff9a', 1.8);
+  const wp0 = COURSE.wp.map(p => p.slice()), ev0 = COURSE.even?.map(r => r.slice());
+  const st = straightenBridges(nb) > 0 && buildTrack(COURSE.wp).bridges.some(b => Math.hypot(b.x - nb.x, b.z - nb.z) < 20);
+  if (st) { ed.undoWp = wp0; ed.undoEven = ev0 ?? null; } else { COURSE.wp = wp0; if (ev0) COURSE.even = ev0; }
+  ed.wpDirty = true; updatePreview(); showShape(); flash((nb.kind === 'cross' ? 'Bridge added: this branch goes over' : 'Bridge added over a dug wash') + (st ? ' · the road straightened across it (Undo puts it back)' : ''), '#7dff9a', 2.4);
 }
 
+// Straighten the upper road at each bridge (or at the one nearest `near`): the waypoints over the deck and 14 m
+// past its ends give way to four on the deck's line (2 m and 14 m past each end), so the road runs straight
+// over the deck and into its approaches. Even-grade sections keep their stretch. Returns the number straightened.
+function straightenBridges(near) {
+  let done = 0;
+  const todo = buildTrack(COURSE.wp).bridges.filter(b => !near || Math.hypot(b.x - near.x, b.z - near.z) < 20).map(b => ({ x: b.x, z: b.z }));
+  for (const at of todo) {
+    const T = buildTrack(COURSE.wp), b = T.bridges.find(q => Math.hypot(q.x - at.x, q.z - at.z) < 20); if (!b) continue;
+    const P = T.pts, n = P.length - 1, ds = T.len / n, W = COURSE.wp, m = W.length, idx = wpPtIndex(W, P), i0 = Math.round(b.uOver * n) % n;
+    const S = b.halfL + 14, off = i => { let d = idx[i] - i0; if (d > n / 2) d -= n; if (d < -n / 2) d += n; return d * ds; };
+    // its direction along the course
+    const tq = P[(i0 + 1) % n], tp = P[(i0 - 1 + n) % n], sg = Math.sign((tq.x - tp.x) * b.tx + (tq.z - tp.z) * b.tz) || 1, dx = b.tx * sg, dz = b.tz * sg;
+    const zone = []; for (let i = 0; i < m; i++) if (Math.abs(off(i)) < S + 4) zone.push(i);
+    if (zone.includes(0) || m - zone.length + 4 < 4) continue;               // the start waypoint is there: leave it
+    let at0 = zone.length ? Math.min(...zone) : -1;
+    if (at0 < 0) for (let i = 1; i < m; i++) if (off(i - 1) < 0 && off(i) >= 0) { at0 = i; break; }   // none there: between its neighbours
+    if (at0 < 1) continue;                                                     // (never before the start waypoint)
+    for (const i of [...zone].sort((p, q) => q - p)) { W.splice(i, 1); shiftEven(i, -1); }
+    const put = [-S, -(b.halfL + 2), b.halfL + 2, S].map(sd => [+clamp(b.x + dx * sd, -168, 168).toFixed(1), +clamp(b.z + dz * sd, -168, 168).toFixed(1)]);
+    put.forEach((p, k) => { W.splice(at0 + k, 0, p); shiftEven(at0 + k, 1); });
+    done++;
+  }
+  return done;
+}
 // remove a waypoint (Shift/Alt/Ctrl+click, double-click, or select it and press Delete / Backspace)
 function deleteWaypoint(i) {
   if (i == null || i < 0 || i >= COURSE.wp.length) { flash('Click a waypoint first', '#ffd88a', 1.5); return; }

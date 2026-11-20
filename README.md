@@ -86,6 +86,26 @@ cabin gives less than half as much; the detailed models' panels hang loose, then
   Shards settle and go after 30 s; breaking glass has its own sound.
 - **Repair:** T (restart) or, wrecked, R / Enter; in a race, the grid at every start.
 
+## Bridges
+
+A bridge reshapes the course around it (`scripts/patches/bridges.py`):
+
+- **Even ramps**: each ramp up to the deck is one constant grade, rounded off over its first and last few
+  metres, from the road's own height 40 m out (longer, up to 60 m, to keep it at 8%), so no S-curve, no
+  step at the deck, both ends alike.
+- **A cutting**: at a crossing the road underneath runs 2.4 m below the ground, on grades of at most 7% in
+  and out, between banks of 1 in 1.5; the deck stands 5 m over the cutting's bed (4 m under the girders),
+  so it sits lower and the ramps are shorter or gentler. The levelling no longer forces a bridged
+  crossing's two roads to one height.
+- **Straight**: the deck follows the road's chord across it; adding a bridge in the editor puts the
+  waypoints near it on the deck's line (Undo puts them back), and COURSE's **Straighten at bridges** does
+  it for every bridge (the automatic ones at crossings too).
+- **Tidy ends**: the abutments reach down to the cutting; past their width the embankment starts a few
+  metres beyond the deck's end, a slope rather than a cliff.
+
+On the Figure-8 map: the deck went from 4.4 m above the ground to 5 m over a 2.3 m cutting (1.7 m lower),
+and the ramps from S-curves peaking at 10-11% to an even 8% and 6.6%.
+
 ## Weather
 
 Five skies (`scripts/patches/weather.py`): **Clear** (the default), **Clouds** (sunny, fair-weather
@@ -133,7 +153,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Three of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63** and the

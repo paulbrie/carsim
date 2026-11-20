@@ -78,6 +78,14 @@ rep("""function gateMissed(t, j) {
 """)
 rep("""  timerEl.innerHTML = `<div class="lt">${lap.started ? `LAP ${lap.lapNo}` : 'CROSS START'}""",
     """  timerEl.innerHTML = `<div class="lt">${lap.started ? `LAP ${lap.lapNo}${MP.phase === 'racing' && !MP.finished ? ' / ' + MP.laps : ''}` : MP.hold ? 'ON THE GRID' : 'CROSS START'}""")
+# best laps are the server's in a race (#304): the timer's BEST and deltas, the car's record under them
+rep("""  try { const b = JSON.parse(localStorage.getItem('sandbuggy.best.' + courseKey()) || 'null'); if (b) { lap.best = b.time; lap.bestSplits = b.splits; } } catch (e) { }""",
+    """  if (MP.on) mpApplyBest();
+  else try { const b = JSON.parse(localStorage.getItem('sandbuggy.best.' + courseKey()) || 'null'); if (b) { lap.best = b.time; lap.bestSplits = b.splits; } } catch (e) { }""")
+rep("""    try { localStorage.setItem('sandbuggy.best.' + courseKey(), JSON.stringify({ time: lt, splits: lap.bestSplits })); } catch (e) { }""",
+    """    if (!MP.on) try { localStorage.setItem('sandbuggy.best.' + courseKey(), JSON.stringify({ time: lt, splits: lap.bestSplits })); } catch (e) { }""")
+rep("""<span>BEST ${fmt(lap.best)}</span></div>${segTable()}`;""",
+    """<span>BEST ${fmt(lap.best)}</span></div>${mpRecRow()}${segTable()}`;""")
 # other players on the minimap
 rep("""  for (const b of BOTS.list) { const [x, y] = mapXY(b.pos.x, b.pos.z); c.fillStyle = b.col;""",
     """  for (const pe of MP.peers.values()) { if (!pe.shown) continue; const [x, y] = mapXY(pe.pos.x, pe.pos.z); c.fillStyle = pe.col; c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath(); c.arc(x, y, 4.5, 0, TAU); c.fill(); c.stroke(); }

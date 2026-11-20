@@ -31,6 +31,10 @@ See README.md for the layout. Notes:
 - Ground shaped along the course (banking, levelling, bridge ramps) must take its height between
   course points (`alongCourse`), not at the nearest one: they are ~1 m apart, and nearest-point
   heights make ridges across every slope (#292).
+- Best laps (#304): in a race (`?mp=1`) the timer's BEST comes from the server (`mpApplyBest`, from the
+  room's `records`), not localStorage; anything that rebuilds the course or changes the car or ground must
+  leave `loadBest` / `mpApplyBest` to set it. The server only takes a lap no longer than the time since the
+  player's previous one (`lapMark`): reset it wherever the sim restarts its lap (a car, map or ground change).
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
   every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
   `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).

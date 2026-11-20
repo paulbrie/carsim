@@ -1,9 +1,10 @@
 'use client';
 // The sim (public/sim, the original single-file engine) in an iframe, and the bridge between it
-// and the race server: the room, the phase and the other cars go in by postMessage; our car's
-// position, laps and finish come out and go to the server as they are.
+// and the race server: the room, the phase, the other cars and the best laps go in by postMessage;
+// our car's position, laps and finish come out and go to the server as they are.
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { damageLog, onDamage, onGone, onSnap, send } from '@/lib/client/net';
+import { useSubject } from 'subjecto/react';
+import { damageLog, onDamage, onGone, onSnap, records$, send } from '@/lib/client/net';
 import { withBase } from '@/lib/base-path';
 import { paintOf } from '@/components/race-controls';
 import type { RoomView } from '@/lib/race/types';
@@ -15,6 +16,7 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
   const frame = useRef<HTMLIFrameElement>(null);
   const live = useRef(false);
   const [ready, setReady] = useState(false);
+  const [records] = useSubject(records$);
   const mine = room.players.find(p => p.id === meId);
 
   // the page loads once, with the course, car and ground of the moment; later changes go by message.
@@ -69,6 +71,11 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
     if (mine && (room.phase === 'lobby' || room.phase === 'results')) post({ t: 'car', vehicle: mine.vehicle, paint: mine.paint });
     post({ t: 'phase', phase: room.phase, race: room.race, startsIn: room.startsIn, slot: mine?.slot ?? -1, laps: room.laps, spectator: mine?.spectator ?? false, elapsed: room.elapsed });
   }, [ready, room, meId, mine, post]);
+
+  // the best laps on the room's map and ground (the timer's BEST, its checkpoint deltas, the car's record)
+  useEffect(() => {
+    if (ready && records) post({ t: 'records', ...records });
+  }, [ready, records, post]);
 
   // the room's map: another one picked, or saved since (the sim skips the key it has)
   useEffect(() => {

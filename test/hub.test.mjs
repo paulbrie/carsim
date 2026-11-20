@@ -195,3 +195,67 @@ test('the weather: picked when creating, changed by the host in the lobby only, 
   const { connect: connect2 } = setup();                              // (a hub of its own: the test hub's room codes repeat)
   const c = connect2('c'); c.message({ t: 'create' }); assert.equal(c.last('room').room.weather, 'clear');
 });
+
+test('best laps: valid ones, per map, ground, car and driver, checked against the clock, to the room', async () => {
+  const { connect, advance } = setup();
+  const a = connect('a', 'Ann'), b = connect('b', 'Bob');
+  a.message({ t: 'create', laps: 1 }); const id = a.last('room').room.id;
+  assert.deepEqual(a.last('records'), { t: 'records', map: 'figure-8', v: 0, ground: 'sand', list: [] });   // on joining
+  b.message({ t: 'join', room: id });
+  a.message({ t: 'car', vehicle: 'rs6' });
+  advance(40_000);
+  a.message({ t: 'lap', lap: 1, time: 38.2, valid: false });            // invalid: no record
+  assert.deepEqual(a.last('records').list, []);
+  advance(37_000);
+  a.message({ t: 'lap', lap: 2, time: 39, valid: true });                // longer than since the last lap: no
+  assert.deepEqual(a.last('records').list, []);
+  advance(36_000);
+  a.message({ t: 'lap', lap: 3, time: 35.5, valid: true, splits: [null, 12.25, 99, 'x'] });   // driving around the room counts
+  let rec = b.last('records').list;                                       // everyone in the room hears of it
+  assert.deepEqual(rec.map(e => [e.id, e.name, e.vehicle, e.time]), [['a', 'Ann', 'rs6', 35.5]]);
+  assert.deepEqual(rec[0].splits, [null, 12.25, null, null]);
+  const n = b.all('records').length;
+  advance(40_000);
+  a.message({ t: 'lap', lap: 4, time: 36, valid: true });                // slower: kept as it was, nothing sent
+  assert.equal(b.all('records').length, n);
+  // another car is another record
+  a.message({ t: 'car', vehicle: 'supra' });
+  advance(34_000);
+  a.message({ t: 'lap', lap: 5, time: 33, valid: true });
+  assert.deepEqual(a.last('records').list.map(e => [e.vehicle, e.time]), [['supra', 33], ['rs6', 35.5]]);
+  // a race lap counts, from green
+  b.message({ t: 'ready', ready: true }); a.message({ t: 'start' });
+  b.message({ t: 'lap', lap: 1, time: 1, valid: true });                 // on the grid: no
+  advance(LIMITS.countdownMs + 31_000);
+  b.message({ t: 'lap', lap: 1, time: 30.9, valid: true });
+  assert.deepEqual(a.last('records').list.map(e => [e.id, e.time]), [['b', 30.9], ['a', 33], ['a', 35.5]]);
+  // another ground has its own
+  a.message({ t: 'finish', time: 31 }); b.message({ t: 'finish', time: 31 });
+  a.message({ t: 'again' });
+  a.message({ t: 'settings', ground: 'road' });
+  assert.deepEqual(b.last('records'), { t: 'records', map: 'figure-8', v: 0, ground: 'road', list: [] });
+  a.message({ t: 'settings', ground: 'sand' });
+  assert.equal(b.last('records').list.length, 3);
+});
+
+test('best laps: kept in a file, read back, an earlier layout\'s without splits', async () => {
+  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+  const { RecordStore } = await import('../lib/race/records.mjs');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'records-')), 'records.json');
+  const s1 = new RecordStore(file, { now: () => 5 });
+  const lap = { map: 'm', mv: 2, ground: 'sand', vehicle: 'x7', user: { id: 'u', name: 'U' }, time: 40.1234, splits: [null, 20] };
+  assert.equal(s1.submit({ ...lap, time: 3 }), null);                    // too short to be a lap
+  assert.equal(s1.submit(lap).time, 40.123);
+  assert.equal(s1.submit({ ...lap, time: 41 }), null);
+  s1.flush();
+  const s2 = new RecordStore(file);
+  assert.deepEqual(s2.list('m', 'sand').map(r => [r.id, r.vehicle, r.time, r.mv]), [['u', 'x7', 40.123, 2]]);
+  assert.deepEqual(s2.list('m', 'road'), []);
+  // in a room on version 3 of the map: the time, not its splits
+  const { RaceHub } = await import('../lib/race/hub.mjs');
+  const hub = new RaceHub({ records: s2, maps: { info: id => id === 'm' || id === 'figure-8' ? { id, name: id, v: id === 'm' ? 3 : 0 } : null } });
+  const inbox = []; const c = hub.connect({ id: 'u', name: 'U' }, m => inbox.push(m));
+  c.message({ t: 'create', map: 'm' });
+  const r = inbox.filter(m => m.t === 'records').at(-1);
+  assert.equal(r.v, 3); assert.deepEqual(r.list.map(e => [e.time, e.mv, e.splits]), [[40.123, 2, []]]);
+});

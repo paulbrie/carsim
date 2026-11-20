@@ -10,6 +10,7 @@ import { RaceHub } from './lib/race/hub.mjs';
 import { LIMITS } from './lib/race/shared.mjs';
 import { verifyTicket } from './lib/race/ticket.mjs';
 import { mapStore } from './lib/maps/store.mjs';
+import { recordStore } from './lib/race/records.mjs';
 
 const dev = process.env.NODE_ENV !== 'production';
 nextEnv.loadEnvConfig(process.cwd(), dev);        // .env*, as next dev / next start would, before reading AUTH_SECRET
@@ -25,7 +26,8 @@ const handle = app.getRequestHandler();
 await app.prepare();
 const nextUpgrade = app.getUpgradeHandler();
 
-const hub = new RaceHub({ maps: mapStore() });
+const records = recordStore();
+const hub = new RaceHub({ maps: mapStore(), records });
 const started = Date.now();
 const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMessageDeflate: false });
 
@@ -73,6 +75,7 @@ let stopping = false;
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => {
   if (stopping) return; stopping = true;
   clearInterval(tick); clearInterval(heartbeat);
+  records.flush();
   for (const ws of wss.clients) ws.close(1012, 'server restarting');
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();

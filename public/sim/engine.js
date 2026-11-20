@@ -2498,7 +2498,8 @@ function buildCircuit() {
 const lap = { next: 0, started: false, lapStart: 0, lapNo: 0, time: 0, last: null, lastValid: true, best: null, splits: [], bestSplits: [], lastGate: -1, msg: '', msgCol: '#fff', msgT: 0, prev: new THREE.Vector3(), laps: [], valid: [], invalid: false, missed: [], history: [] };
 function loadBest() {
   lap.best = null; lap.bestSplits = []; lap.last = null; lap.laps = []; lap.valid = []; lap.lapNo = 0; lap.history = [];
-  try { const b = JSON.parse(localStorage.getItem('sandbuggy.best.' + courseKey()) || 'null'); if (b) { lap.best = b.time; lap.bestSplits = b.splits; } } catch (e) { }
+  if (MP.on) mpApplyBest();
+  else try { const b = JSON.parse(localStorage.getItem('sandbuggy.best.' + courseKey()) || 'null'); if (b) { lap.best = b.time; lap.bestSplits = b.splits; } } catch (e) { }
 }
 loadBest();
 const fmt = t => t == null ? '–:––.–––' : `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}`;
@@ -2537,7 +2538,7 @@ function finishLap(t, valid) {
   if (!valid) flash(`Lap ${lap.lapNo} invalid: missed ${lap.missed.map(gateName).join(', ')}`, '#ff6a5a', 3.5);
   else if (lap.best == null || lt < lap.best) {
     lap.best = lt; lap.bestSplits = lap.splits.slice();
-    try { localStorage.setItem('sandbuggy.best.' + courseKey(), JSON.stringify({ time: lt, splits: lap.bestSplits })); } catch (e) { }
+    if (!MP.on) try { localStorage.setItem('sandbuggy.best.' + courseKey(), JSON.stringify({ time: lt, splits: lap.bestSplits })); } catch (e) { }
     flash(`New best lap  ${fmt(lt)}`, '#7dff9a', 3.5);
   } else flash(`Lap ${lap.lapNo}  ${fmt(lt)}  (+${(lt - lap.best).toFixed(3)})`, '#ffd27d', 3.5);
 }
@@ -2615,7 +2616,7 @@ let lapHudT = 0;
 function updateLapHud(dt) {
   if ((lapHudT += dt) < 0.05) return; lapHudT = 0;
   timerEl.innerHTML = `<div class="lt">${lap.started ? `LAP ${lap.lapNo}${MP.phase === 'racing' && !MP.finished ? ' / ' + MP.laps : ''}` : MP.hold ? 'ON THE GRID' : 'CROSS START'}${lap.invalid ? ' <span style="color:#ff6a5a">· INVALID</span>' : ''}</div><div class="cur" style="${lap.invalid ? 'color:#ffb0a6' : ''}">${fmt(lap.started ? lap.time : 0)}</div>
-    <div class="row"><span style="${lap.lastValid ? '' : 'color:#ff8a7a;text-decoration:line-through'}">LAST ${fmt(lap.last)}</span><span>BEST ${fmt(lap.best)}</span></div>${segTable()}`;
+    <div class="row"><span style="${lap.lastValid ? '' : 'color:#ff8a7a;text-decoration:line-through'}">LAST ${fmt(lap.last)}</span><span>BEST ${fmt(lap.best)}</span></div>${mpRecRow()}${segTable()}`;
   document.getElementById('nav').style.top = (timerEl.offsetHeight + 24) + 'px';
   drawDamage();
   toastEl.textContent = lap.msgT > 0 ? lap.msg : ''; toastEl.style.color = lap.msgCol; toastEl.style.opacity = lap.msgT > 0 ? Math.min(1, lap.msgT * 2) : 0;
@@ -5045,7 +5046,9 @@ addEventListener('resize', () => {
           phase {phase, race, startsIn, slot, laps, spectator, elapsed} · course {key, course}
           weather {weather} (also ?weather= at load: scripts/patches/weather.py)
           hit {id, h} · repair {id} · hits {all: {id: [h, …]}} (the others' damage: every hit so far, then each new one)
-     out: ready · s {p, q, v, st, sp, prog, lap} (20 Hz) · lap {lap, time, valid} · finish {time, missed}
+          records {map, v, ground, list} (the best laps on the room's map and ground, #304)
+     out: ready · s {p, q, v, st, sp, prog, lap} (20 Hz) · lap {lap, time, valid, splits} (every lap, raced or not: the
+          server keeps the best valid ones) · finish {time, missed}
           hit {h} (our car struck: carHit's record, see bodyHit) · repair (our car as built again)
    The course is the room's map: the page sets window.__simCourse = {key, course} before it loads
    this iframe (course null: the default figure-8), and sends a new one with course.
@@ -5071,6 +5074,7 @@ function mpKeyBlocked(e) {
 function mpGrid(slot) {
   if (rp.on) stopReplay();
   restartRun();
+  lap.lapNo = 0; lap.last = null; lap.laps = []; lap.valid = []; lap.history = [];   // lap 1 of the race, whatever was driven before
   const Pt = botPath(), row = slot >> 1, side = slot % 2 ? 1 : -1, back = 9 + row * 8 + (slot % 2) * 3;
   const s = ((Pt.s0 - back) % Pt.len + Pt.len) % Pt.len, u = s / Pt.len;
   const p = TRACK.curve.getPointAt(u), t = TRACK.curve.getTangentAt(u).setY(0).normalize();
@@ -5092,10 +5096,11 @@ function mpProgress() {
   return (lap.lapNo - 1) * len + rel;
 }
 
-// called by finishLap, before it moves on: lap lap.lapNo is done
+// called by finishLap, before it moves on: lap lap.lapNo is done (a best lap, maybe; in a race, one of its laps)
 function mpLap(t, valid) {
-  if (!MP.on || MP.phase !== 'racing' || MP.finished || MP.spectator || lap.lapNo < 1) return;
-  mpPost({ t: 'lap', lap: lap.lapNo, time: t - lap.lapStart, valid });
+  if (!MP.on || MP.spectator || lap.lapNo < 1) return;
+  mpPost({ t: 'lap', lap: lap.lapNo, time: t - lap.lapStart, valid, splits: lap.splits });
+  if (MP.phase !== 'racing' || MP.finished) return;
   if (lap.lapNo >= MP.laps) {
     MP.finished = true;
     const time = t - MP.greenSim;
@@ -5216,7 +5221,7 @@ function mpMessage(m) {
   switch (m.t) {
     case 'init': MP.myId = m.me; break;
     case 'car': {
-      if (VEHICLE_LIST[m.vehicle] && m.vehicle !== VEH.key) { switchVehicle(m.vehicle); flash(VEH.name, '#fff', 1.5); }
+      if (VEHICLE_LIST[m.vehicle] && m.vehicle !== VEH.key) { switchVehicle(m.vehicle); flash(VEH.name, '#fff', 1.5); mpApplyBest(); }
       const hex = hexOf(m.paint); if (hex != null) setPaint(VEH, hex, true);
       break;
     }
@@ -5230,8 +5235,28 @@ function mpMessage(m) {
     case 'hit': mpPeerHit(m.id, m.h); break;
     case 'repair': mpPeerRepair(m.id); break;
     case 'hits': mpPeerHits(m.all); break;
+    case 'records': MP.records = m; mpApplyBest(); break;
     case 'focus': try { window.focus(); } catch (e) { } break;
   }
+}
+
+/* ---------- best laps (#304): the server keeps them, per map, ground, car and driver ---------- */
+// MP.records: the room's map and ground's, fastest first ({id, name, vehicle, time, splits, mv}). They are the
+// timer's BEST and its checkpoint deltas (splits: only if set on this version of the map), and the car's record.
+// Called when they come, and when the course (loadBest), the ground or the car changes.
+function mpApplyBest() {
+  const R = MP.records;
+  if (!R || !Array.isArray(R.list)) return;
+  MP.rec = null; lap.best = null; lap.bestSplits = [];
+  if (`${R.map}@${R.v}` !== MP.courseKey || R.ground !== mpGroundNow()) return;      // not this course's (yet)
+  const mine = R.list.find(e => e.id === MP.myId && e.vehicle === VEH.key);
+  if (mine) { lap.best = mine.time; lap.bestSplits = mine.mv === R.v && Array.isArray(mine.splits) ? mine.splits : []; }
+  MP.rec = R.list.find(e => e.vehicle === VEH.key) || null;
+}
+const mpEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function mpRecRow() {
+  const e = MP.on && MP.rec; if (!e) return '';
+  return `<div class="row" style="font-size:12px">${mpEsc(VEH.short)} RECORD ${fmt(e.time)} · ${e.id === MP.myId ? 'you' : mpEsc(e.name)}</div>`;
 }
 
 /* ---------- damage: ours to the others, theirs onto their cars ---------- */
@@ -5299,7 +5324,7 @@ function mpGround(g) {
   const road = ROAD;
   setSurface(g);                                                     // sand / earth <-> road rebuilds the world itself
   if (COURSE.bank && road === ROAD) { clearSkids(); regenerateWorld(); }   // the banking is set for the ground's cornering speed
-  MP.ground = g;
+  MP.ground = g; mpApplyBest();
   flash(`Ground: ${groundName()}`, '#fff', 1.5);
 }
 

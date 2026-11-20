@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { SegmentedControl, SegmentedControlIndicator, SegmentedControlItem } from '@ui-sdk/react/segmented-control';
 import { DriverAvatar } from '@/components/user-menu';
 import { SimFrame, type SimHandle } from '@/components/sim-frame';
 import { PHASE_LABEL } from '@/components/lobby';
@@ -19,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { withBase } from '@/lib/base-path';
 import { LIMITS } from '@/lib/race/shared.mjs';
 import { useMaps, useRoomCourse } from '@/lib/client/maps';
-import { connect, joinRoom, leaveRoom, leaveRoomSoon, me$, onError, reclaim, room$, send, standings$, status$ } from '@/lib/client/net';
+import { connect, joinRoom, leaveRoom, leaveRoomSoon, me$, onError, reclaim, records$, room$, send, standings$, status$ } from '@/lib/client/net';
 import type { PlayerView, RoomView, Standing } from '@/lib/race/types';
 
 export function RaceRoom({ roomId }: { roomId: string; user: { name: string; image: string | null } }) {
@@ -128,6 +129,8 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
               {mine?.spectator && (
                 <p className="rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">A race is running: you are watching it, and race in the next one.</p>
               )}
+              <Separator />
+              <BestLaps room={room} meId={me.id} vehicle={mine?.vehicle} />
             </div>
           </ScrollArea>
 
@@ -183,6 +186,56 @@ function Players({ room, meId }: { room: RoomView; meId: string }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+// The best laps on the room's map and ground (the server's records, #304): with your car, or any.
+// A driver's lap with each car is one entry; a time set before the map was last edited says so.
+function BestLaps({ room, meId, vehicle }: { room: RoomView; meId: string; vehicle?: string }) {
+  const [records] = useSubject(records$);
+  const [which, setWhich] = useState<'car' | 'all'>('car');
+  const forCar = which === 'car' && !!vehicle;
+  const here = records && records.map === room.map.id && records.ground === room.ground ? records : null;
+  const ranked = (here?.list ?? []).filter(e => !forCar || e.vehicle === vehicle);
+  const shown = ranked.slice(0, 10).map((e, i) => ({ e, pos: i + 1 }));
+  const myPos = ranked.findIndex(e => e.id === meId);
+  if (myPos >= 10) shown.push({ e: ranked[myPos]!, pos: myPos + 1 });
+  const lead = ranked[0]?.time;
+  return (
+    <section aria-labelledby="best-laps" className="space-y-3">
+      <h2 id="best-laps" className="text-sm font-medium">Best laps <span className="font-normal text-muted-foreground">· {room.map.name}, {groundName(room.ground)}</span></h2>
+      {vehicle && (
+        <SegmentedControl aria-label="Best laps with" className="seg" value={forCar ? 'car' : 'all'} onValueChange={v => v && setWhich(v as 'car' | 'all')}>
+          <SegmentedControlIndicator className="seg-indicator" />
+          <SegmentedControlItem value="car" className="seg-item">{vehicleName(vehicle)}</SegmentedControlItem>
+          <SegmentedControlItem value="all" className="seg-item">All cars</SegmentedControlItem>
+        </SegmentedControl>
+      )}
+      {!here ? <p className="text-sm text-muted-foreground">Loading…</p> : !shown.length ? (
+        <p className="text-sm text-muted-foreground">No lap yet{forCar ? ` with the ${vehicleName(vehicle!)}` : ''}. A lap counts when it passes every gate, in a race or driving around.</p>
+      ) : (
+        <ol className="space-y-1.5">
+          {shown.map(({ e, pos }) => (
+            <li key={`${e.id}|${e.vehicle}`} className={cn('flex items-center gap-2.5 rounded-lg p-1.5', e.id === meId && 'bg-primary/10')}>
+              <span className="w-5 text-right text-sm tabular-nums text-muted-foreground">{pos}</span>
+              <DriverAvatar name={e.name} image={e.image} className="size-7" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{e.name}{e.id === meId && <span className="text-muted-foreground"> (you)</span>}</span>
+                {(!forCar || e.mv !== here.v) && (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {!forCar && vehicleName(e.vehicle)}{!forCar && e.mv !== here.v && ' · '}{e.mv !== here.v && 'earlier layout'}
+                  </span>
+                )}
+              </span>
+              <span className="text-right font-mono text-sm tabular-nums">
+                {fmtTime(e.time)}
+                {pos > 1 && lead != null && <span className="block text-xs text-muted-foreground">+{(e.time - lead).toFixed(3)}</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   );
 }

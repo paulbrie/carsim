@@ -189,6 +189,12 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
 - **A race:** lobby (host picks ground and laps; the others get ready) → countdown (5 s, on the
   grid, held) → racing → results → back to the grid. Late joiners watch and race the next one; a
   dropped connection keeps its seat for 20 s; a second tab takes over the seat.
+- **Best laps:** every valid lap (all gates, in order), raced or driven around the room, goes to the
+  server, which keeps each driver's fastest per map, ground and car in `<DATA_DIR>/records.json`
+  (`lib/race/records.mjs`; a lap can't be longer than the server's clock says since the last one).
+  The room hears its map and ground's (`records`): the panel lists them (your car / all cars), and
+  the sim's timer shows your BEST with that car, the checkpoint deltas against it and the car's
+  record. An edited map keeps its times, marked "earlier layout" (and without their splits).
 - **Damage:** the sim posts `hit {h}` / `repair`; `server.mjs` relays them (`lib/race/hub.mjs`,
   `hit`, `repair`, and `hits` with everyone's so far on joining); `lib/client/net.ts` keeps the room's
   log for a sim that loads later, and `SimFrame` hands it over.
@@ -211,8 +217,8 @@ a domain's root (Railway). Google's redirect URI there:
    process's memory, so more replicas would split them.
 2. Variables: `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (and `AUTH_GUEST=1` only if
    guests should be allowed). `PORT` is Railway's. Node 24 (`engines`).
-   The maps are files: add a **volume** (e.g. mounted at `/data`) and set `DATA_DIR=/data`, or every
-   deploy starts again from the figure-8 alone.
+   The maps and the best laps are files: add a **volume** (e.g. mounted at `/data`) and set
+   `DATA_DIR=/data`, or every deploy starts again from the figure-8 alone, with no times.
 3. Generate a domain, then in Google Cloud → APIs & Services → Credentials → the OAuth client
    (Web application): authorised redirect URI `https://<domain>/api/auth/callback/google`.
 
@@ -227,13 +233,14 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `lib/race/hub.mjs` | rooms and races (transport-free, tested in `test/hub.test.mjs`) |
 | `lib/race/shared.mjs` | cars, paints, grounds, limits shared by server, UI and sim |
 | `lib/race/ticket.mjs` | WebSocket tickets (HMAC) |
+| `lib/race/records.mjs` | the best laps on disk (tested in `test/hub.test.mjs`) |
 | `lib/admin.ts` | the super admin (`SUPER_ADMIN_EMAIL`) |
 | `lib/maps/store.mjs` | the maps on disk, course checks (tested in `test/maps.test.mjs`) |
 | `app/api/maps/` | the maps API |
 | `app/maps/`, `components/maps-admin.tsx`, `components/map-editor.tsx` | the admin's map list and editor |
 | `lib/client/maps.ts` | the maps from the browser: lists, a room's course |
 | `lib/client/net.ts` | the browser's socket, subjecto Subjects |
-| `components/race-room.tsx` | the race page: panel, standings, results |
+| `components/race-room.tsx` | the race page: panel, best laps, standings, results |
 | `components/sim-frame.tsx` | the sim iframe and its postMessage bridge |
 | `components/race-controls.tsx` | car, paint (UI SDK colour picker), map (UI SDK select), ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |

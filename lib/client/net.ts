@@ -5,7 +5,7 @@
 // damage (onDamage), kept here too (damageLog) for a sim that loads after it came.
 import { Subject } from 'subjecto';
 import { withBase } from '@/lib/base-path';
-import type { CarHit, CarSnap, Me, RoomSummary, RoomView, ServerMsg, Standing } from '@/lib/race/types';
+import type { CarHit, CarSnap, Me, Records, RoomSummary, RoomView, ServerMsg, Standing } from '@/lib/race/types';
 
 export type NetStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'replaced' | 'unauthorized';
 
@@ -14,6 +14,8 @@ export const me$ = new Subject<Me | null>(null);
 export const rooms$ = new Subject<RoomSummary[]>([]);
 export const room$ = new Subject<RoomView | null>(null);
 export const standings$ = new Subject<{ list: Standing[]; elapsed: number; finishWindowLeft: number | null } | null>(null);
+/** the room's map and ground's best laps */
+export const records$ = new Subject<Records | null>(null);
 export const errors$ = new Subject<{ code: string; msg: string; at: number } | null>(null);
 
 type SnapListener = (cars: CarSnap[]) => void;
@@ -95,7 +97,8 @@ function handle(m: ServerMsg) {
     case 'standings': standings$.next({ list: m.standings, elapsed: m.elapsed, finishWindowLeft: m.finishWindowLeft }); break;
     case 'gone': damage.delete(m.id); for (const fn of goneListeners) fn(m.id); break;
     case 'hit': case 'repair': case 'hits': onDamageMsg(m); break;
-    case 'left': damage.clear(); room$.next(null); break;
+    case 'records': { const { t: _, ...r } = m; records$.next(r); break; }
+    case 'left': damage.clear(); room$.next(null); records$.next(null); break;
     case 'replaced': status$.next('replaced'); wanted = false; ws?.close(); break;
     case 'error': errors$.next({ code: m.code, msg: m.msg, at: Date.now() }); break;
   }
@@ -113,7 +116,7 @@ export function joinRoom(id: string) {
 }
 export function leaveRoom() {
   if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
-  wantedRoom = null; send({ t: 'leave' }); room$.next(null);
+  wantedRoom = null; send({ t: 'leave' }); room$.next(null); records$.next(null);
 }
 /** leave unless the same page mounts again at once (React's dev double effects), which re-joins */
 export function leaveRoomSoon() {

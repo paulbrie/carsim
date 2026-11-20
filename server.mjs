@@ -12,7 +12,7 @@ import { verifyTicket } from './lib/race/ticket.mjs';
 
 const dev = process.env.NODE_ENV !== 'production';
 nextEnv.loadEnvConfig(process.cwd(), dev);        // .env*, as next dev / next start would, before reading AUTH_SECRET
-const port = Number(process.env.PORT) || 3100;
+const port = Number(process.env.PORT) || 7001;
 // not $HOSTNAME: containers set it to their own name
 const hostname = process.env.HOST || '0.0.0.0';
 const secret = process.env.AUTH_SECRET;

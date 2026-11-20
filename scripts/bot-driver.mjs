@@ -12,7 +12,7 @@ import { issueTicket } from '../lib/race/ticket.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 nextEnv.loadEnvConfig(root, true);
-const [room, name = 'Robo Racer', vehicle = 'rs6', speedArg = '16', base = 'http://localhost:3100'] = process.argv.slice(2);
+const [room, name = 'Robo Racer', vehicle = 'rs6', speedArg = '16', base = 'http://localhost:7001'] = process.argv.slice(2);
 if (!room) { console.error('usage: node scripts/bot-driver.mjs <ROOM> [name] [vehicle] [speed m/s] [url]'); process.exit(1); }
 const speed = Number(speedArg);
 const track = JSON.parse(readFileSync(join(root, 'scripts/track-figure8.json'), 'utf8'));

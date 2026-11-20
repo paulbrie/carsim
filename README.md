@@ -14,7 +14,7 @@ pick a car and a paint, and race up to eight drivers around the figure-8 on sand
 ```bash
 npm install                  # also copies three.js into public/sim/vendor (postinstall)
 cp .env.example .env.local   # set AUTH_SECRET (openssl rand -base64 32), and Google if you have it
-npm run dev                  # http://localhost:3100
+npm run dev                  # http://localhost:7001
 npm test                     # race server and ticket tests (node:test)
 npm run typecheck
 ```

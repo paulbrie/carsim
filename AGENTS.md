@@ -12,4 +12,4 @@ See README.md for the layout. Notes:
   component; its parts are unstyled, styles live in `app/globals.css` (`.seg*`, `.cp-*`).
 - shadcn components import `cn` from `@/lib/utils` (the CLI wrote `from "cn"`, an unrelated npm
   package: rewrite it if you add components).
-- Dev server: `npm run dev` on port 3100 (3000 is the admin).
+- Dev server: `npm run dev` on port 7001 (3000 is the admin).

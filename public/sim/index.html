@@ -75,6 +75,8 @@
   #editor .hint{font-size:12px;opacity:.85;margin:6px 0}
   #editor .info{font-size:12px;color:#ffd88a;margin:4px 0 8px}
   #editor .sec{font-size:11px;letter-spacing:1.5px;opacity:.7;margin-top:8px}
+  #editor .val{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+  #editor button:disabled{opacity:.45;cursor:default}
   #wreck{display:none;position:fixed;inset:0;align-items:flex-end;padding-bottom:16vh;box-sizing:border-box;justify-content:center;pointer-events:none;z-index:4}
   #wreck .card{background:rgba(60,10,6,.78);color:#fff;border-radius:14px;padding:18px 24px;text-align:center;font-size:14px} #wreck h2{margin:0 0 6px;font-size:26px;color:#ff6a50}
   #busy{display:none;position:fixed;inset:0;align-items:center;justify-content:center;font-size:22px;color:#fff;background:rgba(25,16,6,.5);z-index:6}
@@ -108,6 +110,10 @@
   <div class="info" id="eInfo"></div>
   <div class="sec">COURSE</div>
   <div class="tools"><button data-tool="wp">Waypoints</button><button data-tool="bridge">Bridges</button></div>
+  <div class="sec">SHAPE</div>
+  <label title="Smooth curves opens every bend tighter than this">Min. corner radius <input id="sRad" type="range" min="10" max="60" step="5" value="25"> <span id="sRadV" class="val">25 m</span></label>
+  <div class="tools"><button id="eSmooth" title="Reshape the waypoints so no corner is tighter than the radius above">Smooth curves</button><button id="eUndoSmooth" disabled>Undo smoothing</button></div>
+  <label title="Tilt the ground under each bend toward its inside, steeper in tighter bends, up to this angle">Banking <input id="bankDeg" type="range" min="0" max="25" step="1" value="0"> <span id="bankV" class="val">off</span></label>
   <div class="sec">TERRAIN</div>
   <div class="tools"><button data-tool="raise">Raise</button><button data-tool="lower">Lower</button><button data-tool="flatten">Flatten</button><button data-tool="smooth">Smooth</button></div>
   <div class="sec">GROUND</div>

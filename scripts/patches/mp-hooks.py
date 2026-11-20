@@ -103,7 +103,7 @@ rep("""  requestAnimationFrame(t => { last = t; frame(t); });
 }, 30);""")
 rep("""  if (BOTS.n) setBots(BOTS.n);
   requestAnimationFrame(t => { last = t; frame(t); });""", """  // for tests and the console: step the physics without drawing (headless browsers draw at a frame a second)
-  if (MP.on) Object.assign(window.__sim, { MP, placeAtGate, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
+  Object.assign(window.__sim, { MP, placeAtGate, resetCar, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   if (BOTS.n) setBots(BOTS.n);
   requestAnimationFrame(t => { last = t; frame(t); });""")
 # --- another player's car with the same model keeps its own paint when its model arrives

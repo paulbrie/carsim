@@ -23,6 +23,21 @@ Without Google credentials the sign-in page offers a guest name instead (develop
 `AUTH_GUEST=1`). To try a race alone, `node scripts/bot-driver.mjs <ROOM CODE>` adds a scripted
 driver to a room: it gets ready, lines up, drives the course, and finishes.
 
+## Course editor (single player: `/sim/index.html`, E)
+
+Besides waypoints, bridges, terrain brushes and ground paint, the SHAPE section has:
+
+- **Smooth curves**, to a **min. corner radius** (10–60 m): the waypoints are reshaped so no bend
+  is tighter than that, cutting the tight bends the way a racing line does while the straights stay
+  where they are (no point moves more than ~1.2× the radius). A hairpin between close straights
+  opens only as far as that allows. The info line shows the tightest corner; **Undo smoothing**
+  puts the waypoints back.
+- **Banking** (off–25°): the ground under each bend tilts toward its inside, at the angle a car
+  needs at the ground's cornering speed (sand 14, earth 18, road 24 m/s; tan θ = v²/gR), capped by
+  the slider, eased in and out over ~25 m, flat near bridges and crossings, and blended back into the
+  dunes 9–16 m out. The physics feels it, and the bots' speed plan counts it. Saved with the course
+  (and in Export), with its own best laps.
+
 ## How it fits together
 
 ```
@@ -36,7 +51,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x`.
   Opened without `?mp=1`, `/sim/index.html` is the single-player sim as it was (editor, bots, replays).
 - **Physics run in each browser.** A client reports its car 20 times a second; the server relays
   the positions to the room; the others draw it 120 ms in the past, interpolated, and push against

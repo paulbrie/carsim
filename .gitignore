@@ -12,3 +12,5 @@ public/sim/vendor/
 .shots/
 .bot*.log
 .prod.log
+# Google OAuth client files downloaded from the Cloud console (their keys go in .env.local)
+client_secret_*.json

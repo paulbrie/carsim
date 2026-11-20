@@ -136,5 +136,10 @@ rep("""  navigator: { hubY: 0.395, zF: 1.558, zR: -1.554, paint: 0xeeeeea, eye: 
 rep("""const BOT_CARS = ['rs6', 'supra', 'cayenne', 'bmw7', 'quattroporte', 'x7', 'navigator'],""",
     """const BOT_CARS = ['rs6', 'supra', 'cayenne', 'bmw7', 'quattroporte', 'x7', 'navigator', 'p911', 'sl63', 'xjr'],""")
 
+# a wheel made of several materials (tyre, rim, chrome, badge) loads as a group spinLF with meshes spinLF_1, spinLF_2…:
+# take the group (the first one found), not the last mesh, or only that mesh turns and the rest stays on the body (#299)
+rep("""  const parts = {}; root.traverse(o => { if (/^(spin|stat)[LR][FB]/.test(o.name)) parts[o.name.slice(0, 6)] = o; });""",
+    """  const parts = {}; root.traverse(o => { if (/^(spin|stat)[LR][FB]/.test(o.name)) parts[o.name.slice(0, 6)] ??= o; });   // the first: a wheel of several materials loads as a group spinLF of meshes spinLF_1… (#299)""")
+
 open(ep, 'w').write(s)
 print('cars patched')

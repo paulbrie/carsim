@@ -4367,7 +4367,7 @@ function attachModel(V, root, D) {
   const dz = (a - D.zF + (S.wheels[2].z - D.zR)) / 2, dy = hubY - D.hubY;
   // hide the lofted body and wheels; keep exhaust flames
   b.group.traverse(o => { if (o.isMesh && !b.flames.includes(o)) o.visible = false; });
-  const parts = {}; root.traverse(o => { if (/^(spin|stat)[LR][FB]/.test(o.name)) parts[o.name.slice(0, 6)] = o; });
+  const parts = {}; root.traverse(o => { if (/^(spin|stat)[LR][FB]/.test(o.name)) parts[o.name.slice(0, 6)] ??= o; });   // the first: a wheel of several materials loads as a group spinLF of meshes spinLF_1… (#299)
   for (const o of Object.values(parts)) o.parent.remove(o);
   const bb = new THREE.Box3().setFromObject(root), wbm = D.zF - D.zR;
   const eye = D.eye || [0.38, bb.max.y - 0.37, (D.zF + D.zR) / 2 - 0.09 * wbm];      // driver's eyes, in model space (left-hand drive)

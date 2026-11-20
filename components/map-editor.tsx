@@ -3,6 +3,8 @@
 // course editor) with the map's course, and a bar to rename and save it. The sim posts a
 // signature of its course as it changes (sig), which tells the bar when there is something to save;
 // Save asks it for the course (get → course) and PUTs it.
+// "Test on" tries the course on each ground a race can be on (the sim tells it when G switches the
+// ground too); in a race the room's ground applies, so it is not a change to save.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -14,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { withBase } from '@/lib/base-path';
 import { api, fetchMap } from '@/lib/client/maps';
+import { GroundControl } from '@/components/race-controls';
 import type { Course } from '@/lib/maps/store.mjs';
 
 type Reply = { course: Course; sig: string };
@@ -29,6 +32,7 @@ export function MapEditor({ id, name: initialName, builtin }: { id: string; name
   const [savedSig, setSavedSig] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [ground, setGround] = useState<string | null>(null);
   const pending = useRef(new Map<number, (r: Reply) => void>());
   const seq = useRef(0);
 
@@ -76,6 +80,7 @@ export function MapEditor({ id, name: initialName, builtin }: { id: string; name
       if (m.t === 'ready') setReady(true);
       else if (m.t === 'sig' && typeof m.sig === 'string') { setSig(m.sig); setSavedSig(s => s ?? m.sig); }   // the first one is the map as loaded
       else if (m.t === 'course') { const done = pending.current.get(m.id); if (done) { pending.current.delete(m.id); done({ course: m.course, sig: m.sig }); } }
+      else if (m.t === 'ground' && typeof m.ground === 'string') setGround(m.ground);
       else if (m.t === 'save') void saveRef.current();
     };
     addEventListener('message', onMessage);
@@ -90,6 +95,14 @@ export function MapEditor({ id, name: initialName, builtin }: { id: string; name
     return () => { removeEventListener('keydown', onKey); removeEventListener('beforeunload', onUnload); };
   }, [dirty]);
 
+  const tryOn = (g: string) => {
+    const win = frame.current?.contentWindow;
+    if (!win) return;
+    setGround(g);
+    win.postMessage({ t: 'ground', ground: g }, location.origin);
+    frame.current?.focus(); win.postMessage({ t: 'focus' }, location.origin);   // the keys back to the sim
+  };
+
   const back = (e: React.MouseEvent) => { if (dirty) { e.preventDefault(); setLeaving(true); } };
 
   return (
@@ -102,7 +115,11 @@ export function MapEditor({ id, name: initialName, builtin }: { id: string; name
           <span className="hidden text-sm text-muted-foreground md:inline" aria-live="polite">
             {!ready ? 'Loading the sim…' : dirty ? 'Unsaved changes' : <span className="inline-flex items-center gap-1"><Check className="size-4" /> Saved</span>}
           </span>
-          <span className="ml-auto hidden text-xs text-muted-foreground xl:inline">E: drive the course / back to the editor · Ctrl+S: save</span>
+          <div className="ml-auto flex shrink-0 items-center gap-2" title="Try the course on each ground: in a race, the host picks it">
+            <span className="hidden text-xs text-muted-foreground sm:inline">Test on</span>
+            <GroundControl value={ground ?? 'sand'} disabled={!ready || ground == null} onChange={tryOn} />
+          </div>
+          <span className="hidden text-xs text-muted-foreground 2xl:inline">E: drive / back to the editor · G: ground · Ctrl+S: save</span>
           <Button type="submit" disabled={!ready || saving || !dirty} className="shrink-0">
             {saving ? <Loader2 className="animate-spin" /> : <Save />} Save
           </Button>

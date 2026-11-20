@@ -88,7 +88,10 @@ guests never are). Only the super admin can create, edit and delete maps; anyone
   *Export course* file), copy, delete, open in the editor. The figure-8 is built in: editable, not deletable.
 - **`/maps/[id]`**: the sim in edit mode (`/sim/index.html?edit=1`) on its course editor, with the
   map's course and nothing saved in the browser; *Save* (or Ctrl/Cmd+S) puts the course on the
-  server. E drives the course to try it, and back.
+  server. E drives the course to try it, and back. **Test on** (Sand / Earth / Road, or G while
+  driving) tries it on each ground a race can be on, a banked course rebuilt for that ground's
+  cornering speed. The ground isn't something to save: in a race the host picks it (the map keeps
+  the last one tried, for the editor to open on).
 - **Saved** as `<DATA_DIR>/maps/<id>.json` (`lib/maps/store.mjs`, default `./data`, not in git), through
   `/api/maps` (GET for anyone signed in; POST, PUT, DELETE for the super admin, 403 for others).
 - **In a room** the host picks the map (lobby, or New race). The page loads its course and hands it

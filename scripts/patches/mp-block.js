@@ -180,7 +180,7 @@ function mpMessage(m) {
       const hex = hexOf(m.paint); if (hex != null) setPaint(VEH, hex, true);
       break;
     }
-    case 'ground': { const g = ['sand', 'earth', 'road'].includes(m.ground) ? m.ground : null; if (g && g !== (ROAD ? 'road' : COURSE.base)) { setSurface(g); flash(`Ground: ${groundName()}`, '#fff', 1.5); } break; }
+    case 'ground': mpGround(m.ground); break;
     case 'roster': mpRoster(m.players || []); break;
     case 'snap': mpSnap(m.cars || []); break;
     case 'gone': { const pe = MP.peers.get(m.id); if (pe) mpDropPeer(pe); break; }
@@ -251,18 +251,37 @@ function mpSetCourse(key, course) {
   }, 30);
 }
 
-// the map editor: what the page asks for, and a signature of the course so it knows when there is something to save
+// the ground a race is on (the room's), or the map editor tries the course on (#297)
+const mpGroundNow = () => ROAD ? 'road' : COURSE.base;
+function mpGround(g) {
+  if (!['sand', 'earth', 'road'].includes(g) || g === mpGroundNow()) return;
+  const road = ROAD;
+  setSurface(g);                                                     // sand / earth <-> road rebuilds the world itself
+  if (COURSE.bank && road === ROAD) { clearSkids(); regenerateWorld(); }   // the banking is set for the ground's cornering speed
+  MP.ground = g;
+  flash(`Ground: ${groundName()}`, '#fff', 1.5);
+}
+
+// the map editor: what the page asks for, and a signature of the course so it knows when there is something to save.
+// The ground is not in it: it is the room's in a race, so here it is only what the course is tried on (the bar's
+// switch, or G); the map is saved with the last one, for the editor to open on.
 function mpEditMessage(m) {
   if (!m || typeof m !== 'object') return;
   if (m.t === 'get') mpPost({ t: 'course', id: m.id, course: COURSE, sig: mpEditSig() });
+  else if (m.t === 'ground') mpGround(m.ground);
   else if (m.t === 'focus') try { window.focus(); } catch (e) { }
 }
-const mpEditSig = () => `${courseKey()}.${COURSE.ops.length}.${ROAD ? 'road' : COURSE.base}`;
+const mpEditSig = () => `${courseKey()}.${COURSE.ops.length}`;
 function mpEditFrame(dt) {
   if ((MP.sendT += dt) < 0.5) return;
   MP.sendT = 0;
   const sig = mpEditSig();
   if (sig !== MP.sig) { MP.sig = sig; mpPost({ t: 'sig', sig }); }
+  const g = mpGroundNow();
+  if (g !== MP.ground) {                                             // G while driving, or an imported course
+    if (MP.ground && COURSE.bank && (g === 'road') === (MP.ground === 'road')) { clearSkids(); regenerateWorld(); }
+    MP.ground = g; mpPost({ t: 'ground', ground: g });
+  }
 }
 
 const mpQa = new THREE.Quaternion(), mpQb = new THREE.Quaternion(), mpV = new THREE.Vector3();

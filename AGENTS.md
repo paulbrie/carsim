@@ -41,6 +41,10 @@ See README.md for the layout. Notes:
   room's `records`), not localStorage; anything that rebuilds the course or changes the car or ground must
   leave `loadBest` / `mpApplyBest` to set it. The server only takes a lap no longer than the time since the
   player's previous one (`lapMark`): reset it wherever the sim restarts its lap (a car, map or ground change).
+- The ghost car (#310) is timed by our lap (`simTime - lap.lapStart`) and its path comes from the replay tape
+  (`rp.buf`, `mpTrace`): keep `recordFrame` recording in races. It is see-through with a depth-only twin drawn
+  after everything solid (`mpGhostDepth`), so only its nearest surfaces show; a model that loads later gets the
+  same treatment from `V.onModel`.
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
   every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
   `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).

@@ -29,7 +29,8 @@ const nextUpgrade = app.getUpgradeHandler();
 const records = recordStore();
 const hub = new RaceHub({ maps: mapStore(), records });
 const started = Date.now();
-const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMessageDeflate: false });
+// maxPayload: a best lap's path (#310) is the biggest message
+const wss = new WebSocketServer({ noServer: true, maxPayload: 80 * 1024, perMessageDeflate: false });
 
 const server = createServer((req, res) => {
   if (req.url === `${base}/api/health`) {

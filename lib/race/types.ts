@@ -30,7 +30,10 @@ export interface RoomView {
 }
 
 /** a driver's best lap with a car on a map and ground (lib/race/records.mjs); splits only if set on this version of the map */
-export interface BestLap { id: string; name: string; image: string | null; vehicle: string; time: number; splits: (number | null)[]; mv: number; at: number }
+export interface BestLap { id: string; name: string; image: string | null; vehicle: string; time: number; splits: (number | null)[]; mv: number; at: number; ghost?: boolean }
+
+/** a best lap's path, to race against (#310): trace as lib/race/records.mjs GHOST describes it, null if there is none */
+export interface GhostLap { map: string; v: number; ground: string; vehicle: string; id: string; name: string; time: number | null; trace: string | null }
 
 /** the room's map (version v) and ground's best laps, fastest first */
 export interface Records { map: string; v: number; ground: string; list: BestLap[] }
@@ -49,6 +52,7 @@ export type ServerMsg =
   | { t: 'repair'; id: string }
   | { t: 'hits'; all: Record<string, CarHit[]> }
   | ({ t: 'records' } & Records)
+  | ({ t: 'ghost' } & GhostLap)
   | { t: 'standings'; standings: Standing[]; elapsed: number; finishWindowLeft: number | null }
   | { t: 'gone'; id: string }
   | { t: 'left' }

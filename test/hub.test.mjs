@@ -261,3 +261,40 @@ test('best laps: kept in a file, read back, an earlier layout\'s without splits'
   const r = inbox.filter(m => m.t === 'records').at(-1);
   assert.equal(r.v, 3); assert.deepEqual(r.list.map(e => [e.time, e.mv, e.splits]), [[40.123, 2, []]]);
 });
+
+test('ghosts: a best lap\'s path kept with it, checked, given to who asks, only on the map as it is now', async () => {
+  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+  const { RecordStore, GHOST } = await import('../lib/race/records.mjs');
+  const { RaceHub } = await import('../lib/race/hub.mjs');
+  const trace = time => Buffer.alloc((Math.floor(time / GHOST.dt + 1e-6) + 1) * GHOST.fields * 2, 7).toString('base64');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghosts-')), file = path.join(dir, 'records.json');
+  let t = 1_000_000, v = 1;
+  const maps = { info: id => id === 'figure-8' ? { id, name: 'Figure-8', v } : null };
+  const hub = new RaceHub({ now: () => t, records: new RecordStore(file, { now: () => t }), maps });
+  const inbox = []; const c = hub.connect({ id: 'a', name: 'Ann' }, m => inbox.push(m));
+  const last = type => inbox.filter(m => m.t === type).at(-1);
+  c.message({ t: 'create' });
+  t += 31_000; c.message({ t: 'lap', lap: 1, time: 30, valid: true, trace: trace(30) });
+  assert.equal(last('records').list[0].ghost, true);
+  c.message({ t: 'ghost', id: 'a', vehicle: last('records').list[0].vehicle });
+  assert.equal(last('ghost').trace, trace(30)); assert.equal(last('ghost').name, 'Ann'); assert.equal(last('ghost').time, 30);
+  assert.equal(fs.readdirSync(path.join(dir, 'ghosts')).length, 1);
+  // read back by another store (a restarted server)
+  const vehicle = last('records').list[0].vehicle;
+  assert.equal(new RecordStore(file, { now: () => t }).ghost('figure-8', 'sand', vehicle, 'a'), null);   // records.json not written yet (debounced)
+  hub.records.flush();
+  assert.equal(new RecordStore(file).ghost('figure-8', 'sand', vehicle, 'a'), trace(30));
+  // a path that doesn't cover the lap: the record, no ghost (and the old one goes)
+  t += 30_000; c.message({ t: 'lap', lap: 2, time: 29, valid: true, trace: trace(20) });
+  assert.deepEqual([last('records').list[0].time, last('records').list[0].ghost], [29, false]);
+  assert.equal(fs.readdirSync(path.join(dir, 'ghosts')).length, 0);
+  c.message({ t: 'ghost', id: 'a', vehicle }); assert.equal(last('ghost').trace, null);
+  t += 30_000; c.message({ t: 'lap', lap: 3, time: 28, valid: true, trace: 'not base64!' });
+  assert.equal(last('records').list[0].ghost, false);
+  t += 30_000; c.message({ t: 'lap', lap: 4, time: 27.5, valid: true, trace: trace(27.5) });
+  assert.equal(last('records').list[0].ghost, true);
+  // the map edited: its old path doesn't fit any more
+  v = 2; c.message({ t: 'start' }); t += LIMITS.countdownMs + 1000; hub.tick();
+  assert.equal(last('records').v, 2); assert.equal(last('records').list[0].ghost, false);
+  c.message({ t: 'ghost', id: 'a', vehicle }); assert.equal(last('ghost').trace, null);
+});

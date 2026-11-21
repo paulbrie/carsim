@@ -20,8 +20,9 @@ import { cn } from '@/lib/utils';
 import { withBase } from '@/lib/base-path';
 import { LIMITS } from '@/lib/race/shared.mjs';
 import { useMaps, useRoomCourse } from '@/lib/client/maps';
+import { GHOST_MODES, ghostMode$, pickGhost, setGhostMode, type GhostMode } from '@/lib/client/ghost';
 import { connect, joinRoom, leaveRoom, leaveRoomSoon, me$, onError, reclaim, records$, room$, send, standings$, status$ } from '@/lib/client/net';
-import type { PlayerView, RoomView, Standing } from '@/lib/race/types';
+import type { PlayerView, Records, RoomView, Standing } from '@/lib/race/types';
 
 export function RaceRoom({ roomId }: { roomId: string; user: { name: string; image: string | null } }) {
   const router = useRouter();
@@ -236,7 +237,29 @@ function BestLaps({ room, meId, vehicle }: { room: RoomView; meId: string; vehic
           ))}
         </ol>
       )}
+      <GhostControl records={here} meId={meId} vehicle={vehicle} />
     </section>
+  );
+}
+
+// The ghost car (#310): a see-through car on the chosen best lap's path, setting off when our lap starts.
+function GhostControl({ records, meId, vehicle }: { records: Records | null; meId: string; vehicle?: string }) {
+  const [mode] = useSubject(ghostMode$);
+  const g = pickGhost(records, mode, meId, vehicle);
+  return (
+    <div className="space-y-2 pt-1">
+      <h3 id="ghost-car" className="text-xs font-medium text-muted-foreground">Ghost car</h3>
+      <SegmentedControl aria-labelledby="ghost-car" className="seg" value={mode} onValueChange={v => v && setGhostMode(v as GhostMode)}>
+        <SegmentedControlIndicator className="seg-indicator" />
+        {GHOST_MODES.map(m => <SegmentedControlItem key={m.key} value={m.key} className="seg-item" title={m.blurb}>{m.name}</SegmentedControlItem>)}
+      </SegmentedControl>
+      {mode !== 'off' && (
+        <p className="text-xs text-muted-foreground">
+          {g ? <>Racing {g.id === meId ? 'your' : `${g.name}’s`} {fmtTime(g.time)} in the {vehicleName(g.vehicle)}: it sets off when your lap starts.</>
+            : 'No lap to race yet: a best lap set from now on brings its ghost.'}
+        </p>
+      )}
+    </div>
   );
 }
 

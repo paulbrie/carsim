@@ -2,9 +2,10 @@
 // The sim (public/sim, the original single-file engine) in an iframe, and the bridge between it
 // and the race server: the room, the phase, the other cars and the best laps go in by postMessage;
 // our car's position, laps and finish come out and go to the server as they are.
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useSubject } from 'subjecto/react';
-import { damageLog, onDamage, onGone, onSnap, records$, send } from '@/lib/client/net';
+import { damageLog, ghost$, onDamage, onGone, onSnap, records$, send } from '@/lib/client/net';
+import { ghostMode$, pickGhost } from '@/lib/client/ghost';
 import { withBase } from '@/lib/base-path';
 import { paintOf } from '@/components/race-controls';
 import type { RoomView } from '@/lib/race/types';
@@ -17,6 +18,8 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
   const live = useRef(false);
   const [ready, setReady] = useState(false);
   const [records] = useSubject(records$);
+  const [ghostMode] = useSubject(ghostMode$);
+  const [ghost] = useSubject(ghost$);
   const mine = room.players.find(p => p.id === meId);
 
   // the page loads once, with the course, car and ground of the moment; later changes go by message.
@@ -76,6 +79,20 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
   useEffect(() => {
     if (ready && records) post({ t: 'records', ...records });
   }, [ready, records, post]);
+
+  // the ghost car (#310): the chosen best lap's path, asked of the server when the choice or the lap changes
+  const want = useMemo(() => pickGhost(records, ghostMode, meId, mine?.vehicle), [records, ghostMode, meId, mine?.vehicle]);
+  const wantKey = want && records ? `${records.map}@${records.v}|${records.ground}|${want.vehicle}|${want.id}|${want.time}` : null;
+  useEffect(() => {
+    if (want) send({ t: 'ghost', id: want.id, vehicle: want.vehicle });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantKey]);
+  useEffect(() => {
+    if (!ready) return;
+    const g = ghost, ok = !!(want && records && g?.trace && g.id === want.id && g.vehicle === want.vehicle && g.time === want.time
+      && g.map === records.map && g.v === records.v && g.ground === records.ground);
+    post(ok ? { t: 'ghost', key: wantKey, course: `${g!.map}@${g!.v}`, ground: g!.ground, vehicle: g!.vehicle, name: g!.name, time: g!.time, trace: g!.trace } : { t: 'ghost', key: null });
+  }, [ready, ghost, want, wantKey, records, post]);
 
   // the room's map: another one picked, or saved since (the sim skips the key it has)
   useEffect(() => {

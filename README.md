@@ -220,6 +220,12 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   with the car you drive on this map and ground (the top 10 and yours, with the gap to the fastest; under
   the minimap, shorter, when the window is narrow). An edited map keeps its times, marked "earlier layout"
   (and without their splits).
+- **Ghost car** (the room panel's Ghost car: Off / Track record / Car record / My best, kept in the
+  browser, `lib/client/ghost.ts`): a lap better than the driver's best brings its path (`trace`: 10
+  samples a second of position, orientation and steering, from the replay tape), kept in
+  `<DATA_DIR>/ghosts/`. `SimFrame` asks for the chosen record's (`ghost`) and hands it to the sim,
+  which drives a see-through copy of that car along it, on the start line until our lap starts and
+  then in step with it. Only laps on the map as it is now have one.
 - **Damage:** the sim posts `hit {h}` / `repair`; `server.mjs` relays them (`lib/race/hub.mjs`,
   `hit`, `repair`, and `hits` with everyone's so far on joining); `lib/client/net.ts` keeps the room's
   log for a sim that loads later, and `SimFrame` hands it over.

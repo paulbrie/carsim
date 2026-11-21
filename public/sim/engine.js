@@ -5133,8 +5133,10 @@ addEventListener('resize', () => {
           weather {weather} (also ?weather= at load: scripts/patches/weather.py)
           hit {id, h} · repair {id} · hits {all: {id: [h, …]}} (the others' damage: every hit so far, then each new one)
           records {map, v, ground, list} (the best laps on the room's map and ground, #304)
+          ghost {key, course, ground, vehicle, name, time, trace} (a best lap's path to race against; key null: none, #310)
      out: ready · s {p, q, v, st, sp, prog, lap, sk} (20 Hz; sk: the four wheels' skid marks, 4 bits each, #306)
-          lap {lap, time, valid, splits} (every lap, raced or not: the server keeps the best valid ones) · finish {time, missed}
+          lap {lap, time, valid, splits, trace?} (every lap, raced or not: the server keeps the best valid ones; trace: the
+          path of a lap better than our best, for its ghost) · finish {time, missed}
           hit {h} (our car struck: carHit's record, see bodyHit) · repair (our car as built again)
    The course is the room's map: the page sets window.__simCourse = {key, course} before it loads
    this iframe (course null: the default figure-8), and sends a new one with course.
@@ -5185,7 +5187,8 @@ function mpProgress() {
 // called by finishLap, before it moves on: lap lap.lapNo is done (a best lap, maybe; in a race, one of its laps)
 function mpLap(t, valid) {
   if (!MP.on || MP.spectator || lap.lapNo < 1) return;
-  mpPost({ t: 'lap', lap: lap.lapNo, time: t - lap.lapStart, valid, splits: lap.splits });
+  const time = t - lap.lapStart, trace = valid && (lap.best == null || time < lap.best) ? mpTrace(lap.lapStart, t) : null;   // lap.best: still the one before
+  mpPost({ t: 'lap', lap: lap.lapNo, time, valid, splits: lap.splits, ...(trace ? { trace } : {}) });
   if (MP.phase !== 'racing' || MP.finished) return;
   if (lap.lapNo >= MP.laps) {
     MP.finished = true;
@@ -5322,6 +5325,7 @@ function mpMessage(m) {
     case 'repair': mpPeerRepair(m.id); break;
     case 'hits': mpPeerHits(m.all); break;
     case 'records': MP.records = m; mpApplyBest(); break;
+    case 'ghost': mpGhostMsg(m); break;
     case 'focus': try { window.focus(); } catch (e) { } break;
   }
 }
@@ -5354,6 +5358,94 @@ function mpRecRow() {
   const row = ([e, our]) => `<tr style="${our ? 'color:#ffd27d;font-weight:700' : ''}"><td>${mpEsc(e ? (ROAD_CARS[e.vehicle] || BUGGY).short : VEH.short)}</td>`
     + `<td>${e ? fmt(e.time) : '–'}</td><td style="text-align:left;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e ? mpEsc(e.name) : 'no lap yet'}</td></tr>`;
   return `<table class="seg"><tr><th style="text-align:left">BEST LAPS</th><th></th><th></th></tr>${rows.map(row).join('')}</table>`;
+}
+
+/* ---------- the ghost car (#310): a best lap's path, driven by a see-through car that sets off with our lap ---------- */
+// A trace (lib/race/records.mjs GHOST): a sample every GH_DT s of x, y, z (GH_POS m), the orientation's quaternion
+// (× 32767) and the steering (× 10000), little-endian int16s, in base64.
+const GH_DT = 0.1, GH_F = 8, GH_POS = 0.02, GH_MAX = 2800, GH_OPACITY = 0.35;
+// our lap from t0 to t1, from the replay tape (the last 6 minutes at 30 Hz), or null if it isn't all on it
+function mpTrace(t0, t1) {
+  const B = rp.buf;
+  if (B.length < 2 || B[0].t > t0 + 0.05 || B[B.length - 1].t < t1 - 0.1) return null;
+  const n = Math.floor((t1 - t0) / GH_DT + 1e-6) + 1; if (n > GH_MAX) return null;
+  const dv = new DataView(new ArrayBuffer(n * GH_F * 2));
+  for (let i = 0, j = 0; i < n; i++) {
+    const t = t0 + i * GH_DT; while (j < B.length - 2 && B[j + 1].t <= t) j++;
+    const A = B[j], C = B[j + 1], f = C.t > A.t ? clamp((t - A.t) / (C.t - A.t), 0, 1) : 0;
+    mpQa.fromArray(A.q).slerp(mpQb.fromArray(C.q), f);
+    [lerp(A.p[0], C.p[0], f) / GH_POS, lerp(A.p[1], C.p[1], f) / GH_POS, lerp(A.p[2], C.p[2], f) / GH_POS, mpQa.x * 32767, mpQa.y * 32767, mpQa.z * 32767, mpQa.w * 32767,
+      lerp(A.steer, C.steer, f) * 10000].forEach((v, k) => dv.setInt16((i * GH_F + k) * 2, clamp(Math.round(v), -32768, 32767), true));
+  }
+  const u8 = new Uint8Array(dv.buffer); let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+const mpGhost = { key: null, V: null, label: null, dv: null, n: 0, course: null, ground: null, spin: 0, lookT: 0, old: [], pre: null, preN: 0, preW: [] };
+// its depth, drawn after everything solid: of its see-through surfaces only the nearest show, not the cabin through the body
+const mpGhostDepth = new THREE.MeshBasicMaterial({ colorWrite: false });
+function mpGhostMsg(m) {
+  if ((m.key || null) === mpGhost.key) return;
+  mpDropGhost();
+  if (!m.key || typeof m.trace !== 'string' || !(m.vehicle === 'buggy' || ROAD_CARS[m.vehicle])) return;
+  let u8; try { const s = atob(m.trace); u8 = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i); } catch (e) { return; }
+  const n = Math.floor(u8.length / (GH_F * 2)); if (n < 2) return;
+  Object.assign(mpGhost, { key: m.key, dv: new DataView(u8.buffer), n, course: m.course, ground: m.ground, spin: 0, lookT: 0, old: [], pre: null, preN: 0, preW: [] });
+  const V = mpGhost.V = mpMakeVehicle(m.vehicle);
+  V.onModel = () => { if (mpGhost.V === V) mpGhostLook(); };          // the detailed model, see-through before it is drawn
+  mpGhostLook();
+  mpGhost.label = mpLabel(`Ghost · ${m.name} · ${fmt(m.time)}`, '#9fd4ff');
+}
+// see-through: its own copy of every material (the detailed model comes later, so again now and then)
+function mpGhostLook() {
+  const G = mpGhost, own = !!G.V.ownMats;                            // a buggy copy shares its materials with ours
+  G.V.vis.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = false;
+    const one = m => { if (m.userData.ghost) return m; if (!own) G.old.push(m); const c = m.clone(); c.userData = { ghost: true }; c.transparent = true; c.opacity = GH_OPACITY * (m.transparent ? m.opacity : 1); c.depthWrite = false; return c; };
+    o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
+  });
+  let n = 0; G.V.vis.traverse(o => { if (o.isMesh) n++; });
+  if (n === G.preN) return;
+  if (G.pre) scene.remove(G.pre);                                    // (its geometry is the ghost's)
+  G.pre = G.V.vis.clone(true); G.preN = n; G.preW = [];
+  const a = [], b = []; G.V.vis.traverse(o => a.push(o)); G.pre.traverse(o => b.push(o));
+  const twin = new Map(a.map((o, i) => [o, b[i]]));
+  for (const W of G.V.wheels) for (const o of [W.holder, W.spinner]) if (o && twin.get(o)) G.preW.push([o, twin.get(o)]);
+  G.pre.traverse(o => { if (o.isMesh) { o.material = mpGhostDepth; o.castShadow = o.receiveShadow = false; o.renderOrder = 1e6; } });
+  scene.add(G.pre);
+}
+function mpDropGhost() {
+  const G = mpGhost; G.key = null;
+  if (!G.V) return;
+  scene.remove(G.V.vis); scene.remove(G.label); if (G.pre) scene.remove(G.pre);
+  G.label.material.map.dispose(); G.label.material.dispose();
+  G.V.vis.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.userData.ghost && m.dispose()); if (!G.V.ownMats && o.geometry) o.geometry.dispose(); });
+  G.old.forEach(m => m.dispose()); if (G.V.ownMats) G.V.ownMats.forEach(m => m.dispose());
+  G.V = null; G.label = null; G.dv = null; G.old = []; G.pre = null; G.preN = 0; G.preW = [];
+}
+// on the start line until our lap starts, then where it was that far into its lap; gone a little after it finished
+function mpGhostFrame(dt) {
+  const G = mpGhost, V = G.V; if (!V) return;
+  const t = lap.started ? simTime - lap.lapStart : 0, dur = (G.n - 1) * GH_DT;
+  const show = G.course === MP.courseKey && G.ground === mpGroundNow() && !rp.on && !ed.on && t <= dur + 1.5;
+  V.vis.visible = show; G.label.visible = show; if (G.pre) G.pre.visible = show;
+  if (!show) return;
+  if ((G.lookT += dt) > 0.5) { G.lookT = 0; mpGhostLook(); }
+  const x = clamp(t / GH_DT, 0, G.n - 1), i = Math.min(Math.floor(x), G.n - 2), f = x - i, g = (s, k) => G.dv.getInt16((s * GH_F + k) * 2, true);
+  const P = k => lerp(g(i, k), g(i + 1, k), f) * GH_POS;
+  V.vis.position.set(P(0), P(1), P(2));
+  V.vis.quaternion.copy(mpQa.set(g(i, 3), g(i, 4), g(i, 5), g(i, 6)).normalize()).slerp(mpQb.set(g(i + 1, 3), g(i + 1, 4), g(i + 1, 5), g(i + 1, 6)).normalize(), f);
+  const steer = lerp(g(i, 7), g(i + 1, 7), f) / 10000, v = Math.hypot(g(i + 1, 0) - g(i, 0), g(i + 1, 2) - g(i, 2)) * GH_POS / GH_DT;
+  if (lap.started && t < dur) G.spin += v / (V.R || 0.35) * dt;
+  const tRest = V.REST - V.mass * 9.81 / 4 / V.K;
+  for (const W of V.wheels) {
+    if (!W.holder) continue;
+    W.holder.position.set(W.hp.x, W.hp.y - tRest, W.hp.z); W.holder.rotation.set(0, W.front ? steer : 0, 0);
+    if (W.spinner) W.spinner.rotation.x = G.spin;
+  }
+  G.label.position.set(V.vis.position.x, V.vis.position.y + 2.4, V.vis.position.z);
+  if (G.pre) { G.pre.position.copy(V.vis.position); G.pre.quaternion.copy(V.vis.quaternion); for (const [o, c] of G.preW) { c.position.copy(o.position); c.quaternion.copy(o.quaternion); } }
 }
 
 // right of the timer (#309): every driver's best lap with the car we drive, on this map and ground, fastest first
@@ -5520,7 +5612,7 @@ const mpQa = new THREE.Quaternion(), mpQb = new THREE.Quaternion(), mpV = new TH
 function mpFrame(dt) {
   if (!MP.on) { if (MP.edit) mpEditFrame(dt); return; }
   const now = performance.now();
-  mpBestFrame(dt);
+  mpBestFrame(dt); mpGhostFrame(dt);
   const racing = (MP.phase === 'countdown' || MP.phase === 'racing') && !MP.finished && !MP.spectator;
   if (racing !== MP.racingCls) { MP.racingCls = racing; document.body.classList.toggle('mp-race', racing); if (racing && rp.on) stopReplay(); }
   // countdown on the grid

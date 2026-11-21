@@ -62,10 +62,31 @@ function duneHeight(x, z) {
   return h;
 }
 
+// Earth and Road (#308): rolling countryside instead of dunes: broad hills and swales, no slip faces
+function countryHeight(x, z) {
+  let h = 4 + 6.5 * n1(x / 170 + 3.1, z / 170 - 1.7) + 2.6 * n2(x / 74 - 5, z / 74 + 2) + 0.6 * n3(x / 26 + 1, z / 26 - 3)
+    + 0.12 * n1(x / 6.5, z / 6.5) + 0.03 * n2(x / 1.9, z / 1.9);
+  const d = Math.hypot(x, z), t = smooth(clamp((d - 12) / 32, 0, 1));
+  h = lerp(4 + 0.25 * (h - 4), h, t);                        // calmer spawn area
+  const e = Math.max(Math.abs(x), Math.abs(z));
+  if (e > 172) h += ((e - 172) / 28) ** 2 * 16;               // world rim
+  return h;
+}
+// the countryside's dry grass, 0-255 a cell (patches of it, thicker in places), drawn where the ground is earth
+const GRASS = new Uint8Array(V * V);
+let COUNTRY = false;                                         // the world was built as countryside (Earth, Road)
 function generateTerrain() {
+  const was = COUNTRY; COUNTRY = ROAD || COURSE.base === 'earth';
+  if (COUNTRY !== was) setWeather(weatherKey, false);        // its haze and the light off the ground
+  const hf = COUNTRY ? countryHeight : duneHeight;
   for (let j = 0; j < V; j++) {
     const z = -HALF + j * CELL;
-    for (let i = 0; i < V; i++) B[j * V + i] = duneHeight(-HALF + i * CELL, z);
+    for (let i = 0; i < V; i++) B[j * V + i] = hf(-HALF + i * CELL, z);
+  }
+  if (COUNTRY) for (let j = 0; j < V; j++) {
+    const z = -HALF + j * CELL;
+    for (let i = 0; i < V; i++) { const x = -HALF + i * CELL;
+      GRASS[j * V + i] = 255 * clamp(0.6 + 0.8 * n2(x / 31 + 9, z / 31 - 4) + 0.35 * n3(x / 8.5, z / 8.5 + 6) + 0.15 * n1(x / 2.3 + 4, z / 2.3), 0, 1); }
   }
   C.fill(0); M.fill(0);
   // a levelled road, or one with a max. grade, is graded over the editor's terrain strokes (the ones off
@@ -97,7 +118,7 @@ const SURFACES = {
 const BASES = ['sand', 'earth'];
 let SURF = SURFACES.sand;
 let ROAD = false;                                   // road mode: the racing line is paved
-const ROAD_HALF = 4.6;                              // half-width of the paved road (two lanes plus a narrow shoulder)
+const ROAD_HALF = 6;                                // half-width of the paved road: two 4.5 m lanes and 1.5 m shoulders (#308)
 const RM = new Uint8Array(V * V);                   // 1 where the course is paved in road mode
 const SURF_ID = [null, SURFACES.sand, SURFACES.earth, SURFACES.asphalt];
 const surfAtCell = k => M[k] ? SURF_ID[M[k]] : ROAD && RM[k] ? SURFACES.asphalt : SURF;
@@ -281,15 +302,18 @@ for (let i = 0; i < RAIN_N; i++) { rainPos[i * 3] = (Math.random() - 0.5) * 60; 
 const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainSeg, 3));
 const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xc8d0da, transparent: true, opacity: 0.32, depthWrite: false }));
 rain.frustumCulled = false; rain.visible = false; scene.add(rain);
+const COUNTRY_HAZE = new THREE.Color(0.70, 0.75, 0.80), COUNTRY_BOUNCE = new THREE.Color(0x7d7a52);
 function setWeather(key, save = true) {
   const W = WEATHERS[key]; if (!W) return false;
   WEATHER = W; weatherKey = key;
   const U = SKY.uniforms;
   U.zenith.value.setRGB(...W.zenith); HAZE.setRGB(...W.haze); U.sunCol.value.setRGB(...W.sunCol); U.sunGlow.value = W.glow;
+  if (COUNTRY) HAZE.lerp(COUNTRY_HAZE, 0.45);
   U.cover.value = W.cover; U.cloudLit.value.setRGB(...W.lit); U.cloudDark.value.setRGB(...W.dark);
   const el = W.sun[2] ?? SUN_EL; SUN_DIR.copy(SUN_AZ).multiplyScalar(Math.cos(el)).setY(Math.sin(el));
   sun.color.setHex(W.sun[0]); sun.intensity = W.sun[1];
   hemi.color.setHex(W.hemi[0]); hemi.groundColor.setHex(W.hemi[1]); hemi.intensity = W.hemi[2];
+  if (COUNTRY) hemi.groundColor.lerp(COUNTRY_BOUNCE, 0.6);
   scene.fog.color.copy(HAZE);
   let edOn = false; try { edOn = ed.on; } catch (e) { }        // (at boot the editor doesn't exist yet)
   if (!edOn) { scene.fog.near = W.fog[0]; scene.fog.far = W.fog[1]; }
@@ -511,7 +535,12 @@ function writeVertex(k, gi, gj, pos, nrm, col, dis, bmp, o) {
   dis[o / 3] = dist; bmp[o / 3] = sf === SURFACES.earth ? 1 : sf.rigid ? 2 : 0;
   const tint = 0.93 + 0.07 * clamp(B[k] / 8, 0, 1);
   const f = tint * (1 - 0.38 * dist);
-  const S0 = sf.color; col[o] = S0[0] * f; col[o + 1] = S0[1] * f * (1 - 0.03 * dist); col[o + 2] = S0[2] * f * (1 - 0.06 * dist);
+  const S0 = sf.color; let r0 = S0[0], g0 = S0[1], b0 = S0[2];
+  if (COUNTRY && sf === SURFACES.earth && GRASS[k]) {
+    const gr = GRASS[k] / 255, w = smooth(clamp(gr * 1.6, 0, 1)) * (1 - clamp(C[k] * 3.5, 0, 1)) * (1 - dist), ol = clamp((gr - 0.55) * 2.2, 0, 1);
+    r0 = lerp(r0, lerp(0.55, 0.38, ol), w); g0 = lerp(g0, lerp(0.47, 0.40, ol), w); b0 = lerp(b0, lerp(0.24, 0.17, ol), w);
+  }
+  col[o] = r0 * f; col[o + 1] = g0 * f * (1 - 0.03 * dist); col[o + 2] = b0 * f * (1 - 0.06 * dist);
   return h;
 }
 
@@ -1925,6 +1954,7 @@ if (MP.on || MP.edit) {
   MP.courseKey = pc?.key ?? null;
   COURSE = mpCourseFrom(pc?.course, MP.on ? MPQ.get('ground') || 'sand' : null);
 }
+if (COURSE.road) COURSE.base = 'earth';                      // the road runs through the countryside (#308)
 SURF = SURFACES[COURSE.base]; ROAD = !!COURSE.road;
 function saveCourse() {
   if (MP.on || MP.edit) return true;
@@ -2253,7 +2283,7 @@ function trackBank() {
 function groomTrack() {
   // D: distance to the course; I: the nearest course point (TRACK.pts), out to 16 m for the banking
   // (out to 24 m when levelling: its cut and fill slopes reach further)
-  const D = new Float32Array(V * V).fill(99), I = new Int32Array(V * V), RAD = 10, BANK_RAD = 16, LEVEL_RAD = 24, LEVEL_W = 8, rc = Math.ceil((COURSE.level || COURSE.grade || COURSE.even?.length ? LEVEL_RAD : COURSE.bank ? BANK_RAD : RAD) / CELL);
+  const D = new Float32Array(V * V).fill(99), I = new Int32Array(V * V), RAD = ROAD ? 12 : 10, BANK_RAD = 16, LEVEL_RAD = 24, LEVEL_W = 8, rc = Math.ceil((COURSE.level || COURSE.grade || COURSE.even?.length ? LEVEL_RAD : COURSE.bank ? BANK_RAD : RAD) / CELL);
   TRACK.pts.forEach((p, pi) => {
     const ci = Math.round((p.x + HALF) / CELL), cj = Math.round((p.z + HALF) / CELL);
     for (let dj = -rc; dj <= rc; dj++) for (let di = -rc; di <= rc; di++) {
@@ -2335,7 +2365,8 @@ function buildEmbankments(X) {
   const P = TRACK.pts, n = P.length - 1, ds = TRACK.len / n, a0 = X.halfL - 0.5, RAMP = X.ramp, gully = X.kind === 'gully';
   const ci0 = Math.round((X.x + HALF) / CELL), cj0 = Math.round((X.z + HALF) / CELL);
   const g0 = B[cj0 * V + ci0], bed = g0 - (gully ? GULLY.depth : CUT), top = gully ? g0 + X.deckH : bed + CLEAR;
-  BRIDGES.push({ cx: X.x, cz: X.z, tx: X.tx, tz: X.tz, halfL: X.halfL, halfW: 3.6, top, abut: top - bed + 0.6, kind: X.kind });
+  const hw = ROAD ? ROAD_HALF + 0.6 : 3.6, FT = hw + 1.4, CW = hw + 1.9;   // deck, ramp top, cutting bed (half-widths)
+  BRIDGES.push({ cx: X.x, cz: X.z, tx: X.tx, tz: X.tz, halfL: X.halfL, halfW: hw, top, abut: top - bed + 0.6, kind: X.kind });
   // the ground as it is before any of this, along the course s metres from u0
   const Bat = (x, z) => { const fx = clamp((x + HALF) / CELL, 0, N - 1e-4), fz = clamp((z + HALF) / CELL, 0, N - 1e-4), i = fx | 0, j = fz | 0, tx = fx - i, tz = fz - j, k = j * V + i;
     return (B[k] * (1 - tx) + B[k + 1] * tx) * (1 - tz) + (B[k + V] * (1 - tx) + B[k + V + 1] * tx) * tz; };
@@ -2365,19 +2396,19 @@ function buildEmbankments(X) {
       if (wd > 0) { B[k] = Math.min(B[k], lerp(B[k], bed, wd)); C[k] = Math.max(C[k], 0.25 * wd); if (wd > 0.15) RM[k] = 0; }   // the wash bed is never paved
     } else {
       const [du, su] = nearest(under, x, z, X.uUnder), as = Math.abs(su), sd = su < 0 ? 0 : 1;
-      if (as < Lc[sd] && du < 5.5 + 12) {          // the cutting: the road at its grade, banks of 1 in 1.5 up to the ground
+      if (as < Lc[sd] && du < CW + 12) {          // the cutting: the road at its grade, banks of 1 in 1.5 up to the ground
         const t = as <= F ? bed : bed + (hu[sd] - bed) * evenRamp((as - F) / (Lc[sd] - F), 0.25);
-        if (du < 5.5) { B[k] = t; C[k] = Math.max(C[k], 0.35); }
-        else B[k] = Math.min(B[k], t + (du - 5.5) / 1.5);
+        if (du < CW) { B[k] = t; C[k] = Math.max(C[k], 0.35); }
+        else B[k] = Math.min(B[k], t + (du - CW) / 1.5);
       }
     }
     const [dov, so] = nearest(over, x, z, X.uOver);
     const a = Math.abs(so);
     const sd = so < 0 ? 0 : 1;
-    if (a < a0 || a > a0 + RL[sd] || dov > 11) continue;
+    if (a < a0 || a > a0 + RL[sd] || dov > FT + 6) continue;
     const prof = top - (top - foot[sd]) * evenRamp((a - a0) / RL[sd], 0.2);           // even grade, down from the deck
-    const wl = 1 - smooth(clamp((dov - 5) / 6, 0, 1));                               // flat top 5 m each side, then a side slope
-    const we = dov <= 4.8 ? 1 : smooth(clamp((a - a0) / 4, 0, 1));                    // past the abutment's width: a sloped end, not a cliff
+    const wl = 1 - smooth(clamp((dov - FT) / 6, 0, 1));                              // flat top FT m each side, then a side slope
+    const we = dov <= hw + 1.2 ? 1 : smooth(clamp((a - a0) / 4, 0, 1));               // past the abutment's width: a sloped end, not a cliff
     B[k] = lerp(B[k], prof, wl * we); C[k] = Math.max(C[k], 0.5 * wl * we);
   }
 }
@@ -2445,7 +2476,7 @@ function paintCourse() {
       }
       g.stroke();
     };
-    line(ROAD_HALF - 0.45, 0, 0, 0.15, '#f2f0e8'); line(-(ROAD_HALF - 0.45), 0, 0, 0.15, '#f2f0e8');
+    line(ROAD_HALF - 1.5, 0, 0, 0.15, '#f2f0e8'); line(-(ROAD_HALF - 1.5), 0, 0, 0.15, '#f2f0e8');
     line(0, 3, 6, 0.13, '#f2f0e8');
   } else
   for (let d = 6; d < TRACK.len - 4; d += 9) {
@@ -2724,6 +2755,7 @@ document.getElementById('eFile').addEventListener('change', async e => {
     const c = JSON.parse(await e.target.files[0].text());
     if (!Array.isArray(c.wp) || c.wp.length < 3) throw new Error('no waypoints');
     COURSE = { wp: c.wp.map(([x, z]) => [+x, +z]), bank: bankOf(c.bank), level: levelOf(c.level), even: evenOf(c.even), grade: gradeOf(c.grade), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: Array.isArray(c.bridges) ? c.bridges.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [], noBridge: Array.isArray(c.noBridge) ? c.noBridge.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [] }; ROAD = COURSE.road;
+    if (ROAD) COURSE.base = 'earth'; SURF = SURFACES[COURSE.base];
     ed.wpDirty = true; updatePreview(); flash('Course imported', '#7dff9a', 2);
   } catch (err) { flash('Could not read that course file', '#ff8a7a', 2.5); }
   e.target.value = '';
@@ -4955,17 +4987,20 @@ function syncVisual() {
   sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 80);
 }
 
-// 'sand' / 'earth' = off-road course on that ground; 'road' = the course is paved, with sand around it
+// 'sand' / 'earth' = off-road course on that ground (the dunes / the countryside); 'road' = the course is paved,
+// through the countryside. Another landscape or road bed rebuilds the world: true when it did.
 function setSurface(name) {
-  const road = name === 'road', changed = road !== ROAD;
-  SURF = road ? SURFACES.sand : SURFACES[name] || SURFACES.sand;
+  const road = name === 'road';
+  SURF = road ? SURFACES.earth : SURFACES[name] || SURFACES.sand;
+  const changed = road !== ROAD || (road || SURF === SURFACES.earth) !== COUNTRY;
   ROAD = road; COURSE.road = road;
   COURSE.base = SURF === SURFACES.earth ? 'earth' : 'sand'; saveCourse();
   if (!MP.on && !MP.edit) try { localStorage.setItem('sandbuggy.surface', road ? 'road' : COURSE.base); } catch (e) { }
   pMat.uniforms.dustCol.value.setRGB(...SURF.dust);
-  if (changed && TRACK.gates[0].posts) { clearSkids(); regenerateWorld(); return; }   // the road bed is graded differently
+  if (changed && TRACK.gates[0].posts) { clearSkids(); regenerateWorld(); return true; }   // other hills, or the road bed graded differently
   for (const ch of chunks.values()) ch.update();
   updateFar();
+  return false;
 }
 const groundName = () => ROAD ? 'Road' : SURF.name;
 document.querySelectorAll('#menu button[data-s]').forEach(bt => bt.addEventListener('click', () => {
@@ -5413,7 +5448,8 @@ function mpCourseFrom(c, ground) {
   const C = c && Array.isArray(c.wp) && c.wp.length >= 3
     ? { wp: c.wp.map(([x, z]) => [+x, +z]), bank: bankOf(c.bank), level: levelOf(c.level), even: evenOf(c.even), grade: gradeOf(c.grade), ops: Array.isArray(c.ops) ? c.ops : [], base: BASES.includes(c.base) ? c.base : 'sand', road: !!c.road, bridges: pts(c.bridges), noBridge: pts(c.noBridge) }
     : { wp: DEFAULT_WP.map(p => p.slice()), ops: [], base: 'sand', road: false, bridges: [], noBridge: [] };
-  if (ground) { C.base = ground === 'earth' ? 'earth' : 'sand'; C.road = ground === 'road'; }
+  if (ground) { C.base = ground === 'earth' || ground === 'road' ? 'earth' : 'sand'; C.road = ground === 'road'; }
+  else if (C.road) C.base = 'earth';
   return C;
 }
 
@@ -5434,9 +5470,7 @@ function mpSetCourse(key, course) {
 const mpGroundNow = () => ROAD ? 'road' : COURSE.base;
 function mpGround(g) {
   if (!['sand', 'earth', 'road'].includes(g) || g === mpGroundNow()) return;
-  const road = ROAD;
-  setSurface(g);                                                     // sand / earth <-> road rebuilds the world itself
-  if (COURSE.bank && road === ROAD) { clearSkids(); regenerateWorld(); }   // the banking is set for the ground's cornering speed
+  if (!setSurface(g) && COURSE.bank) { clearSkids(); regenerateWorld(); }   // another ground rebuilds the world itself; the banking is set for its cornering speed
   MP.ground = g; mpApplyBest();
   flash(`Ground: ${groundName()}`, '#fff', 1.5);
 }
@@ -5458,7 +5492,6 @@ function mpEditFrame(dt) {
   if (sig !== MP.sig) { MP.sig = sig; mpPost({ t: 'sig', sig }); }
   const g = mpGroundNow();
   if (g !== MP.ground) {                                             // G while driving, or an imported course
-    if (MP.ground && COURSE.bank && (g === 'road') === (MP.ground === 'road')) { clearSkids(); regenerateWorld(); }
     MP.ground = g; mpPost({ t: 'ground', ground: g });
   }
 }

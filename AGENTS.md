@@ -11,9 +11,10 @@ See README.md for the layout. Notes:
   (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py`, looking
   around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`,
   the cars made from downloaded models (XJR, SL 63, 911 Turbo: specs, sounds, menus) `cars.py`
-  and skid marks (ours and, in a race, the others' from their `sk`) `skids.py`, last in the chain
+  skid marks (ours and, in a race, the others' from their `sk`) `skids.py` and the grounds' landscapes (dunes for
+  sand, countryside for earth and road; the road's width) `grounds.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -24,6 +25,10 @@ See README.md for the layout. Notes:
   rebuilding gives the same bytes.
 - Bridges' earthworks (`scripts/patches/bridges.py`, after even.py): a bridged crossing keeps its two branches'
   heights apart (`bridgedCrossing`): any profile code that brings crossing branches to one height must skip it.
+- Grounds (#308, `grounds.py`): the world's hills come from the ground: `COUNTRY` (earth or road) builds them with
+  `countryHeight`, sand with `duneHeight`; the road is always on earth (`COURSE.base` is 'earth' whenever
+  `COURSE.road`). `setSurface` rebuilds the world when the landscape or the road changes and says so (true):
+  don't rebuild again after it. Anything as wide as the road uses `ROAD_HALF` (6 m), not a number.
 - Even-grade sections (`COURSE.even`, `scripts/patches/even.py`, last in the chain) are waypoint indices:
   anything that inserts, removes or refits waypoints must keep them pointing at the same stretch (`shiftEven`).
 - The weather is `scripts/patches/weather.py`, after `glass.py` in the re-patch chain (it only touches the

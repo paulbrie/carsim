@@ -12,9 +12,10 @@ See README.md for the layout. Notes:
   around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`,
   the cars made from downloaded models (XJR, SL 63, 911 Turbo: specs, sounds, menus) `cars.py`
   skid marks (ours and, in a race, the others' from their `sk`) `skids.py` and the grounds' landscapes (dunes for
-  sand, countryside for earth and road; the road's width) `grounds.py`, last in the chain
+  sand, countryside for earth and road; the road's width) `grounds.py`, the autopilot (a tiny network trained in
+  the browser to drive a lap, single player, I) `autopilot.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -45,6 +46,12 @@ See README.md for the layout. Notes:
   (`rp.buf`, `mpTrace`): keep `recordFrame` recording in races. It is see-through with a depth-only twin drawn
   after everything solid (`mpGhostDepth`), so only its nearest surfaces show; a model that loads later gets the
   same treatment from `V.onModel`.
+- The autopilot (#311) trains on the player's own car with the real physics (`stepCar`, `collideGates`), so
+  anything that keeps state between drives must be reset in `aiStartEpisode` (gear, revs, wheel spin...: two
+  tries that start differently can't be compared), and it saves `H` / `C` when training starts and puts them
+  back after every try: anything that rebuilds the world must call `aiHalt()` first (`regenerateWorld` does).
+  Tests: `__sim.aiTrainSync(gens)`, `__sim.aiTry(weights)` (how a drive ends), one generation per call from a
+  timer (a long synchronous run gets the headless tab killed).
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
   every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
   `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).

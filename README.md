@@ -154,6 +154,28 @@ the edge lines and 1.5 m shoulders; on the road the bridges' decks, ramps and cu
 Switching between sand and the other two rebuilds the world (other hills), as switching the road on or
 off already did.
 
+## Autopilot: a tiny network that learns to drive (single player, I)
+
+**I** opens the Autopilot panel; **Train** has a neural network learn to drive a lap of this course with this
+car, in the browser, on the sim's own physics (`scripts/patches/autopilot.py`); **Drive it** hands the car to
+the best one so far (any driving key takes it back). What it learnt is kept per course and car in the browser.
+
+- **The network:** 7 inputs straight to 2 outputs (steering, and a pedal: + throttle, − brake), each the tanh
+  of a weighted sum: 16 weights. **Bigger net** puts a hidden layer of 8 between (82 weights).
+- **What it sees:** its speed; where the racing line is 6, 15 and 30 m ahead (the sine of the bearing); how far
+  it is to the side of the line; its yaw rate; and a pace note: the speed the line can be taken at there (from
+  its bends and the ground's grip, the same profile the bots use) less its own.
+- **How it learns:** evolution strategies, no gradients through the physics. A generation tries 16 noisy
+  copies of the weights (±pairs) for 15 s each from one place on the line (random, or half the time 100 m
+  before where it last went wrong), scores each by the metres covered (100 m less for ending off the course,
+  stuck or wrecked), and moves the weights toward the better ones (by rank, with Adam). Then an exam: the new
+  weights from the start line for a lap; the best exam's weights are the autopilot. Physics only, 12 ms a
+  frame; the ground's ruts are put back after every try.
+- **How long:** on the figure-8 on sand with the buggy, two runs from scratch first lapped at generations 11
+  and 13 (about 1–1.5 minutes of computing in headless Chrome), then got quicker (55.8 s).
+- Without the pace note, or with bearings in radians (a hairpin's jumps from +180° to −180°), or always
+  starting from the start line, it never got past the first sharp bend.
+
 ## Maps and the super admin
 
 `SUPER_ADMIN_EMAIL` in `lib/admin.ts` (a constant: aelythe@gmail.com) is the super admin, when signed in
@@ -189,7 +211,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Three of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63** and the
@@ -276,6 +298,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `components/race-controls.tsx` | car, paint (UI SDK colour picker), map (UI SDK select), ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |
 | `public/sim/` | the engine |
+| `scripts/patches/autopilot.py` | the autopilot: a tiny network trained in the browser to drive a lap (I) |
 | `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |
 
 ## Not yet

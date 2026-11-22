@@ -160,7 +160,9 @@ off already did.
 or after your finish, not on the grid or in a race: a race starting stops it; while it trains there the others
 see none of it, and its laps are never your best laps); **Train** has a neural network learn to drive a lap of this course with this
 car, in the browser, on the sim's own physics (`scripts/patches/autopilot.py`); **Drive it** hands the car to
-the best one so far (any driving key takes it back). What it learnt is kept per course and car in the browser.
+the best one so far (any driving key takes it back). What it learnt is kept per course, car and size in the
+browser; **Save to file** downloads it (weights, generations, chart, as JSON) and **Load file** brings it back,
+here or in another browser (made with another car or course, it asks first, and its record doesn't count).
 
 - **The network:** 7 inputs straight to 2 outputs (steering, and a pedal: + throttle, − brake), each the tanh
   of a weighted sum: 16 weights. **Bigger net** puts a hidden layer of 8 between (82 weights).

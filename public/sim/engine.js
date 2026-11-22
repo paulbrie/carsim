@@ -6015,6 +6015,8 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
   <canvas id="aiNet" width="540" height="330" title="Each line: an input's pull on an output right now (its value × its weight). Orange pushes + (steer left, throttle), blue − (steer right, brake); thicker, stronger."></canvas>
   <canvas id="aiChart" width="540" height="108"></canvas>
   <button id="aiTrain">Train</button><button id="aiDrive">Drive it</button><button id="aiReset">Start over</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button>
+  <button id="aiSaveF" title="Download this training (the weights, the generations, the chart) as a file">Save to file</button><button id="aiLoadF" title="Load a training saved to a file">Load file</button>
+  <input type="file" id="aiFile" accept=".json,application/json" style="display:none">
   <small>The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
   an output, orange + (left, throttle), blue − (right, brake), thicker stronger. On the track, the 3 points it looks at.
   Learns on this course with this car, ${AI_CFG.pop} tries a generation, and remembers it in this browser. Chart: how far
@@ -6026,6 +6028,37 @@ AI.el.querySelector('#aiH').addEventListener('click', e => {
   e.currentTarget.blur();
   const was = AI.training; if (was) aiTrain(false);
   AI.drive = false; AI.h = AI_SIZES[(AI_SIZES.indexOf(AI.h) + 1) % AI_SIZES.length]; aiLoad(); aiShow();
+});
+// a training as a file: to keep, share, or carry to another browser (the browser keeps it anyway, per course, car and size)
+AI.el.querySelector('#aiSaveF').addEventListener('click', e => {
+  e.currentTarget.blur();
+  if (aiKey() !== AI.key) aiLoad();
+  const d = { kind: 'carsim-autopilot', version: 1, vehicle: VEH.key, vehicleName: VEH.name, course: courseKey(), ground: groundName(), h: AI.h, weights: AI.np,
+    w: [...AI.w], best: AI.best && [...AI.best], gen: AI.gen, bestFit: AI.bestFit, bestLap: AI.bestLap, hist: AI.hist, adam: { m: [...AI.m], v: [...AI.v], k: AI.k }, savedAt: new Date().toISOString() };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(d)], { type: 'application/json' }));
+  a.download = `autopilot-${VEH.key}-${AI.np}w-gen${AI.gen}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  flash(`Training saved: ${a.download}`, '#9fd4ff', 2);
+});
+AI.el.querySelector('#aiLoadF').addEventListener('click', e => { e.currentTarget.blur(); AI.el.querySelector('#aiFile').click(); });
+AI.el.querySelector('#aiFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let d; try { d = JSON.parse(await f.text()); } catch (err) { d = null; }
+  const arr = (a, n) => Array.isArray(a) && a.length === n && a.every(Number.isFinite);
+  if (!d || d.kind !== 'carsim-autopilot' || !AI_SIZES.includes(d.h) || !arr(d.w, aiNP(d.h)) || (d.best != null && !arr(d.best, aiNP(d.h)))) { flash('Not an autopilot training file', '#ff8a7a', 2.5); return; }
+  const other = [d.vehicle !== VEH.key && `the ${d.vehicleName || d.vehicle}`, d.course !== courseKey() && 'another course or ground'].filter(Boolean);
+  if (other.length && !confirm(`This training was made with ${other.join(' and ')}. Load it for the ${VEH.name} here anyway? (It may drive worse, and Train more carries on from it.)`)) return;
+  if (AI.training) aiTrain(false);
+  AI.drive = false; AI.h = d.h; aiLoad();                             // this course, car and size: replaced by the file's
+  const n = AI.np, ad = d.adam && arr(d.adam.m, n) && arr(d.adam.v, n) ? d.adam : null;
+  // made elsewhere: its record doesn't count here (Drive it uses its weights; the next exam sets the score)
+  Object.assign(AI, { w: Float32Array.from(d.w), best: Float32Array.from(d.best || d.w), gen: d.gen | 0, bestFit: other.length ? 0 : Number.isFinite(d.bestFit) ? d.bestFit : 0,
+    bestLap: other.length ? null : d.bestLap ?? null, hist: other.length ? [] : Array.isArray(d.hist) ? d.hist : [],
+    m: ad ? Float32Array.from(ad.m) : new Float32Array(n), v: ad ? Float32Array.from(ad.v) : new Float32Array(n), k: ad ? ad.k | 0 : 0 });
+  aiSave(); aiShow();
+  flash(`Training loaded: ${AI.np} weights, generation ${AI.gen}`, '#9fd4ff', 2);
 });
 AI.el.querySelector('#aiReset').addEventListener('click', e => {
   e.currentTarget.blur();
@@ -6069,6 +6102,7 @@ function aiShow() {
   AI.el.querySelector('#aiDrive').textContent = AI.drive ? 'Stop driving' : 'Drive it';
   AI.el.querySelector('#aiDrive').classList.toggle('on', AI.drive);
   AI.el.querySelector('#aiDrive').disabled = AI.bestFit < 0;
+  AI.el.querySelector('#aiSaveF').disabled = !AI.gen;
   const cv = AI.el.querySelector('#aiChart'), g = cv.getContext('2d'), W = cv.width, Hc = cv.height, Hs = AI.hist.slice(-120), top = len * 1.1;
   g.clearRect(0, 0, W, Hc);
   g.strokeStyle = 'rgba(255,255,255,.35)'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(0, Hc - len / top * Hc); g.lineTo(W, Hc - len / top * Hc); g.stroke(); g.setLineDash([]);

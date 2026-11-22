@@ -59,12 +59,15 @@ const AI_INPUTS = [
   { id: 'rays', names: AI_RAYS.map(a => a ? `ray ${Math.abs(a)}° ${a > 0 ? 'L' : 'R'}` : 'ray ahead'), tip: `5 feelers, 60° and 30° to either side and straight ahead: how far each goes before it leaves the course (up to ${AI_RAY_MAX} m)`, show: v => Math.round(v * AI_RAY_MAX) + ' m' },
   { id: 'slide', names: ['sideways'], tip: 'how fast it slides sideways (+ to the left)', show: v => (v * 10).toFixed(1) + ' m/s' },
   { id: 'sink', names: ['sinkage'], tip: 'how deep its wheels sink into the ground (the deepest one): digging itself in, on sand', show: v => Math.round(v * 20) + ' cm' },
+  { id: 'g', names: ['g forward', 'g sideways'], tip: 'its acceleration in g, forward (+ speeding up, − braking) and sideways (+ turning left: pulled to the left, so you would feel pushed right), smoothed over 0.1 s', show: v => v.toFixed(2) + ' g' },
   { id: 'tilt', names: ['roll', 'pitch'], tip: 'how far it leans to the side (+ left side up) and noses up or down (+ up): about to roll over?', show: v => Math.round(v * 30) + '°' },
 ];
 const AI_DEFAULT_INPUTS = ['speed', 'line6', 'line15', 'line30', 'offset', 'yaw', 'pace'];
-// penalties, in metres off a drive's score: per metre driven off the road (the course: the tarmac on road, between the gate
-// posts off it), for damage (a wreck's worth: the car's condition from 100 % to 0), and for wrecking it
-const AI_PEN = { offRoad: 1, damage: 150, wreck: 100 };
+// rewards and penalties, in metres on or off a drive's score: per metre driven off the road (the course: the tarmac on road,
+// between the gate posts off it), for damage (a wreck's worth: the car's condition from 100 % to 0), for wrecking it; per
+// full swing of the steering or pedal output (jerky driving: their changes, added up; lock to lock is 2); and a reward
+// per km/h of its average speed along the line
+const AI_PEN = { offRoad: 1, damage: 150, wreck: 100, smooth: 0, speed: 0 };
 // the weights' count for these inputs and outputs, with h hidden units (0: none)
 const aiShape = (inputs, hb, h) => {
   const nIn = AI_INPUTS.filter(d => inputs.includes(d.id)).reduce((a, d) => a + d.names.length, 0), nOut = hb ? 3 : 2;
@@ -138,7 +141,7 @@ function aiRay(cx, cz, deg, k) {
   return s;
 }
 // what the car sees; st follows it along the line: {i: the nearest point (-1: look everywhere), dist: metres along, lat}
-function aiObserve(st) {
+function aiObserve(st, dt = AI_DT) {
   const Pt = botPath(), P = Pt.P, n = Pt.n;
   let bi = st.i, bd = Infinity;
   const look = j => { j = ((j % n) + n) % n; const q = P[j], d = (q.x - car.pos.x) ** 2 + (q.z - car.pos.z) ** 2; if (d < bd) { bd = d; bi = j; } };
@@ -156,6 +159,13 @@ function aiObserve(st) {
   }
   let j = 0;
   AI.rayEnds.length = 0;
+  // the g, from the change of velocity since the last decision, smoothed
+  if (st.pv) {
+    const ax = (car.vel.x - st.pv[0]) / Math.max(dt, 1e-3), az = (car.vel.z - st.pv[1]) / Math.max(dt, 1e-3), kf = Math.min(1, dt / 0.1);
+    st.gf = (st.gf || 0) + ((ax * cx + az * cz) / 9.81 - (st.gf || 0)) * kf;
+    st.gs = (st.gs || 0) + ((ax * cz - az * cx) / 9.81 - (st.gs || 0)) * kf;
+  }
+  st.pv = [car.vel.x, car.vel.z];
   for (const id of AI.inputs) switch (id) {
     case 'speed': aiX[j++] = v / 20; break;
     case 'line6': aiX[j++] = brg[0]; break;
@@ -168,6 +178,7 @@ function aiObserve(st) {
     case 'rays': AI_RAYS.forEach((a, k) => { aiX[j++] = aiRay(cx, cz, a, k) / AI_RAY_MAX; }); break;
     case 'slide': aiX[j++] = (car.vel.x * cz - car.vel.z * cx) / 10; break;
     case 'sink': { let d = 0; for (const W of car.wheels) if (W.contact) d = Math.max(d, W.sink || 0); aiX[j++] = d / 0.2; break; }
+    case 'g': aiX[j++] = st.gf || 0; aiX[j++] = st.gs || 0; break;
     case 'tilt': {                                                     // the body's +x (left) and +z (nose) axes: how high they point
       const r = Math.asin(clamp(2 * (q.x * q.y + q.w * q.z), -1, 1)), pt = Math.asin(clamp(2 * (q.y * q.z - q.w * q.x), -1, 1));
       aiX[j++] = r * 6 / Math.PI; aiX[j++] = pt * 6 / Math.PI; break;
@@ -176,19 +187,19 @@ function aiObserve(st) {
 }
 // like the keyboard (an option for each): only full, nothing or full the other way, past a third either side
 const aiKey3 = v => v > 1 / 3 ? 1 : v < -1 / 3 ? -1 : 0;
-function aiAct(w, st) {
-  aiObserve(st); aiNet(w, aiX, aiY); AI.viewW = w; AI.nAct++;
+function aiAct(w, st, dt) {
+  aiObserve(st, dt); aiNet(w, aiX, aiY); AI.viewW = w; AI.nAct++;
   const steer = AI.applied[0] = AI.ks ? aiKey3(aiY[0]) : aiY[0], pedal = AI.applied[1] = AI.kp ? aiKey3(aiY[1]) : aiY[1];
   return { throttle: Math.max(0, pedal), brake: Math.max(0, -pedal), steer, handbrake: AI.nOut > 2 && aiY[2] > 0 };
 }
 // readInput's controls while training or driving (null: the player's)
-function aiInput() {
+function aiInput(dt) {
   if (AI.training) return AI.ctl;
   if (!AI.drive) return null;
   if (keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD || keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight) {
     AI.drive = false; flash('You have the wheel', '#fff', 1.5); aiShow(); return null;
   }
-  return aiAct(AI.best || AI.w, AI.dst);
+  return aiAct(AI.best || AI.w, AI.dst, dt);
 }
 
 // ---------- training ----------
@@ -248,12 +259,14 @@ function aiStartEpisode(w, d, limit) {
   for (const W of car.wheels) Object.assign(W, { omega: 0, spin: 0, t: car.REST, comp: 0, contact: false, sink: 0, slip: 0, slipSpeed: 0 });
   Object.assign(car.eng, { gear: 1, rpm: ENG.idle, cut: false, shiftT: 0, reverse: false, load: 0, liftT: 9 });
   car.throttle = 0; car.steer = 0;
-  AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0 };
+  AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0, swing: 0, pc: null };
 }
 // one physics step of the episode under way: its score when it ends, else null
 function aiStep() {
   const E = AI.ep, len = botPath().len;
-  AI.ctl = aiAct(E.w, E.st);
+  AI.ctl = aiAct(E.w, E.st, AI_DT);
+  if (E.pc) E.swing += Math.abs(AI.applied[0] - E.pc[0]) + Math.abs(AI.applied[1] - E.pc[1]);   // how much the controls moved
+  E.pc = [AI.applied[0], AI.applied[1]];
   readInput(AI_DT);
   AI.acc += AI_DT;
   while (AI.acc >= DT) { stepCar(DT); collideGates(DT); AI.acc -= DT; }
@@ -264,9 +277,10 @@ function aiStep() {
     : E.t >= E.limit ? 'time' : E.t >= E.chk + 4 && E.st.dist - E.chkDist < 4 ? 'stuck' : null;
   if (E.t >= E.chk + 4) { E.chk = E.t; E.chkDist = E.st.dist; }
   if (!why) return null;
-  const dmg = 1 - carCondition(), pen = AI_PEN.offRoad * E.offM + AI_PEN.damage * dmg + (car.wrecked ? AI_PEN.wreck : 0);
+  const dmg = 1 - carCondition(), kmh = E.max / Math.max(E.t, 1) * 3.6;
+  const pen = AI_PEN.offRoad * E.offM + AI_PEN.damage * dmg + (car.wrecked ? AI_PEN.wreck : 0) + AI_PEN.smooth * E.swing - AI_PEN.speed * kmh;
   const fit = (why === 'lap' ? len + AI_LAP_BONUS * Math.max(0, AI_T - E.t) : E.max) - pen;
-  AI.last = { why, at: Math.round(E.max), t: +E.t.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen) };
+  AI.last = { why, at: Math.round(E.max), t: +E.t.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1) };
   return fit;
 }
 // the racing line's point d metres on from the start line (botPath's start, s0, is elsewhere)
@@ -466,10 +480,12 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
     <label title="A third output: on above 0 (it starts off, and learns when, if ever)"><input type="checkbox" id="aiHb"> handbrake (a 3rd output)</label>
     <label title="The pedal output snapped to what W and S give: full throttle above +⅓, nothing between, full brake below −⅓"><input type="checkbox" id="aiKp"> pedals like the keyboard: full gas, off or full brake</label>
     <label title="The steering output snapped to what A and D give: full left above +⅓, straight between, full right below −⅓"><input type="checkbox" id="aiKs"> steering like the keyboard: full left, straight or full right</label>
-    <div class="pen">Penalties (metres off the score):
-      <label>off the road, a metre <input type="number" id="aiPen_offRoad" min="0" max="20" step="0.5"></label>
-      <label>damage, a wreck's worth <input type="number" id="aiPen_damage" min="0" max="1000" step="10"></label>
-      <label>wrecked <input type="number" id="aiPen_wreck" min="0" max="1000" step="10"></label></div>
+    <div class="pen">Rewards and penalties (metres on or off the score):
+      <label title="Added for each km/h of its average speed along the line (speed already pays: more metres in a try's 15 s, and 5 m a second saved on an exam lap)">+ speed, a km/h on average <input type="number" id="aiPen_speed" min="0" max="50" step="0.5"></label>
+      <label title="Off for each full swing of the steering or pedal output (their changes added up: lock to lock is 2): jerky driving costs">− jerky, a full swing <input type="number" id="aiPen_smooth" min="0" max="100" step="0.5"></label>
+      <label>− off the road, a metre <input type="number" id="aiPen_offRoad" min="0" max="20" step="0.5"></label>
+      <label>− damage, a wreck's worth <input type="number" id="aiPen_damage" min="0" max="1000" step="10"></label>
+      <label>− wrecked <input type="number" id="aiPen_wreck" min="0" max="1000" step="10"></label></div>
     <small>Each set of inputs and outputs is a network, and a training, of its own (the others are kept). Penalties apply from the next try.</small>
   </details>
   <small>Watch at 1× runs the training at real speed (with sound) to follow each try. The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
@@ -575,7 +591,7 @@ function aiShow() {
   AI.el.querySelector('#aiHb').checked = AI.hb; AI.el.querySelector('#aiKp').checked = AI.kp; AI.el.querySelector('#aiKs').checked = AI.ks;
   for (const k in AI_PEN) { const f = AI.el.querySelector('#aiPen_' + k); if (document.activeElement !== f) f.value = AI_PEN[k]; }
   const L = AI.lastExam;
-  AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop} from ${Math.round(AI.from)} m`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.pen ? ` · −${L.pen}` : ''}</span>` : ''}`;
+  AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop} from ${Math.round(AI.from)} m`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
   AI.el.querySelector('#aiTrain').classList.toggle('on', AI.training);
   AI.el.querySelector('#aiDrive').textContent = AI.drive ? 'Stop driving' : 'Drive it';
@@ -601,7 +617,7 @@ setTimeout(() => {""", BLOCK + """
 // boot
 setTimeout(() => {""")
 # the controls: the policy's while it trains or drives
-rep("""  const o = window.__sim?.override;""", """  const o = aiInput() || window.__sim?.override;""")
+rep("""  const o = window.__sim?.override;""", """  const o = aiInput(dt) || window.__sim?.override;""")
 # the frame: training instead of the player's driving
 rep("""  else if (!window.__sim.paused) simulate(dt);""", """  else if (AI.training) aiTrainFrame(dt);
   else if (!window.__sim.paused) simulate(dt);""")

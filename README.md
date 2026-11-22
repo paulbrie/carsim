@@ -171,7 +171,8 @@ here or in another browser (made with another car or course, it asks first, and 
   at there (from its bends and the ground's grip, the same profile the bots use) less its own. **Inputs, outputs
   and penalties** (in the panel) picks others too: the distances to the course's left and right edges (the
   tarmac's on road, the gate posts' off it), 5 edge rays (feelers at ±60°, ±30° and ahead: how far until they
-  leave the course, up to 40 m, drawn on the track), its sideways speed; and a third output, the handbrake (on
+  leave the course, up to 40 m, drawn on the track), its sideways speed, its wheels' sinkage (the deepest:
+  digging in on sand), its tilt (roll and pitch: about to roll over); and a third output, the handbrake (on
   above 0). Each set is a network and a training of its own (`AI_INPUTS`, `aiSetInputs`).
 - **Like the keyboard** (two options there): the pedal snapped to full throttle / off / full brake (above +⅓,
   between, below −⅓), as W and S give, and the steering to full left / straight / full right as A and D give. Each

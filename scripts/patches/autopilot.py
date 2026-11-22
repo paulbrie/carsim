@@ -58,6 +58,8 @@ const AI_INPUTS = [
   { id: 'edges', names: ['left edge', 'right edge'], tip: "how far the course's edges are, left and right (the tarmac's on road, the gate posts' off it)", show: v => (v * 10).toFixed(1) + ' m' },
   { id: 'rays', names: AI_RAYS.map(a => a ? `ray ${Math.abs(a)}° ${a > 0 ? 'L' : 'R'}` : 'ray ahead'), tip: `5 feelers, 60° and 30° to either side and straight ahead: how far each goes before it leaves the course (up to ${AI_RAY_MAX} m)`, show: v => Math.round(v * AI_RAY_MAX) + ' m' },
   { id: 'slide', names: ['sideways'], tip: 'how fast it slides sideways (+ to the left)', show: v => (v * 10).toFixed(1) + ' m/s' },
+  { id: 'sink', names: ['sinkage'], tip: 'how deep its wheels sink into the ground (the deepest one): digging itself in, on sand', show: v => Math.round(v * 20) + ' cm' },
+  { id: 'tilt', names: ['roll', 'pitch'], tip: 'how far it leans to the side (+ left side up) and noses up or down (+ up): about to roll over?', show: v => Math.round(v * 30) + '°' },
 ];
 const AI_DEFAULT_INPUTS = ['speed', 'line6', 'line15', 'line30', 'offset', 'yaw', 'pace'];
 // penalties, in metres off a drive's score: per metre driven off the road (the course: the tarmac on road, between the gate
@@ -165,6 +167,11 @@ function aiObserve(st) {
     case 'edges': { const W = aiHalfW(); aiX[j++] = (W - st.lat) / 10; aiX[j++] = (W + st.lat) / 10; break; }
     case 'rays': AI_RAYS.forEach((a, k) => { aiX[j++] = aiRay(cx, cz, a, k) / AI_RAY_MAX; }); break;
     case 'slide': aiX[j++] = (car.vel.x * cz - car.vel.z * cx) / 10; break;
+    case 'sink': { let d = 0; for (const W of car.wheels) if (W.contact) d = Math.max(d, W.sink || 0); aiX[j++] = d / 0.2; break; }
+    case 'tilt': {                                                     // the body's +x (left) and +z (nose) axes: how high they point
+      const r = Math.asin(clamp(2 * (q.x * q.y + q.w * q.z), -1, 1)), pt = Math.asin(clamp(2 * (q.y * q.z - q.w * q.x), -1, 1));
+      aiX[j++] = r * 6 / Math.PI; aiX[j++] = pt * 6 / Math.PI; break;
+    }
   }
 }
 // like the keyboard (an option for each): only full, nothing or full the other way, past a third either side

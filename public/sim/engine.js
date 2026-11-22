@@ -6434,6 +6434,7 @@ setTimeout(() => {
   // for tests and the console: step the physics without drawing (headless browsers draw at a frame a second)
   Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
+  Object.assign(window.__sim, { renderer });                                      // for the Claude bridge's screenshots (bridge.js)
   if (BOTS.n) setBots(BOTS.n);
   requestAnimationFrame(t => { last = t; frame(t); });
   mpPost({ t: 'ready' });

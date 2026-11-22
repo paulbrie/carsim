@@ -13,9 +13,10 @@ See README.md for the layout. Notes:
   the cars made from downloaded models (XJR, SL 63, 911 Turbo: specs, sounds, menus) `cars.py`
   skid marks (ours and, in a race, the others' from their `sk`) `skids.py` and the grounds' landscapes (dunes for
   sand, countryside for earth and road; the road's width) `grounds.py`, the autopilot (a tiny network trained in
-  the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, last in the chain
+  the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, the Claude bridge's loader
+  (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, bridge, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -54,6 +55,9 @@ See README.md for the layout. Notes:
   or `repair` goes out, and `mpLap` posts none of the autopilot's laps.
   Tests: `__sim.aiTrainSync(gens)`, `__sim.aiTry(weights)` (how a drive ends), one generation per call from a
   timer (a long synchronous run gets the headless tab killed).
+- Claude bridge (README): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and
+  `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
+  (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
   every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
   `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).

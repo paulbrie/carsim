@@ -212,6 +212,19 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
 - Without the pace note, or with bearings in radians (a hairpin's jumps from +180° to −180°), or always
   starting from the start line, it never got past the first sharp bend.
 
+## Claude bridge: a Claude session working in your sim
+
+For the super admin (as trafficsim's bridge, cut to the sim): **🤝 Claude** (under the Autopilot button) →
+**Connect** shows a 6-digit code (10 minutes); a Claude session claims it with `node scripts/bridge.mjs claim
+<code>` and then works in that page, in the browser it runs in (yours, with its frame rate), every command shown in
+the panel's log: `state` (car, lap, autopilot, race, the panels' text), `screenshot` (the 3D view), `text`, `click`,
+`set` (a field), `key`, `get` (a value of `window.__sim`), `sim` (a few of its functions by name), `reload`. No
+arbitrary JavaScript; the bridge's own panel and password fields are out of its reach. Write to it in the panel
+(`node scripts/bridge.mjs events` reads it). **Disconnect** ends it; a reload keeps it; a server restart ends it.
+Server: `lib/bridge/store.mjs` (in memory), `app/api/bridge/page/*` (the super admin's session and the pairing's
+token), `app/api/bridge/agent/*` (the agent's token); the page: `public/sim/bridge.js` (`scripts/patches/bridge.py`
+loads it and puts the renderer on `__sim` for the screenshots).
+
 ## Maps and the super admin
 
 `SUPER_ADMIN_EMAIL` in `lib/admin.ts` (a constant: aelythe@gmail.com) is the super admin, when signed in
@@ -247,7 +260,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Three of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63** and the

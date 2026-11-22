@@ -30,8 +30,11 @@ See README.md for the layout. Notes:
   becomes a dark window, and only `decal_*` keeps a texture's cut-out alpha. The recipe has the tools for
   awkward sources (see the head of `cars.mjs`): `split` one material by place, `texSplit` paint out of a
   painted texture, `panes` for a missing window, `loose` / `merge` to lighten a mesh of many pieces. A new
-  car also goes in `VEHICLES` (`lib/race/shared.mjs`, read by the race server at start: restart it) and
-  `DEFAULT_PAINT` (`components/race-controls.tsx`).
+  car also goes in `VEHICLES` (`lib/race/shared.mjs`) and `DEFAULT_PAINT` (`components/race-controls.tsx`).
+- The race server (`server.mjs`: the hub, the records) loads `lib/race/*.mjs` once: a change there is not live
+  until it restarts, while the pages are (#313: the lobby offered cars the running server refused). Only the lists
+  of cars, grounds and weathers in `shared.mjs` are read again in development (`hub.setLists`, a few seconds after
+  the file changes). A restart closes the open rooms and the Claude bridge's pairing: ask the super admin first.
 - Bridges' earthworks (`scripts/patches/bridges.py`, after even.py): a bridged crossing keeps its two branches'
   heights apart (`bridgedCrossing`): any profile code that brings crossing branches to one height must skip it.
 - Grounds (#308, `grounds.py`): the world's hills come from the ground: `COUNTRY` (earth or road) builds them with

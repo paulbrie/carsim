@@ -30,10 +30,29 @@ test('create, join, ready and the room list', () => {
   b.message({ t: 'car', vehicle: 'rs6', paint: '#4A90C8' });
   const bp = a.last('room').room.players.find(p => p.id === 'b');
   assert.equal(bp.vehicle, 'rs6'); assert.equal(bp.paint, '#4a90c8');
-  b.message({ t: 'car', vehicle: 'tank', paint: 'red' });             // ignored
+  b.message({ t: 'car', vehicle: 'tank', paint: 'red' });             // refused, and told so
   assert.equal(a.last('room').room.players.find(p => p.id === 'b').vehicle, 'rs6');
+  assert.equal(b.last('error').code, 'no-car');
+  b.message({ t: 'car', paint: '#101010' });                          // a colour alone is no refused car
+  assert.equal(b.all('error').length, 1);
+  assert.equal(a.last('room').room.players.find(p => p.id === 'b').paint, '#101010');
   b.message({ t: 'join', room: 'NOPE1' });
   assert.equal(b.last('error').code, 'no-room');
+});
+
+test('a car added while the server runs can be picked (setLists)', () => {
+  const { hub, connect } = setup();
+  const a = connect('a', 'Ann');
+  a.message({ t: 'create' });
+  const car = () => a.last('room').room.players[0].vehicle, first = car();
+  a.message({ t: 'car', vehicle: 'tank' });
+  assert.equal(car(), first); assert.equal(a.last('error').code, 'no-car');
+  hub.setLists({ vehicles: [...hub.lists.vehicles, 'tank'], grounds: [], weathers: 'storm' });   // bad lists are left alone
+  a.message({ t: 'car', vehicle: 'tank' });
+  assert.equal(car(), 'tank'); assert.equal(a.all('error').length, 1);
+  a.message({ t: 'settings', ground: 'earth', weather: 'clear' });
+  assert.equal(a.last('room').room.ground, 'earth');
+  assert.equal(new RaceHub().lists.vehicles.includes('tank'), false);   // another hub's lists are its own
 });
 
 test('only the host starts, once the others are ready', () => {

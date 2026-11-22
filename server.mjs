@@ -2,7 +2,9 @@
 // and a health check at /api/health, all on $PORT.
 //   npm run dev     development (Next dev server, HMR)
 //   npm start       production (after npm run build)
+import { watchFile } from 'node:fs';
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import next from 'next';
 import nextEnv from '@next/env';
 import { WebSocketServer } from 'ws';
@@ -29,6 +31,21 @@ const nextUpgrade = app.getUpgradeHandler();
 const records = recordStore();
 const hub = new RaceHub({ maps: mapStore(), records });
 const started = Date.now();
+// In development the lists of cars, grounds and weathers are read again when shared.mjs changes: this process
+// outlives many edits, and a car added since it started was one the lobby showed and a room ignored (#313).
+// (Polled: an editor or git replaces the file, which loses a watch on it. Other changes there, and to the hub
+// itself, still need a restart.)
+if (dev) {
+  const sharedUrl = new URL('./lib/race/shared.mjs', import.meta.url);
+  watchFile(fileURLToPath(sharedUrl), { interval: 2000 }, async now => {
+    if (!now.mtimeMs) return;                                  // gone for a moment (a checkout)
+    try {
+      const m = await import(`${sharedUrl.href}?v=${now.mtimeMs}`);
+      hub.setLists({ vehicles: m.VEHICLE_KEYS, grounds: m.GROUND_KEYS, weathers: m.WEATHER_KEYS });
+      console.log(`[carsim] shared.mjs changed: ${hub.lists.vehicles.length} cars, ${hub.lists.grounds.length} grounds, ${hub.lists.weathers.length} weathers`);
+    } catch (e) { console.warn('[carsim] shared.mjs changed but could not be read again:', e?.message ?? e); }
+  });
+}
 // maxPayload: a best lap's path (#310) is the biggest message
 const wss = new WebSocketServer({ noServer: true, maxPayload: 80 * 1024, perMessageDeflate: false });
 

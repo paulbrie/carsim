@@ -45,9 +45,9 @@ const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_LAP_BONUS = 5;
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
 const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100 };
 const AI_LOOK = [6, 15, 30];
-const AI = { h: 0, np: aiNP(0), open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
+const AI = { h: 0, np: aiNP(0), look: [], viewW: null, open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
   hist: [], cands: null, eps: null, fits: null, ci: 0, ep: null, ctl: null, snapH: null, snapC: null, acc: 0, dst: null, el: null };
-const aiX = new Float32Array(AI_IN), aiY = new Float32Array(2);
+const aiX = new Float32Array(AI_IN), aiY = new Float32Array(2), aiHid = new Float32Array(8);
 
 // the network: linear [W (2 x AI_IN), b (2)]; with h hidden units [W1 (h x AI_IN), b1 (h), W2 (h x 2), b2 (2)]
 function aiNet(w, x, y) {
@@ -58,8 +58,8 @@ function aiNet(w, x, y) {
   for (let j = 0; j < h; j++) {
     let a = w[b1 + j];
     for (let i = 0; i < AI_IN; i++) a += w[j * AI_IN + i] * x[i];
-    const h = Math.tanh(a);
-    o0 += w[w2 + j * 2] * h; o1 += w[w2 + j * 2 + 1] * h;
+    const hv = aiHid[j] = Math.tanh(a);
+    o0 += w[w2 + j * 2] * hv; o1 += w[w2 + j * 2 + 1] * hv;
   }
   y[0] = Math.tanh(o0); y[1] = Math.tanh(o1);
 }
@@ -77,14 +77,14 @@ function aiObserve(st) {
   st.lat = (car.pos.x - p.x) * p.tz - (car.pos.z - p.z) * p.tx;
   aiX[0] = (car.vel.x * cx + car.vel.z * cz) / 20;
   for (let k = 0; k < AI_LOOK.length; k++) {
-    const a = P[(bi + Math.round(AI_LOOK[k] / Pt.ds)) % n], dx = a.x - car.pos.x, dz = a.z - car.pos.z;
+    const a = AI.look[k] = P[(bi + Math.round(AI_LOOK[k] / Pt.ds)) % n], dx = a.x - car.pos.x, dz = a.z - car.pos.z;
     aiX[1 + k] = (cx * dz - cz * dx) / (Math.hypot(dx, dz) || 1) * AI_CFG.bearing;   // the sine of its bearing: no jump from +180° to -180° in a hairpin
   }
   aiX[4] = st.lat / 5; aiX[5] = car.w.y / 2;
   aiX[6] = (p.v - aiX[0] * 20) / 10;                                  // the course's pace note: how much faster it could go here
 }
 function aiAct(w, st) {
-  aiObserve(st); aiNet(w, aiX, aiY);
+  aiObserve(st); aiNet(w, aiX, aiY); AI.viewW = w;
   return { throttle: Math.max(0, aiY[1]), brake: Math.max(0, -aiY[1]), steer: aiY[0], handbrake: false };
 }
 // readInput's controls while training or driving (null: the player's)
@@ -229,6 +229,57 @@ function aiDrive(on) {
   if (on) { restartRun(); AI.dst = { i: -1, dist: 0, lat: 0 }; flash('Autopilot: hands off (any driving key takes over)', '#9fd4ff', 2.5); }
   aiShow();
 }
+// ---------- watching it think: the network, live, and on the track the points it looks at ----------
+const AI_NAMES = ['speed', 'line 6 m', 'line 15 m', 'line 30 m', 'offset', 'yaw rate', 'pace note'];
+const aiCol = (v, a = 1) => v >= 0 ? `rgba(255,138,61,${a})` : `rgba(74,168,255,${a})`;
+const aiMarks = [0, 1, 2].map(k => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.45 - k * 0.08, 14, 10), new THREE.MeshBasicMaterial({ color: 0x5fe0ff, transparent: true, opacity: 0.85, depthTest: false }));
+  m.renderOrder = 20; m.visible = false; scene.add(m); return m;
+});
+let aiVizT = 0;
+function aiViz(dt) {
+  const live = (AI.training || AI.drive) && !!AI.viewW;
+  for (let k = 0; k < 3; k++) {
+    const m = aiMarks[k], q = AI.look[k];
+    m.visible = live && AI.open && !!q && !rp.on;
+    if (m.visible) m.position.set(q.x, surfaceAt(q.x, q.z, car.pos.y + 5) + 0.6, q.z);
+  }
+  if (!AI.open || (aiVizT += dt) < 0.1) return; aiVizT = 0;
+  const cv = AI.el.querySelector('#aiNet'), g = cv.getContext('2d'), W = cv.width, Hc = cv.height, w = AI.viewW || AI.best || AI.w;
+  g.clearRect(0, 0, W, Hc);
+  if (!w) return;
+  const x = live ? aiX : null, h = AI.h, n = w.length, xi = 150, xo = W - 120, xh = (xi + xo) / 2;
+  const yi = i => 22 + i * (Hc - 44) / (AI_IN - 1), yo = k => Hc * (k ? 0.72 : 0.28), yh = j => 22 + j * (Hc - 44) / Math.max(1, h - 1);
+  const edge = (x0, y0, x1, y1, c) => { const m = Math.min(1, Math.abs(c) / 1.5); g.strokeStyle = aiCol(c, 0.12 + 0.88 * m); g.lineWidth = 1 + 7 * m; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
+  // the pulls: live, value × weight; idle, the weights themselves
+  if (!h) for (let i = 0; i < AI_IN; i++) for (let k = 0; k < 2; k++) edge(xi, yi(i), xo, yo(k), w[k * AI_IN + i] * (x ? x[i] : 1));
+  else {
+    for (let j = 0; j < h; j++) for (let i = 0; i < AI_IN; i++) edge(xi, yi(i), xh, yh(j), w[j * AI_IN + i] * (x ? x[i] : 1) * 0.7);
+    const w2 = AI_IN * h + h;
+    for (let j = 0; j < h; j++) for (let k = 0; k < 2; k++) edge(xh, yh(j), xo, yo(k), w[w2 + j * 2 + k] * (x ? aiHid[j] : 1));
+    for (let j = 0; j < h; j++) { const v = x ? aiHid[j] : 0; g.fillStyle = aiCol(v, 0.25 + 0.75 * Math.abs(v)); g.beginPath(); g.arc(xh, yh(j), 9, 0, 7); g.fill(); g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1.5; g.stroke(); }
+  }
+  const node = (cx, cy, v) => { g.fillStyle = aiCol(v, 0.25 + 0.75 * Math.min(1, Math.abs(v))); g.beginPath(); g.arc(cx, cy, 12, 0, 7); g.fill(); g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 2; g.stroke(); };
+  g.font = '600 19px system-ui, sans-serif'; g.textBaseline = 'middle';
+  // inputs, in real units
+  const deg = v => Math.round(Math.asin(clamp(v / AI_CFG.bearing, -1, 1)) * 180 / Math.PI) + '°';
+  const real = x && [Math.round(x[0] * 72) + ' km/h', deg(x[1]), deg(x[2]), deg(x[3]), (x[4] * 5).toFixed(1) + ' m', Math.round(x[5] * 115) + '°/s', (x[6] > 0 ? '+' : '') + Math.round(x[6] * 36) + ' km/h'];
+  for (let i = 0; i < AI_IN; i++) {
+    node(xi, yi(i), x ? clamp(x[i], -1, 1) : 0);
+    g.textAlign = 'right'; g.fillStyle = 'rgba(255,255,255,.85)'; g.fillText(AI_NAMES[i], xi - 20, yi(i) - (x ? 9 : 0));
+    if (x) { g.fillStyle = 'rgba(255,255,255,.6)'; g.font = '16px system-ui, sans-serif'; g.fillText(real[i], xi - 20, yi(i) + 10); g.font = '600 19px system-ui, sans-serif'; }
+  }
+  // outputs: what it does
+  const st = x ? aiY[0] : 0, pd = x ? aiY[1] : 0;
+  node(xo, yo(0), st); node(xo, yo(1), pd);
+  g.textAlign = 'left'; g.fillStyle = '#fff';
+  g.fillText('steer', xo + 20, yo(0) - 12); g.fillText('pedal', xo + 20, yo(1) - 12);
+  g.font = '16px system-ui, sans-serif'; g.fillStyle = 'rgba(255,255,255,.75)';
+  g.fillText(!x ? '' : Math.abs(st) < 0.05 ? 'straight' : (st > 0 ? '◀ left ' : 'right ▶ ') + Math.round(Math.abs(st) * 100) + '%', xo + 20, yo(0) + 12);
+  g.fillText(!x ? '' : pd >= 0 ? 'gas ' + Math.round(pd * 100) + '%' : 'brake ' + Math.round(-pd * 100) + '%', xo + 20, yo(1) + 12);
+  if (!x) { g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText('its weights: Train or Drive it to see it think', W / 2, Hc - 8); }
+}
+
 // before the world changes under it (called from regenerateWorld, also at boot, before AI exists)
 function aiHalt(drive) { try { if (AI.training) aiTrain(false); if (drive && AI.drive) { AI.drive = false; aiShow(); } } catch (e) { } }
 // in a race room: not on the grid or in a race (before our finish); there the others see none of it (mpFrame, mpSendHit)
@@ -259,16 +310,20 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel .lt{font-size:12px;letter-spacing:2px;opacity:.85}
   #aiPanel .sub{font-size:11px;opacity:.7;margin-bottom:6px}
   #aiPanel .st{font-variant-numeric:tabular-nums;margin:4px 0}
-  #aiPanel canvas{display:block;width:270px;height:54px;margin:4px 0}
+  #aiPanel canvas{display:block;width:270px;height:54px;margin:4px 0} #aiPanel #aiNet{height:165px}
   #aiPanel button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:6px 10px;margin:4px 4px 0 0;cursor:pointer;color:#fff;background:#ffffff26}
   #aiPanel button:hover{background:#ffffff40} #aiPanel button.on{background:#ff5a00}
   #aiPanel small{display:block;opacity:.7;margin-top:6px;font-size:11px;line-height:1.35}
 </style>`);
 AI.el = document.createElement('div'); AI.el.id = 'aiPanel'; AI.el.className = 'panel';
 AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"></div>
-  <div class="st" id="aiStat"></div><canvas id="aiChart" width="540" height="108"></canvas>
+  <div class="st" id="aiStat"></div>
+  <canvas id="aiNet" width="540" height="330" title="Each line: an input's pull on an output right now (its value × its weight). Orange pushes + (steer left, throttle), blue − (steer right, brake); thicker, stronger."></canvas>
+  <canvas id="aiChart" width="540" height="108"></canvas>
   <button id="aiTrain">Train</button><button id="aiDrive">Drive it</button><button id="aiReset">Start over</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button>
-  <small>Learns on this course with this car, ${AI_CFG.pop} tries a generation, and remembers it in this browser. Chart: how far
+  <small>The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
+  an output, orange + (left, throttle), blue − (right, brake), thicker stronger. On the track, the 3 points it looks at.
+  Learns on this course with this car, ${AI_CFG.pop} tries a generation, and remembers it in this browser. Chart: how far
   each generation gets from the start (orange) and its tries' average (white); dashed, a lap. <b>I</b> hides this.</small>`;
 document.body.appendChild(AI.el);
 AI.el.querySelector('#aiTrain').addEventListener('click', e => { e.currentTarget.blur(); aiTrain(!AI.training); });
@@ -368,6 +423,10 @@ rep("""function mpSendHit(h) {
 rep("""carRepairHook = () => mpPost({ t: 'repair' });""", """carRepairHook = () => { if (!AI.training) mpPost({ t: 'repair' }); };""")
 rep("""  if (!MP.on || MP.spectator || lap.lapNo < 1) return;""", """  if (!MP.on || MP.spectator || lap.lapNo < 1 || AI.drive) return;   // the autopilot's laps aren't ours""")
 rep("""<b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute""", """<b>Y</b> replay (not in a race) &nbsp; <b>I</b> autopilot (not in a race) &nbsp; <b>M</b> mute""")
+rep("""  updateLapHud(dt);
+  renderer.render(scene, camera);""", """  updateLapHud(dt);
+  aiViz(dt);
+  renderer.render(scene, camera);""")
 rep("""  if (BOTS.n) setBots(BOTS.n);""", """  Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
   if (BOTS.n) setBots(BOTS.n);""")
 open(ep, 'w').write(s)

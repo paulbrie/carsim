@@ -173,6 +173,10 @@ the best one so far (any driving key takes it back). What it learnt is kept per 
   stuck or wrecked), and moves the weights toward the better ones (by rank, with Adam). Then an exam: the new
   weights from the start line for a lap; the best exam's weights are the autopilot. Physics only, 12 ms a
   frame; the ground's ruts are put back after every try.
+- **Watching it think:** the panel draws the network live while it trains or drives: each input with its value
+  (km/h, degrees, metres), each output (steer left/right, gas/brake %), and a line from each input to each output
+  coloured and thickened by its pull right now (value × weight; orange +, blue −). On the track, three markers show
+  the points on the racing line it looks at (6, 15 and 30 m ahead).
 - **How long:** on the figure-8 on sand with the buggy, two runs from scratch first lapped at generations 11
   and 13 (about 1–1.5 minutes of computing in headless Chrome), then got quicker (55.8 s).
 - Without the pace note, or with bearings in radians (a hairpin's jumps from +180° to −180°), or always

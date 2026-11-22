@@ -174,12 +174,16 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   at there (from its bends and the ground's grip, the same profile the bots use) less its own. **Inputs, outputs
   and penalties** (in the panel) picks others too: the distances to the course's left and right edges (the
   tarmac's on road, the gate posts' off it), 5 edge rays (feelers at ±60°, ±30° and ahead: how far until they
-  leave the course, up to 40 m, drawn on the track), its sideways speed, its wheels' sinkage (the deepest:
+  leave the course, up to 40 m, drawn on the track), its sideways speed, its wheels' slip (the front pair's and the rear
+  pair's slip ratio: + spinning, − locking), its wheels' sinkage (the deepest:
   digging in on sand), its tilt (roll and pitch: about to roll over), the g (forward and sideways acceleration,
   smoothed over 0.1 s); and a third output, the handbrake (on
   above 0). Each set is a network and a training of its own (`AI_INPUTS`, `aiSetInputs`); a set not trained yet
   starts from the one it was changed from, the new inputs' (and a new handbrake's) weights at nothing, so it drives as
   that one did and training carries on from there (`aiCarry`).
+- **Brake** (ticked by default): unticked, the pedal output is gas or nothing (below 0: off, `AI.nb`), so it slows
+  by lifting off or, with the handbrake output, by pulling the handbrake. A training of its own (`+nobrake` in its
+  key), started from the one with the brake; saved files and the server keep it (`noBrake`).
 - **Like the keyboard** (two options there): the pedal snapped to full throttle / off / full brake (above +⅓,
   between, below −⅓), as W and S give, and the steering to full left / straight / full right as A and D give. Each
   is a training of its own. Harder to learn: with keyboard pedals, a run from scratch on the figure-8 (sand, buggy)

@@ -102,7 +102,7 @@ const COMMANDS = {
       vehicle: s.VEH.key, ground: C.road ? 'road' : C.base, editor: s.ed.on, paused: s.paused,
       car: { kmh: Math.round(c.vel.length() * 36) / 10, pos: [c.pos.x, c.pos.y, c.pos.z].map(v => Math.round(v * 10) / 10), condition: Math.round(s.carCondition() * 100), wrecked: !!c.wrecked },
       lap: { lapNo: s.lap.lapNo, started: s.lap.started, time: +s.lap.time.toFixed(2), last: s.lap.last, best: s.lap.best },
-      autopilot: A && { open: A.open, training: A.training, drive: A.drive, watch: !!A.watch, gen: A.gen, weights: A.np, hidden: A.h, inputs: A.inputs, handbrake: A.hb, keyPedals: A.kp, keySteering: A.ks,
+      autopilot: A && { open: A.open, training: A.training, drive: A.drive, watch: !!A.watch, gen: A.gen, weights: A.np, hidden: A.h, inputs: A.inputs, handbrake: A.hb, keyPedals: A.kp, keySteering: A.ks, noBrake: A.nb,
         bestFit: Math.round(A.bestFit), bestLap: A.bestLap, sinceBest: A.sinceBest, lastExam: A.lastExam || null, hist: (A.hist || []).slice(-12), rate: A.rate },
       panels: { timer: text('#timer'), autopilot: text('#aiStat'), toast: text('#toast') },
     };

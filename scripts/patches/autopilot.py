@@ -62,6 +62,7 @@ const AI_INPUTS = [
   { id: 'edges', names: ['left edge', 'right edge'], tip: "how far the course's edges are, left and right (the tarmac's on road, the gate posts' off it)", show: v => (v * 10).toFixed(1) + ' m' },
   { id: 'rays', names: AI_RAYS.map(a => a ? `ray ${Math.abs(a)}° ${a > 0 ? 'L' : 'R'}` : 'ray ahead'), tip: `5 feelers, 60° and 30° to either side and straight ahead: how far each goes before it leaves the course (up to ${AI_RAY_MAX} m)`, show: v => Math.round(v * AI_RAY_MAX) + ' m' },
   { id: 'slide', names: ['sideways'], tip: 'how fast it slides sideways (+ to the left)', show: v => (v * 10).toFixed(1) + ' m/s' },
+  { id: 'wslip', names: ['front slip', 'rear slip'], tip: "the wheels' slip, the front pair's and the rear pair's (on the ground): + spinning faster than the car goes (too much gas), − turning slower, locking (braking, the handbrake)", show: v => (v > 0 ? '+' : '') + Math.round(v * 100) + ' %' },
   { id: 'sink', names: ['sinkage'], tip: 'how deep its wheels sink into the ground (the deepest one): digging itself in, on sand', show: v => Math.round(v * 20) + ' cm' },
   { id: 'g', names: ['g forward', 'g sideways'], tip: 'its acceleration in g, forward (+ speeding up, − braking) and sideways (+ turning left: pulled to the left, so you would feel pushed right), smoothed over 0.1 s', show: v => v.toFixed(2) + ' g' },
   { id: 'tilt', names: ['roll', 'pitch'], tip: 'how far it leans to the side (+ left side up) and noses up or down (+ up): about to roll over?', show: v => Math.round(v * 30) + '°' },
@@ -78,7 +79,7 @@ const aiShape = (inputs, hb, h) => {
   const nIn = AI_INPUTS.filter(d => inputs.includes(d.id)).reduce((a, d) => a + d.names.length, 0), nOut = hb ? 3 : 2;
   return { nIn, nOut, np: h ? nIn * h + h + h * nOut + nOut : nIn * nOut + nOut };
 };
-const AI = { gens: 0, genEnd: 0, stopAfter: 30, sinceBest: 0, h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
+const AI = { gens: 0, genEnd: 0, stopAfter: 30, sinceBest: 0, h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, nb: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
   hist: [], cands: null, eps: null, fits: null, ci: 0, ep: null, ctl: null, snapH: null, snapC: null, acc: 0, dst: null, el: null };
 const aiX = new Float32Array(32), aiY = new Float32Array(3), aiHid = new Float32Array(8);
 // what the network takes in and gives out (kept in this browser; each set is a training of its own)
@@ -91,7 +92,7 @@ function aiConfig(inputs, hb) {
 }
 try {
   const c = JSON.parse(localStorage.getItem('sandbuggy.ai.config') || 'null');
-  aiConfig(c?.inputs || AI_DEFAULT_INPUTS, c?.hb); AI.kp = !!c?.kp; AI.ks = !!c?.ks;
+  aiConfig(c?.inputs || AI_DEFAULT_INPUTS, c?.hb); AI.kp = !!c?.kp; AI.ks = !!c?.ks; AI.nb = !!c?.nb;
   if (Number.isInteger(c?.stopAfter) && c.stopAfter >= 0) AI.stopAfter = c.stopAfter;
   if (Number.isInteger(c?.gens) && c.gens >= 0) AI.gens = c.gens;
   if (Number.isFinite(c?.off) && c.off >= 3 && c.off <= 30) AI_CFG.off = c.off;
@@ -105,14 +106,14 @@ try {
   if (Number.isInteger(c?.examLaps) && c.examLaps >= 1 && c.examLaps <= 5) AI_CFG.examLaps = c.examLaps;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
-// another set of inputs or outputs (or pedals / steering like the keyboard's): another training (this one stays, under its own key);
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
+// another set of inputs or outputs (or pedals / steering like the keyboard's, or no brake): another training (this one stays, under its own key);
 // one not trained yet starts from this one's weights, the new inputs' (and outputs') at nothing: it drives as this one did
-function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks) {
+function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks, nb = AI.nb) {
   if (AI.training) aiTrain(false);
   AI.drive = false;
   const was = AI.w && (AI.gen || AI.best) ? { names: AI.names.slice(), nIn: AI.nIn, nOut: AI.nOut, h: AI.h, w: AI.best || AI.w } : null;
-  aiConfig(inputs, hb); AI.kp = !!kp; AI.ks = !!ks; aiKeepConfig();
+  aiConfig(inputs, hb); AI.kp = !!kp; AI.ks = !!ks; AI.nb = !!nb; aiKeepConfig();
   if (quiet) return;
   aiLoad();
   if (was && !AI.gen && !AI.best && was.h === AI.h) { aiCarry(was); flash('Carried over: the new inputs start at nothing', '#9fd4ff', 2); }
@@ -300,6 +301,7 @@ function aiObserve(st, dt = AI_DT) {
     case 'edges': { const W = aiHalfW(); aiX[j++] = (W - st.lat) / 10; aiX[j++] = (W + st.lat) / 10; break; }
     case 'rays': AI_RAYS.forEach((a, k) => { aiX[j++] = aiRay(cx, cz, a, k) / AI_RAY_MAX; }); break;
     case 'slide': aiX[j++] = (car.vel.x * cz - car.vel.z * cx) / 10; break;
+    case 'wslip': for (const fr of [true, false]) { let t = 0, k = 0; for (const W of car.wheels) if (W.front === fr && W.contact) { t += W.slip || 0; k++; } aiX[j++] = k ? clamp(t / k, -1, 1) : 0; } break;
     case 'sink': { let d = 0; for (const W of car.wheels) if (W.contact) d = Math.max(d, W.sink || 0); aiX[j++] = d / 0.2; break; }
     case 'g': aiX[j++] = st.gf || 0; aiX[j++] = st.gs || 0; break;
     case 'tilt': {                                                     // the body's +x (left) and +z (nose) axes: how high they point
@@ -310,9 +312,10 @@ function aiObserve(st, dt = AI_DT) {
 }
 // like the keyboard (an option for each): only full, nothing or full the other way, past a third either side
 const aiKey3 = v => v > 1 / 3 ? 1 : v < -1 / 3 ? -1 : 0;
+// without the brake (AI.nb): the pedal is gas or nothing (its − half: off); it slows by lifting off, or with the handbrake
 function aiAct(w, st, dt) {
   aiObserve(st, dt); aiNet(w, aiX, aiY); AI.viewW = w; AI.nAct++;
-  const steer = AI.applied[0] = AI.ks ? aiKey3(aiY[0]) : aiY[0], pedal = AI.applied[1] = AI.kp ? aiKey3(aiY[1]) : aiY[1];
+  const steer = AI.applied[0] = AI.ks ? aiKey3(aiY[0]) : aiY[0], pedal = AI.applied[1] = Math.max(AI.nb ? 0 : -1, AI.kp ? aiKey3(aiY[1]) : aiY[1]);
   return AI.lastCtl = { throttle: Math.max(0, pedal), brake: Math.max(0, -pedal), steer, handbrake: AI.nOut > 2 && aiY[2] > 0 };
 }
 // readInput's controls while training or driving (null: the player's)
@@ -330,7 +333,7 @@ function aiInput(dt) {
 
 // ---------- training ----------
 // a training per course, car, size and inputs (the original 7 without the handbrake: no suffix)
-const aiSig = () => AI.hb || AI.kp || AI.ks || AI.inputs.join() !== AI_DEFAULT_INPUTS.join() ? '.' + AI.inputs.join('+') + (AI.hb ? '+hb' : '') + (AI.kp ? '+kp' : '') + (AI.ks ? '+ks' : '') : '';
+const aiSig = () => AI.hb || AI.kp || AI.ks || AI.nb || AI.inputs.join() !== AI_DEFAULT_INPUTS.join() ? '.' + AI.inputs.join('+') + (AI.hb ? '+hb' : '') + (AI.kp ? '+kp' : '') + (AI.ks ? '+ks' : '') + (AI.nb ? '+nobrake' : '') : '';
 const aiKey = () => `sandbuggy.ai.${courseKey()}.${VEH.key}.${AI.h}${aiSig()}`;
 const aiGauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
 function aiFresh() {
@@ -665,12 +668,12 @@ function aiViz(dt) {
   }
   // outputs: what it does
   const out = [['steer', v => Math.abs(v) < 0.05 ? 'straight' : (v > 0 ? '◀ left ' : 'right ▶ ') + Math.round(Math.abs(v) * 100) + '%'],
-    ['pedal', v => v > 0 ? 'gas ' + Math.round(v * 100) + '%' : v < 0 ? 'brake ' + Math.round(-v * 100) + '%' : 'off'], ['handbrake', v => v > 0 ? 'ON' : 'off']];
+    ['pedal', v => v > 0 ? 'gas ' + Math.round(v * 100) + '%' : v < 0 && !AI.nb ? 'brake ' + Math.round(-v * 100) + '%' : 'off'], ['handbrake', v => v > 0 ? 'ON' : 'off']];
   for (let k = 0; k < O; k++) {
-    const v = x ? aiY[k] : 0, keyed = k < 2 && (k ? AI.kp : AI.ks);   // like the keyboard: what it applies, not what it computed
+    const v = x ? aiY[k] : 0, keyed = k < 2 && (k ? AI.kp : AI.ks), applied = keyed || (k === 1 && AI.nb);   // like the keyboard, or no brake: what it applies, not what it computed
     node(xo, yo(k), v);
     g.textAlign = 'left'; g.fillStyle = '#fff'; g.font = big; g.fillText(out[k][0] + (keyed ? ' ⌨' : ''), xo + 20, yo(k) - 12);
-    if (x) { g.font = small; g.fillStyle = 'rgba(255,255,255,.75)'; g.fillText(out[k][1](keyed ? AI.applied[k] : v), xo + 20, yo(k) + 12); }
+    if (x) { g.font = small; g.fillStyle = 'rgba(255,255,255,.75)'; g.fillText(out[k][1](applied ? AI.applied[k] : v), xo + 20, yo(k) + 12); }
   }
   if (!x) { g.textAlign = 'center'; g.font = small; g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText('its weights: Train or Drive it to see it think', W / 2, Hc - 8); }
 }
@@ -683,7 +686,7 @@ const aiAllowed = () => !MP.on || !(MP.hold || ((MP.phase === 'countdown' || MP.
 function aiTrainSync(gens = 1, cfg) {
   if (cfg) {
     if (cfg.h != null && cfg.h !== AI.h) { AI.h = cfg.h; AI.key = ''; }
-    if (cfg.inputs || cfg.hb != null || cfg.kp != null || cfg.ks != null) { aiSetInputs(cfg.inputs || AI.inputs, cfg.hb ?? AI.hb, true, cfg.kp ?? AI.kp, cfg.ks ?? AI.ks); AI.key = ''; }
+    if (cfg.inputs || cfg.hb != null || cfg.kp != null || cfg.ks != null || cfg.nb != null) { aiSetInputs(cfg.inputs || AI.inputs, cfg.hb ?? AI.hb, true, cfg.kp ?? AI.kp, cfg.ks ?? AI.ks, cfg.nb ?? AI.nb); AI.key = ''; }
     Object.assign(AI_CFG, cfg);
   }
   aiTrain(true);
@@ -736,6 +739,7 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
   <details id="aiCfg"><summary>Inputs, outputs and penalties</summary>
     <div id="aiIns"></div>
     <label title="A third output: on above 0 (it starts off, and learns when, if ever)"><input type="checkbox" id="aiHb"> handbrake (a 3rd output)</label>
+    <label title="Unticked: the pedal output is gas or nothing (below 0, off). No brake pedal: it slows by lifting off, or with the handbrake if it has one (a training of its own, starting from this one)"><input type="checkbox" id="aiBrk"> brake (unticked: gas or nothing)</label>
     <label title="The pedal output snapped to what W and S give: full throttle above +⅓, nothing between, full brake below −⅓"><input type="checkbox" id="aiKp"> pedals like the keyboard: full gas, off or full brake</label>
     <label title="The steering output snapped to what A and D give: full left above +⅓, straight between, full right below −⅓"><input type="checkbox" id="aiKs"> steering like the keyboard: full left, straight or full right</label>
     <div class="pen">Rewards and penalties (metres on or off the score):
@@ -773,10 +777,10 @@ AI.el.addEventListener('keydown', e => { if (e.target.matches('input')) e.stopPr
 AI.el.querySelector('#aiIns').innerHTML = AI_INPUTS.map(d => `<label title="${d.tip}"><input type="checkbox" data-in="${d.id}"> ${d.names.length > 2 ? `${d.id === 'rays' ? 'edge rays' : d.id} (${d.names.length})` : d.names.join(', ')}</label>`).join('');
 AI.el.querySelector('#aiCfg').addEventListener('change', e => {
   const t = e.target;
-  if (t.dataset.in || t.id === 'aiHb' || t.id === 'aiKp' || t.id === 'aiKs') {
+  if (t.dataset.in || t.id === 'aiHb' || t.id === 'aiKp' || t.id === 'aiKs' || t.id === 'aiBrk') {
     const ins = [...AI.el.querySelectorAll('[data-in]')].filter(c => c.checked).map(c => c.dataset.in);
     if (!ins.length) { t.checked = true; return; }
-    aiSetInputs(ins, AI.el.querySelector('#aiHb').checked, false, AI.el.querySelector('#aiKp').checked, AI.el.querySelector('#aiKs').checked);
+    aiSetInputs(ins, AI.el.querySelector('#aiHb').checked, false, AI.el.querySelector('#aiKp').checked, AI.el.querySelector('#aiKs').checked, !AI.el.querySelector('#aiBrk').checked);
   } else if (t.id === 'aiRoll') {
     AI_CFG.rolling = t.checked; aiKeepConfig();
   } else if (t.id === 'aiFly') {
@@ -821,7 +825,7 @@ AI.el.querySelector('#aiH').addEventListener('click', e => {
 // a training as a file or on the server: to keep, share, or carry to another browser (the browser keeps it anyway, per course, car and size)
 function aiExport() {
   if (aiKey() !== AI.key) aiLoad();
-  return { kind: 'carsim-autopilot', version: 2, vehicle: VEH.key, vehicleName: VEH.name, course: courseKey(), ground: groundName(), h: AI.h, inputs: AI.inputs, handbrake: AI.hb, keyPedals: AI.kp, keySteering: AI.ks, weights: AI.np,
+  return { kind: 'carsim-autopilot', version: 2, vehicle: VEH.key, vehicleName: VEH.name, course: courseKey(), ground: groundName(), h: AI.h, inputs: AI.inputs, handbrake: AI.hb, keyPedals: AI.kp, keySteering: AI.ks, noBrake: AI.nb, weights: AI.np,
     w: [...AI.w], best: AI.best && [...AI.best], gen: AI.gen, bestFit: AI.bestFit, bestLap: AI.bestLap, hist: AI.hist, adam: { m: [...AI.m], v: [...AI.v], k: AI.k }, savedAt: new Date().toISOString() };
 }
 // a training (a file's, the server's) in place of this course and car's with its inputs; false if it isn't one
@@ -832,7 +836,7 @@ function aiImport(d, what = 'Training') {
   const other = [d.vehicle !== VEH.key && `the ${d.vehicleName || d.vehicle}`, d.course !== courseKey() && 'another course or ground'].filter(Boolean);
   if (other.length && !confirm(`This training was made with ${other.join(' and ')}. Load it for the ${VEH.name} here anyway? (It may drive worse, and Train more carries on from it.)`)) return false;
   if (AI.training) aiTrain(false);
-  AI.drive = false; AI.h = d.h; aiSetInputs(ins, !!d.handbrake, true, !!d.keyPedals, !!d.keySteering); aiLoad();   // this course, car, size and inputs: replaced by it
+  AI.drive = false; AI.h = d.h; aiSetInputs(ins, !!d.handbrake, true, !!d.keyPedals, !!d.keySteering, !!d.noBrake); aiLoad();   // this course, car, size and inputs: replaced by it
   const n = AI.np, ad = d.adam && arr(d.adam.m, n) && arr(d.adam.v, n) ? d.adam : null;
   // made elsewhere: its record doesn't count here (Drive it uses its weights; the next exam sets the score)
   Object.assign(AI, { w: Float32Array.from(d.w), best: Float32Array.from(d.best || d.w), gen: d.gen | 0, bestFit: other.length ? 0 : Number.isFinite(d.bestFit) ? d.bestFit : 0,
@@ -950,10 +954,10 @@ function aiShow() {
   AI.el.style.top = y0 + 'px'; AI.el.style.maxHeight = ((help.offsetHeight ? help.getBoundingClientRect().top - 10 : innerHeight - 12) - y0) + 'px';
   const len = botPath().len, pct = f => Math.min(100, Math.round(f / len * 100));
   const best = AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? `a full lap in ${fmt(AI.bestLap)}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `${Math.round(AI.bestFit)} m of ${Math.round(len)} m (${pct(AI.bestFit)} %)`;
-  AI.el.querySelector('#aiSize').textContent = `${AI.h ? 'a tiny neural network' : 'the smallest network'}: ${AI.nIn} inputs ${AI.h ? `→ ${AI.h} hidden →` : 'straight to'} ${AI.nOut} outputs, ${AI.np} weights${AI.kp || AI.ks ? ` · ${[AI.kp && 'pedals', AI.ks && 'steering'].filter(Boolean).join(' and ')} like the keyboard` : ''}`;
+  AI.el.querySelector('#aiSize').textContent = `${AI.h ? 'a tiny neural network' : 'the smallest network'}: ${AI.nIn} inputs ${AI.h ? `→ ${AI.h} hidden →` : 'straight to'} ${AI.nOut} outputs, ${AI.np} weights${AI.kp || AI.ks ? ` · ${[AI.kp && 'pedals', AI.ks && 'steering'].filter(Boolean).join(' and ')} like the keyboard` : ''}${AI.nb ? ' · no brake' : ''}`;
   AI.el.querySelector('#aiH').textContent = AI.h ? 'Smaller net' : 'Bigger net';
   AI.el.querySelectorAll('[data-in]').forEach(c => { c.checked = AI.inputs.includes(c.dataset.in); });
-  AI.el.querySelector('#aiHb').checked = AI.hb; AI.el.querySelector('#aiKp').checked = AI.kp; AI.el.querySelector('#aiKs').checked = AI.ks;
+  AI.el.querySelector('#aiHb').checked = AI.hb; AI.el.querySelector('#aiKp').checked = AI.kp; AI.el.querySelector('#aiKs').checked = AI.ks; AI.el.querySelector('#aiBrk').checked = !AI.nb;
   for (const k in AI_PEN) { const f = AI.el.querySelector('#aiPen_' + k); if (document.activeElement !== f) f.value = AI_PEN[k]; }
   { const f = AI.el.querySelector('#aiStopAfter'); if (document.activeElement !== f) f.value = AI.stopAfter; }
   { const f = AI.el.querySelector('#aiGens'); if (document.activeElement !== f) f.value = AI.gens; }

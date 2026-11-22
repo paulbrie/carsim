@@ -207,6 +207,15 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   (km/h, degrees, metres), each output (steer left/right, gas/brake %), and a line from each input to each output
   coloured and thickened by its pull right now (value × weight; orange +, blue −). On the track, three markers show
   the points on the racing line it looks at (6, 15 and 30 m ahead).
+- **Driving faster** (settings there, all optional; ticket #311's RS 6 work): **pace notes: cornering g / braking g /
+  acceleration g** (the bots' notes count on 0.84 g and 0.76 g on tarmac and no limit speeding up; a grippier car
+  can take more), **pace note ×**, **follow a racing line** (the smoothest path within the road, **room either
+  side** set, instead of the centre), **look ahead by time** (0.3 / 0.7 / 1.4 s instead of 6 / 15 / 30 m: one
+  steering for every speed), **tries start rolling** (at 85 % of the notes' speed, not from a standstill), and a
+  **recorded lap to follow** (`__sim.aiDemo(trace)`, a ghost's trace, e.g. your best lap's from `data/ghosts`): its
+  line and speeds take the place of the racing line and the notes. With an RS 6 on the figure-8 (road), from a
+  36.1 s flying lap with the defaults to 33.6 s (realistic notes, look-ahead by time, rolling starts) and 32.26 s
+  following the record lap (31.66 s, a driver's).
 - **When to stop:** once it laps, the chart shows each generation's lap time (faster higher, dashed the best),
   and training stops by itself after so many generations without a better lap (30 unless set otherwise, 0:
   never); the panel says how long since the best. Or a fixed number: each Train runs so many generations, then

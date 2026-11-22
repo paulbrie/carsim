@@ -11,12 +11,13 @@
 //   set        {selector, value}           → { set } (an input: its value, or a checkbox ticked; change fired)
 //   key        {code, ms?}                 → {} (a key pressed, held ms: KeyW, ArrowLeft, KeyI…)
 //   sim        {fn, args?}                 → what it returns (a few of window.__sim's functions, by name: SIM_FNS)
-//   get        {path}                      → its value (window.__sim's, e.g. "ai.hist", "lap.best", "VEH.key"; read only)
+//   get        {path, slice?, pick?}       → its value (window.__sim's, e.g. "ai.hist", "lap.best", "VEH.key"; read only; a list:
+//                                            slice [from, to], and of its items the fields picked)
 //   reload     {}                          → {} (then the page reloads, and pairs again by itself)
 // No arbitrary JavaScript; never the bridge's own panel, password fields, or the app's API.
 const BASE = location.pathname.replace(/\/sim\/[^/]*$/, ''), API = BASE + '/api/bridge/page';
 const SIM_FNS = ['restartRun', 'respawn', 'switchVehicle', 'setSurface', 'setCamMode', 'placeAtGate', 'step', 'toggleEditor', 'setBots',
-  'aiTrainSync', 'aiTry', 'aiDrive', 'repairCar', 'startReplay', 'stopReplay'];
+  'aiTrainSync', 'aiTry', 'aiDrive', 'aiDemo', 'repairCar', 'startReplay', 'stopReplay'];
 const KEEP = 'carsim.bridge';
 const st = { pageId: null, token: null, es: null, agent: null, code: null, codeUntil: 0, log: [], shot: null, el: null, btn: null };
 const S = () => window.__sim;
@@ -141,11 +142,14 @@ const COMMANDS = {
     const f = S()?.[fn]; if (typeof f !== 'function') throw new Error(`${fn} isn't there (yet)`);
     return { result: plain(f(...(Array.isArray(args) ? args : [args]))) ?? null };
   },
-  get({ path }) {
+  get({ path, slice, pick }) {
     if (typeof path !== 'string' || !path) throw new Error('A path, e.g. ai.hist');
     let v = S();
     for (const k of path.split(/[./]/)) { if (v == null || !(k in Object(v))) throw new Error(`${path}: no ${k} there`); v = v[k]; }
-    return { value: plain(v) ?? null };
+    // a long list: a slice of it ([from, to], up to 2000), and of each item only the fields picked
+    if (Array.isArray(slice) && v && typeof v.length === 'number') v = Array.prototype.slice.call(v, slice[0] | 0, Math.min((slice[1] | 0) || v.length, (slice[0] | 0) + 2000));
+    if (Array.isArray(pick) && Array.isArray(v)) v = v.map(x => Object.fromEntries(pick.filter(k => x && k in x).map(k => [k, typeof x[k] === 'number' ? Math.round(x[k] * 1000) / 1000 : x[k]])));
+    return { value: Array.isArray(v) && Array.isArray(slice) ? v.map(x => plain(x, 1)) : plain(v) ?? null };
   },
   reload() { return {}; },
 };

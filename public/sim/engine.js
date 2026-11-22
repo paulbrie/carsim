@@ -5737,7 +5737,9 @@ if (MP.edit) {
 const AI_SIZES = [0, 8];
 const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_LAP_BONUS = 5;
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
-const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100 };
+const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false };
+const AI_LOOK_T = [0.3, 0.7, 1.4];                                     // the look-ahead in seconds, if by time (at least AI_LOOK_MIN m)
+const AI_LOOK_MIN = [3, 6, 12];
 const AI_LOOK = [6, 15, 30], AI_RAYS = [60, 30, 0, -30, -60], AI_RAY_MAX = 40;
 const aiDeg = v => Math.round(Math.asin(clamp(v / AI_CFG.bearing, -1, 1)) * 180 / Math.PI) + '°';
 // the inputs to choose from (Inputs & outputs, in the panel): each gives one number or a few, roughly -1..1, shown in real units
@@ -5785,9 +5787,16 @@ try {
   if (Number.isInteger(c?.stopAfter) && c.stopAfter >= 0) AI.stopAfter = c.stopAfter;
   if (Number.isInteger(c?.gens) && c.gens >= 0) AI.gens = c.gens;
   if (Number.isFinite(c?.off) && c.off >= 3 && c.off <= 30) AI_CFG.off = c.off;
+  if (Number.isFinite(c?.pace) && c.pace >= 0.5 && c.pace <= 2) AI_CFG.pace = c.pace;
+  if (Number.isFinite(c?.gCorner) && c.gCorner >= 0.2 && c.gCorner <= 2) AI_CFG.gCorner = c.gCorner;
+  if (Number.isFinite(c?.gBrake) && c.gBrake >= 0.2 && c.gBrake <= 2) AI_CFG.gBrake = c.gBrake;
+  if (Number.isFinite(c?.gAccel) && c.gAccel >= 0 && c.gAccel <= 2) AI_CFG.gAccel = c.gAccel;
+  AI_CFG.racingLine = !!c?.racingLine;
+  if (Number.isFinite(c?.lineW) && c.lineW >= 0 && c.lineW <= 15) AI_CFG.lineW = c.lineW;
+  AI_CFG.lookTime = !!c?.lookTime; AI_CFG.rolling = !!c?.rolling;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's): another training (this one stays, under its own key)
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks) {
   if (AI.training) aiTrain(false);
@@ -5838,6 +5847,92 @@ function aiRay(cx, cz, deg, k) {
   AI.rayEnds[k] = [car.pos.x + dx * s, car.pos.z + dz * s];
   return s;
 }
+// the pace notes: the speed each metre of the racing line can be taken at, for a car with so much grip cornering
+// (AI_CFG.gCorner, on tarmac; the other grounds in proportion, as the bots') and braking (AI_CFG.gBrake): the bend's
+// own speed from its curvature (and banking), then braking back from every bend. With the bots' 0.84 g and 0.76 g, theirs.
+// Optionally (AI_CFG.gAccel > 0) no faster than the car can speed up to from the bend before, either.
+function aiPace() {
+  const Pt = botPath(), L = aiLine(), D = aiDemoNow(), key = `${AI_CFG.gCorner}|${AI_CFG.gBrake}|${AI_CFG.gAccel}|${L ? AI.lineKey : 'centre'}`;
+  if (AI.paceFor === Pt && AI.paceKey === key) return AI.paceV;
+  if (D) { AI.paceFor = Pt; AI.paceKey = key; return AI.paceV = Float32Array.from(D.v); }   // the recorded lap's own speeds
+  const P = Pt.P, n = Pt.n, v = new Float32Array(n), kc = AI_CFG.gCorner * 9.81 / 8.2, kb = AI_CFG.gBrake * 9.81 / 7.5, ds = L ? L.ds : Pt.ds;
+  for (let i = 0; i < n; i++) {
+    const q = P[i], lat = q.brk >= 7 ? 8.2 : q.brk >= 5 ? 5.2 : 3.8;               // the ground's (as botPath: tarmac, earth, sand)
+    const bank = Math.abs(TRACK.bank?.[Math.round(i / n * (TRACK.pts.length - 1))] || 0);
+    v[i] = Math.min(q.top, Math.sqrt((lat * kc + 9.81 * bank) / Math.max(Math.abs(L ? L.k[i] : q.k), 1e-4)));
+  }
+  for (let pass = 0; pass < 2; pass++) {
+    if (AI_CFG.gAccel > 0) for (let i = 0; i < n; i++) v[(i + 1) % n] = Math.min(v[(i + 1) % n], Math.sqrt(v[i] ** 2 + 2 * AI_CFG.gAccel * 9.81 * ds));
+    for (let i = n - 1; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[(i + 1) % n] ** 2 + 2 * P[i].brk * kb * ds));
+  }
+  AI.paceFor = Pt; AI.paceKey = key;
+  return AI.paceV = v;
+}
+// A recorded lap to follow (aiDemo: a ghost's trace, e.g. a driver's best lap): its line across the road and its speed
+// at each metre of the course take the place of the racing line and the pace notes while it is set (per course and car,
+// in this browser; aiDemo(null) drops it). Learning from a demonstration: the network still has to learn to drive it.
+function aiDemo(trace) {
+  const key = `sandbuggy.ai.demo.${courseKey()}.${VEH.key}`;
+  AI.demoKey = null; AI.lineFor = AI.paceFor = null;
+  if (trace === null) { try { localStorage.removeItem(key); } catch (e) { } return { demo: false }; }
+  let b; try { const s = atob(String(trace)); b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); } catch (e) { throw new Error('Not a trace'); }
+  const dv = new DataView(b.buffer), m = Math.floor(b.length / (GH_F * 2));
+  if (m < 20) throw new Error('Too short a trace');
+  const X = new Float32Array(m), Z = new Float32Array(m);
+  for (let k = 0; k < m; k++) { X[k] = dv.getInt16(k * GH_F * 2, true) * GH_POS; Z[k] = dv.getInt16((k * GH_F + 2) * 2, true) * GH_POS; }
+  const Pt = botPath(), P = Pt.P, n = Pt.n, e = new Float32Array(n), v = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let bk = 0, bd = Infinity;
+    for (let k = 0; k < m; k++) { const d = (X[k] - P[i].x) ** 2 + (Z[k] - P[i].z) ** 2; if (d < bd) { bd = d; bk = k; } }
+    e[i] = (X[bk] - P[i].x) * P[i].tz - (Z[bk] - P[i].z) * P[i].tx;
+    const a = Math.max(0, bk - 1), c = Math.min(m - 1, bk + 1);
+    v[i] = Math.hypot(X[c] - X[a], Z[c] - Z[a]) / ((c - a) * GH_DT || GH_DT);
+  }
+  const sm = (arr, r) => { const o = new Float32Array(n); for (let i = 0; i < n; i++) { let t = 0; for (let j = -r; j <= r; j++) t += arr[(i + j + n) % n]; o[i] = t / (2 * r + 1); } return o; };
+  const d = { e: [...sm(e, 4)], v: [...sm(v, 3)], m };
+  try { localStorage.setItem(key, JSON.stringify(d)); } catch (err) { }
+  return { demo: true, samples: m, seconds: +((m - 1) * GH_DT).toFixed(1), points: n, maxOffset: +Math.max(...d.e.map(Math.abs)).toFixed(1) };
+}
+function aiDemoNow() {
+  const key = `sandbuggy.ai.demo.${courseKey()}.${VEH.key}`;
+  if (AI.demoKey !== key) {
+    AI.demoKey = key; AI.demo = null; AI.lineFor = AI.paceFor = null;
+    try { const d = JSON.parse(localStorage.getItem(key) || 'null'); if (d?.e) AI.demo = { e: Float32Array.from(d.e), v: Float32Array.from(d.v), m: d.m }; } catch (e) { }
+  }
+  return AI.demo;
+}
+// A racing line (AI_CFG.racingLine), instead of the course's centre: the smoothest path within the road, kept 1.6 m
+// inside its edges (the tarmac's on road, the gate posts' off it): each point slid across the road toward the middle of
+// its neighbours some way off, again and again, from far ones (the shape of a bend) to near ones (its detail). Its
+// points match the centre's one for one (e: how far left of it); its own direction and curvature for the bearings
+// and the pace notes.
+function aiLine() {
+  const D = aiDemoNow();
+  if (!AI_CFG.racingLine && !D) return null;
+  const Pt = botPath(), W = AI_CFG.lineW > 0 ? AI_CFG.lineW : Math.max(0.5, aiHalfW() - 1.6), key = D ? `demo${D.m}` : `${W}`;   // (or as much room as set)
+  if (AI.lineFor === Pt && AI.lineKey === key) return AI.line;
+  const P = Pt.P, n = Pt.n, e = D ? Float32Array.from(D.e) : new Float32Array(n), x = new Float32Array(n), z = new Float32Array(n);
+  const at = i => { x[i] = P[i].x + P[i].tz * e[i]; z[i] = P[i].z - P[i].tx * e[i]; };
+  for (let i = 0; i < n; i++) at(i);
+  if (!D) for (const span of [24, 16, 10, 6, 3]) for (let it = 0; it < 250; it++) for (let i = 0; i < n; i++) {
+    const a = (i - span + n) % n, b = (i + span) % n, mx = (x[a] + x[b]) / 2, mz = (z[a] + z[b]) / 2;
+    const want = (mx - P[i].x) * P[i].tz - (mz - P[i].z) * P[i].tx;              // the middle's offset across the road here
+    e[i] = clamp(e[i] + (want - e[i]) * 0.5, -W, W); at(i);
+  }
+  const L = { e, x, z, tx: new Float32Array(n), tz: new Float32Array(n), k: new Float32Array(n), ds: 0 };
+  let len = 0;
+  for (let i = 0; i < n; i++) {
+    const a = (i - 1 + n) % n, b = (i + 1) % n, dx = x[b] - x[a], dz = z[b] - z[a], l = Math.hypot(dx, dz) || 1;
+    L.tx[i] = dx / l; L.tz[i] = dz / l; len += Math.hypot(x[b] - x[i], z[b] - z[i]);
+  }
+  L.ds = len / n;
+  const kr = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const a = (i - 3 + n) % n, b = (i + 3) % n; kr[i] = Math.asin(clamp(L.tx[a] * L.tz[b] - L.tz[a] * L.tx[b], -1, 1)) / (6 * L.ds); }
+  for (let i = 0; i < n; i++) { let sm = 0; for (let j = -4; j <= 4; j++) sm += kr[(i + j + n) % n]; L.k[i] = -sm / 9; }
+  L.len = len;
+  AI.lineFor = Pt; AI.lineKey = key;
+  return AI.line = L;
+}
 // what the car sees; st follows it along the line: {i: the nearest point (-1: look everywhere), dist: metres along, lat}
 function aiObserve(st, dt = AI_DT) {
   const Pt = botPath(), P = Pt.P, n = Pt.n;
@@ -5850,9 +5945,10 @@ function aiObserve(st, dt = AI_DT) {
   const q = car.q, fx = 2 * (q.x * q.z + q.w * q.y), fz = 1 - 2 * (q.x * q.x + q.y * q.y), fl = Math.hypot(fx, fz) || 1, cx = fx / fl, cz = fz / fl;
   const p = P[bi], v = car.vel.x * cx + car.vel.z * cz;
   st.lat = (car.pos.x - p.x) * p.tz - (car.pos.z - p.z) * p.tx;      // + : left of the line
-  const brg = [];
+  const brg = [], RL = aiLine(), off = RL ? st.lat - RL.e[bi] : st.lat;   // off: from the line followed (the racing line, or the centre)
   for (let k = 0; k < AI_LOOK.length; k++) {
-    const a = AI.look[k] = P[(bi + Math.round(AI_LOOK[k] / Pt.ds)) % n], dx = a.x - car.pos.x, dz = a.z - car.pos.z;
+    const ahead = AI_CFG.lookTime ? Math.max(AI_LOOK_MIN[k], Math.abs(v) * AI_LOOK_T[k]) : AI_LOOK[k];   // metres; by time: as far as it goes in so long
+    const m = (bi + Math.round(ahead / Pt.ds)) % n, a = AI.look[k] = RL ? { x: RL.x[m], z: RL.z[m] } : P[m], dx = a.x - car.pos.x, dz = a.z - car.pos.z;
     brg.push((cx * dz - cz * dx) / (Math.hypot(dx, dz) || 1) * AI_CFG.bearing);   // the sine of its bearing: no jump from +180° to -180° in a hairpin
   }
   let j = 0;
@@ -5869,9 +5965,9 @@ function aiObserve(st, dt = AI_DT) {
     case 'line6': aiX[j++] = brg[0]; break;
     case 'line15': aiX[j++] = brg[1]; break;
     case 'line30': aiX[j++] = brg[2]; break;
-    case 'offset': aiX[j++] = st.lat / 5; break;
+    case 'offset': aiX[j++] = off / 5; break;
     case 'yaw': aiX[j++] = car.w.y / 2; break;
-    case 'pace': aiX[j++] = (p.v - v) / 10; break;                    // the course's pace note: how much faster it could go here
+    case 'pace': aiX[j++] = (aiPace()[bi] * AI_CFG.pace - v) / 10; break;   // (the notes for the grip set: aiPace)                    // the course's pace note: how much faster it could go here
     case 'edges': { const W = aiHalfW(); aiX[j++] = (W - st.lat) / 10; aiX[j++] = (W + st.lat) / 10; break; }
     case 'rays': AI_RAYS.forEach((a, k) => { aiX[j++] = aiRay(cx, cz, a, k) / AI_RAY_MAX; }); break;
     case 'slide': aiX[j++] = (car.vel.x * cz - car.vel.z * cx) / 10; break;
@@ -5957,6 +6053,17 @@ function aiStartEpisode(w, d, limit) {
   for (const W of car.wheels) Object.assign(W, { omega: 0, spin: 0, t: car.REST, comp: 0, contact: false, sink: 0, slip: 0, slipSpeed: 0 });
   Object.assign(car.eng, { gear: 1, rpm: ENG.idle, cut: false, shiftT: 0, reverse: false, load: 0, liftT: 9 });
   car.throttle = 0; car.steer = 0;
+  // rolling (AI_CFG.rolling): a try away from the start line begins at most of the pace note's speed there, in a gear that
+  // suits it, as the car would arrive in a lap (from a standstill, most of a try is spent getting up to speed)
+  if (d && AI_CFG.rolling) {
+    const Pt = botPath(), i = ((AI.s0 + Math.round(d / Pt.ds)) % Pt.n + Pt.n) % Pt.n, v0 = Math.min(aiPace()[i] * 0.85, 45);
+    const f = 2 * (car.q.x * car.q.z + car.q.w * car.q.y), g = 1 - 2 * (car.q.x ** 2 + car.q.y ** 2), fl = Math.hypot(f, g) || 1;
+    car.vel.set(f / fl * v0, 0, g / fl * v0);
+    const om = v0 / car.R; for (const W of car.wheels) W.omega = om;
+    let gear = 1; while (gear < ENG.gears.length && om * ENG.gears[gear - 1] * ENG.fd * 60 / (2 * Math.PI) > ENG.limiter * 0.8) gear++;
+    Object.assign(car.eng, { gear, rpm: Math.max(ENG.idle, om * ENG.gears[gear - 1] * ENG.fd * 60 / (2 * Math.PI)) });
+    car.throttle = 1;
+  }
   AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0, swing: 0, pc: null, driven: 0 };
 }
 // one physics step of the episode under way: its score when it ends, else null
@@ -6269,7 +6376,15 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
       <label>− off the road, a metre <input type="number" id="aiPen_offRoad" min="0" max="20" step="0.5"></label>
       <label>− damage, a wreck's worth <input type="number" id="aiPen_damage" min="0" max="1000" step="10"></label>
       <label>− wrecked <input type="number" id="aiPen_wreck" min="0" max="1000" step="10"></label></div>
-    <label style="justify-content:space-between;margin-top:6px" title="A try ends (and loses the 100 m for ending badly) this far from the racing line. Wider gives it room for its own line, and to go astray">end a try this far from the line, m <input type="number" id="aiOff" min="3" max="30" step="1"></label>
+    <label style="margin-top:6px" title="Steer by, and take the pace notes from, the smoothest line within the road (out, clip the inside, out again) instead of the course's centre"><input type="checkbox" id="aiRL"> follow a racing line, not the centre</label>
+    <label title="Tries away from the start line begin at 85% of the pace note's speed there, not from a standstill: more practice at speed"><input type="checkbox" id="aiRoll"> tries start rolling</label>
+    <label title="Where the line is looked at: 6, 15 and 30 m ahead, or 0.3, 0.7 and 1.4 s ahead at its speed (at least 3, 6, 12 m): one steering for every speed"><input type="checkbox" id="aiLT"> look ahead by time, not metres</label>
+    <label style="justify-content:space-between" title="How far either side of the centre the racing line may go (0: the road's edge less 1.6 m, so the car stays on it; more: onto the verge, as drivers do)">racing line: room either side, m <input type="number" id="aiLW" min="0" max="15" step="0.5"></label>
+    <label style="justify-content:space-between" title="How hard the car can speed up, for the pace notes (0: as fast as the bends allow at once)">pace notes: acceleration g <input type="number" id="aiGa" min="0" max="2" step="0.05"></label>
+    <label style="justify-content:space-between" title="The grip the pace notes count on in bends, on tarmac (the bots': 0.84 g; sand and earth in proportion). Bends go with its square root">pace notes: cornering g <input type="number" id="aiGc" min="0.2" max="2" step="0.02"></label>
+    <label style="justify-content:space-between" title="The grip the pace notes count on braking for a bend, on tarmac (the bots': 0.76 g)">pace notes: braking g <input type="number" id="aiGb" min="0.2" max="2" step="0.02"></label>
+    <label style="justify-content:space-between" title="The pace note's speeds (the bots': 0.84 g of cornering grip on tarmac, 0.39 on sand) times this: a grippier car can take the line faster. Bends go with the square root of grip: ×1.15 for 1.1 g">pace note × <input type="number" id="aiPace" min="0.5" max="2" step="0.05"></label>
+    <label style="justify-content:space-between" title="A try ends (and loses the 100 m for ending badly) this far from the racing line. Wider gives it room for its own line, and to go astray">end a try this far from the line, m <input type="number" id="aiOff" min="3" max="30" step="1"></label>
     <label style="justify-content:space-between" title="Each Train (or Train more) runs this many generations, then stops (0: until you pause it)">train this many generations at a time <input type="number" id="aiGens" min="0" max="10000" step="10"></label>
     <label style="justify-content:space-between" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop)">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label>
     <small>Each set of inputs and outputs is a network, and a training, of its own (the others are kept). Penalties apply from the next try.</small>
@@ -6291,6 +6406,20 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
     const ins = [...AI.el.querySelectorAll('[data-in]')].filter(c => c.checked).map(c => c.dataset.in);
     if (!ins.length) { t.checked = true; return; }
     aiSetInputs(ins, AI.el.querySelector('#aiHb').checked, false, AI.el.querySelector('#aiKp').checked, AI.el.querySelector('#aiKs').checked);
+  } else if (t.id === 'aiRoll') {
+    AI_CFG.rolling = t.checked; aiKeepConfig();
+  } else if (t.id === 'aiLT') {
+    AI_CFG.lookTime = t.checked; aiKeepConfig();
+  } else if (t.id === 'aiRL') {
+    AI_CFG.racingLine = t.checked; aiKeepConfig();
+  } else if (t.id === 'aiLW') {
+    const v = +t.value; if (Number.isFinite(v) && v >= 0 && v <= 15) { AI_CFG.lineW = v; aiKeepConfig(); }
+  } else if (t.id === 'aiGa') {
+    const v = +t.value; if (Number.isFinite(v) && v >= 0 && v <= 2) { AI_CFG.gAccel = v; aiKeepConfig(); }
+  } else if (t.id === 'aiGc' || t.id === 'aiGb') {
+    const v = +t.value; if (Number.isFinite(v) && v >= 0.2 && v <= 2) { AI_CFG[t.id === 'aiGc' ? 'gCorner' : 'gBrake'] = v; aiKeepConfig(); }
+  } else if (t.id === 'aiPace') {
+    const v = +t.value; if (Number.isFinite(v) && v >= 0.5 && v <= 2) { AI_CFG.pace = v; aiKeepConfig(); }
   } else if (t.id === 'aiOff') {
     const v = +t.value; if (Number.isFinite(v) && v >= 3 && v <= 30) { AI_CFG.off = v; aiKeepConfig(); }
   } else if (t.id === 'aiGens') {
@@ -6445,6 +6574,9 @@ function aiShow() {
   { const f = AI.el.querySelector('#aiStopAfter'); if (document.activeElement !== f) f.value = AI.stopAfter; }
   { const f = AI.el.querySelector('#aiGens'); if (document.activeElement !== f) f.value = AI.gens; }
   { const f = AI.el.querySelector('#aiOff'); if (document.activeElement !== f) f.value = AI_CFG.off; }
+  { const f = AI.el.querySelector('#aiPace'); if (document.activeElement !== f) f.value = AI_CFG.pace; }
+  AI.el.querySelector('#aiRL').checked = AI_CFG.racingLine; AI.el.querySelector('#aiLT').checked = AI_CFG.lookTime; AI.el.querySelector('#aiRoll').checked = AI_CFG.rolling;
+  for (const [id, k] of [['#aiGc', 'gCorner'], ['#aiGb', 'gBrake'], ['#aiGa', 'gAccel'], ['#aiLW', 'lineW']]) { const f = AI.el.querySelector(id); if (document.activeElement !== f) f.value = AI_CFG[k]; }
   const L = AI.lastExam;
   AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training && AI.gens ? ` of ${AI.genEnd}` : ''}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
@@ -6502,6 +6634,7 @@ setTimeout(() => {
   Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
   Object.assign(window.__sim, { renderer });                                      // for the Claude bridge's screenshots (bridge.js)
+  Object.assign(window.__sim, { aiDemo });
   if (BOTS.n) setBots(BOTS.n);
   requestAnimationFrame(t => { last = t; frame(t); });
   mpPost({ t: 'ready' });

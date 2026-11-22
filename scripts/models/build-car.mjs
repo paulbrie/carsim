@@ -292,11 +292,16 @@ if (arg('--probe')) {
 
 const tc = [0, 0, 0];
 // a window the source left out: a pane of an existing material. half: its outline up one side, [x, y, z] in the sim's
-// axes from the bottom to the top (x > 0), mirrored for the other side and filled from its middle
+// axes from the bottom to the top (x > 0), mirrored for the other side and filled from its middle (bulge: raised by that much)
 for (const f of C.panes || []) {
   const mat = [...mats].find(([, m]) => f.like.test(m.name))?.[0]; if (!mat) throw new Error(`panes: no material like ${f.like}`);
   const pts = [...f.half, ...f.half.slice().reverse().map(([x, y, z]) => [-x, y, z])], n = pts.length;
   const c = [0, 1, 2].map(j => pts.reduce((a, q) => a + q[j], 0) / n), pos = new Float32Array((n + 1) * 3), idx = new Uint32Array(n * 3);
+  if (f.bulge) {      // a little crowned, as car glass is: a flat pane mirrors one patch of sky all over
+    const nr = [0, 0, 0]; for (let i = 0; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n]; nr[0] += (a[1] - c[1]) * (b[2] - c[2]) - (a[2] - c[2]) * (b[1] - c[1]); nr[1] += (a[2] - c[2]) * (b[0] - c[0]) - (a[0] - c[0]) * (b[2] - c[2]); nr[2] += (a[0] - c[0]) * (b[1] - c[1]) - (a[1] - c[1]) * (b[0] - c[0]); }
+    const l = Math.hypot(...nr), out = Math.sign(nr[0] * c[0] + nr[1] * (c[1] - 0.6) + nr[2] * c[2]) || 1;      // away from the car's middle
+    for (let j = 0; j < 3; j++) c[j] += nr[j] / l * out * f.bulge;
+  }
   pts.forEach((q, i) => pos.set(q, i * 3)); pos.set(c, n * 3);
   for (let i = 0; i < n; i++) idx.set([i, (i + 1) % n, n], i * 3);
   list.push({ name: 'pane', path: '/pane', pos, nrm: null, uv: null, idx, mat });

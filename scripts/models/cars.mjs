@@ -10,8 +10,8 @@
 //     a material of that name (one "glass" for windows and lamp covers); mats' rules then apply to it by its new name
 //   drop: never seen (engine bay under a shut bonnet, a showroom floor); parts: [regex, 'kind_side'] ('kind_*': one
 //     mesh holding both sides' part, split down the middle into kind_l and kind_r)
-//   panes: [{ like, half }]: a window the source left out, as a pane of the material named like `like`: half its outline
-//     ([x, y, z] in the sim's axes, up the left side from the bottom), mirrored and filled
+//   panes: [{ like, half, bulge }]: a window the source left out, as a pane of the material named like `like`: half its
+//     outline ([x, y, z] in the sim's axes, up the left side from the bottom), mirrored and filled; bulge: its middle raised (m)
 //   texSplit: [{ mat, name, test(r, g, b) }]: a body painted in its texture: the triangles whose texels all pass the test
 //     become a plain material of that name (the paint), the others keep the texture (lamps, grilles in the same atlas)
 //   mirror: { replace, from, renameFrom, renameTo }: replace one side's part by the other's, mirrored
@@ -104,7 +104,7 @@ export const CARS = {
     drop: [/ material$/],
     steer: { match: / (Color_M08|Interior1)$/, box: [[0.19, 0.9, 0.2], [0.63, 1.32, 0.44]] },      // rim, spokes, buttons and paddles
     // it has no rear window: one across the tailgate's opening (measured off the model), its edge tucked behind the frame
-    panes: [{ like: /^Windows$/, half: [[0.6, 1.262], [0.66, 1.3], [0.685, 1.342], [0.672, 1.39], [0.66, 1.442], [0.648, 1.49], [0.632, 1.538], [0.6, 1.585], [0.5, 1.612]].map(([x, y]) => [x, y, +(-2.302 + 1.008 * (y - 1.29)).toFixed(3)]) }],
+    panes: [{ like: /^Windows$/, bulge: 0.015, half: [[0.6, 1.262], [0.66, 1.3], [0.685, 1.342], [0.672, 1.39], [0.66, 1.442], [0.648, 1.49], [0.632, 1.538], [0.6, 1.585], [0.5, 1.612]].map(([x, y]) => [x, y, +(-2.302 + 1.008 * (y - 1.29)).toFixed(3)]) }],
     // its glass is also the gear lever's crystal knob and the side markers; its lamp covers front, side and rear are one material
     split: [{ mat: /^Windows$/, name: 'chrome_knob', box: [[-0.1, 0.7, 0.2], [0.15, 0.9, 0.4]] }, { mat: /^Windows$/, name: 'marker_lens', sym: true, box: [[0.8, 0.85, -1.4], [1, 1.02, -1.1]] },
       { mat: /^Lights$/, name: 'rear_lens', box: [[-1.3, 0.4, -2.6], [1.3, 1.2, -1.9]] }],

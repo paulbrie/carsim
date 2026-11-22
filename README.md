@@ -256,6 +256,12 @@ guests never are). Only the super admin can create, edit and delete maps; anyone
   the last one tried, for the editor to open on).
 - **Saved** as `<DATA_DIR>/maps/<id>.json` (`lib/maps/store.mjs`, default `./data`, not in git), through
   `/api/maps` (GET for anyone signed in; POST, PUT, DELETE for the super admin, 403 for others).
+- **Maps in git**: `scripts/maps/*.json`, courses as the editor's *Export course* writes them, added to
+  a server's maps with `node scripts/maps/add.mjs scripts/maps/<map>.json` (named after the file, or
+  `--name`; a map of that name already there is left alone, `--replace` saves the file's course over
+  it), or in the app: *New map* from the file. *Serpentine* (#312): 1.59 km, twice the figure-8, about
+  40 bends (the tightest 17 m, most 25–60 m) and a 270 m straight along one side of the world with the
+  start on it; banked 8°, levelled, no grade over 6%.
 - **In a room** the host picks the map (lobby, or New race). The page loads its course and hands it
   to the sim as `window.__simCourse` before the iframe boots; a change goes as a `course` message and
   the sim rebuilds the world. The room's ground still applies over the map's. A room reads its map

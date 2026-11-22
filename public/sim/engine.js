@@ -5760,8 +5760,9 @@ const AI_DEFAULT_INPUTS = ['speed', 'line6', 'line15', 'line30', 'offset', 'yaw'
 // rewards and penalties, in metres on or off a drive's score: per metre driven off the road (the course: the tarmac on road,
 // between the gate posts off it), for damage (a wreck's worth: the car's condition from 100 % to 0), for wrecking it; per
 // full swing of the steering or pedal output (jerky driving: their changes, added up; lock to lock is 2); and a reward
-// per km/h of its average speed along the line
-const AI_PEN = { offRoad: 1, damage: 150, wreck: 100, smooth: 0, speed: 0 };
+// per km/h of its average speed along the line; per metre of extra path (driven beyond its progress along the line: running
+// wide, weaving)
+const AI_PEN = { offRoad: 1, damage: 150, wreck: 100, smooth: 0, speed: 0, path: 0 };
 // the weights' count for these inputs and outputs, with h hidden units (0: none)
 const aiShape = (inputs, hb, h) => {
   const nIn = AI_INPUTS.filter(d => inputs.includes(d.id)).reduce((a, d) => a + d.names.length, 0), nOut = hb ? 3 : 2;
@@ -5783,9 +5784,10 @@ try {
   aiConfig(c?.inputs || AI_DEFAULT_INPUTS, c?.hb); AI.kp = !!c?.kp; AI.ks = !!c?.ks;
   if (Number.isInteger(c?.stopAfter) && c.stopAfter >= 0) AI.stopAfter = c.stopAfter;
   if (Number.isInteger(c?.gens) && c.gens >= 0) AI.gens = c.gens;
+  if (Number.isFinite(c?.off) && c.off >= 3 && c.off <= 30) AI_CFG.off = c.off;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's): another training (this one stays, under its own key)
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks) {
   if (AI.training) aiTrain(false);
@@ -5955,7 +5957,7 @@ function aiStartEpisode(w, d, limit) {
   for (const W of car.wheels) Object.assign(W, { omega: 0, spin: 0, t: car.REST, comp: 0, contact: false, sink: 0, slip: 0, slipSpeed: 0 });
   Object.assign(car.eng, { gear: 1, rpm: ENG.idle, cut: false, shiftT: 0, reverse: false, load: 0, liftT: 9 });
   car.throttle = 0; car.steer = 0;
-  AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0, swing: 0, pc: null };
+  AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0, swing: 0, pc: null, driven: 0 };
 }
 // one physics step of the episode under way: its score when it ends, else null
 function aiStep() {
@@ -5968,15 +5970,16 @@ function aiStep() {
   while (AI.acc >= DT) { stepCar(DT); collideGates(DT); AI.acc -= DT; }
   car.grace = Math.max(0, car.grace - AI_DT); hitCooldown = 1;   // (no crash messages for each try)
   E.t += AI_DT; E.max = Math.max(E.max, E.st.dist); AI.nSim += AI_DT;
-  if (Math.abs(E.st.lat) > aiHalfW()) E.offM += Math.hypot(car.vel.x, car.vel.z) * AI_DT;   // off the road
+  const sp = Math.hypot(car.vel.x, car.vel.z) * AI_DT; E.driven += sp;
+  if (Math.abs(E.st.lat) > aiHalfW()) E.offM += sp;                    // off the road
   const why = E.st.dist >= len ? 'lap' : Math.abs(E.st.lat) > AI_CFG.off ? 'off' : E.st.dist < E.max - 15 ? 'back' : car.wrecked ? 'wreck' : up.y < 0.3 ? 'over'
     : E.t >= E.limit ? 'time' : E.t >= E.chk + 4 && E.st.dist - E.chkDist < 4 ? 'stuck' : null;
   if (E.t >= E.chk + 4) { E.chk = E.t; E.chkDist = E.st.dist; }
   if (!why) return null;
-  const dmg = 1 - carCondition(), kmh = E.max / Math.max(E.t, 1) * 3.6;
-  const pen = AI_PEN.offRoad * E.offM + AI_PEN.damage * dmg + (car.wrecked ? AI_PEN.wreck : 0) + AI_PEN.smooth * E.swing - AI_PEN.speed * kmh;
+  const dmg = 1 - carCondition(), kmh = E.max / Math.max(E.t, 1) * 3.6, extra = Math.max(0, E.driven - E.max);
+  const pen = AI_PEN.offRoad * E.offM + AI_PEN.damage * dmg + (car.wrecked ? AI_PEN.wreck : 0) + AI_PEN.smooth * E.swing + AI_PEN.path * extra - AI_PEN.speed * kmh;
   const fit = (why === 'lap' ? len + AI_LAP_BONUS * Math.max(0, AI_T - E.t) : E.max) - pen;
-  AI.last = { why, at: Math.round(E.max), t: +E.t.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1) };
+  AI.last = { why, at: Math.round(E.max), t: +E.t.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1), extra: Math.round(extra) };
   return fit;
 }
 // the racing line's point d metres on from the start line (botPath's start, s0, is elsewhere)
@@ -6194,11 +6197,13 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
     <label title="The steering output snapped to what A and D give: full left above +⅓, straight between, full right below −⅓"><input type="checkbox" id="aiKs"> steering like the keyboard: full left, straight or full right</label>
     <div class="pen">Rewards and penalties (metres on or off the score):
       <label title="Added for each km/h of its average speed along the line (speed already pays: more metres in a try's 15 s, and 5 m a second saved on an exam lap)">+ speed, a km/h on average <input type="number" id="aiPen_speed" min="0" max="50" step="0.5"></label>
+      <label title="Off for each metre driven beyond its progress along the racing line: running wide and weaving cost, a tight line doesn't">− extra path, a metre <input type="number" id="aiPen_path" min="0" max="20" step="0.1"></label>
       <label title="Off for each full swing of the steering or pedal output (their changes added up: lock to lock is 2): jerky driving costs">− jerky, a full swing <input type="number" id="aiPen_smooth" min="0" max="100" step="0.5"></label>
       <label>− off the road, a metre <input type="number" id="aiPen_offRoad" min="0" max="20" step="0.5"></label>
       <label>− damage, a wreck's worth <input type="number" id="aiPen_damage" min="0" max="1000" step="10"></label>
       <label>− wrecked <input type="number" id="aiPen_wreck" min="0" max="1000" step="10"></label></div>
-    <label style="justify-content:space-between;margin-top:6px" title="Each Train (or Train more) runs this many generations, then stops (0: until you pause it)">train this many generations at a time <input type="number" id="aiGens" min="0" max="10000" step="10"></label>
+    <label style="justify-content:space-between;margin-top:6px" title="A try ends (and loses the 100 m for ending badly) this far from the racing line. Wider gives it room for its own line, and to go astray">end a try this far from the line, m <input type="number" id="aiOff" min="3" max="30" step="1"></label>
+    <label style="justify-content:space-between" title="Each Train (or Train more) runs this many generations, then stops (0: until you pause it)">train this many generations at a time <input type="number" id="aiGens" min="0" max="10000" step="10"></label>
     <label style="justify-content:space-between" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop)">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label>
     <small>Each set of inputs and outputs is a network, and a training, of its own (the others are kept). Penalties apply from the next try.</small>
   </details>
@@ -6219,6 +6224,8 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
     const ins = [...AI.el.querySelectorAll('[data-in]')].filter(c => c.checked).map(c => c.dataset.in);
     if (!ins.length) { t.checked = true; return; }
     aiSetInputs(ins, AI.el.querySelector('#aiHb').checked, false, AI.el.querySelector('#aiKp').checked, AI.el.querySelector('#aiKs').checked);
+  } else if (t.id === 'aiOff') {
+    const v = +t.value; if (Number.isFinite(v) && v >= 3 && v <= 30) { AI_CFG.off = v; aiKeepConfig(); }
   } else if (t.id === 'aiGens') {
     const v = Math.round(+t.value); if (Number.isFinite(v) && v >= 0) { AI.gens = v; aiKeepConfig(); if (AI.training) AI.genEnd = AI.gen + v; }
   } else if (t.id === 'aiStopAfter') {
@@ -6370,8 +6377,9 @@ function aiShow() {
   for (const k in AI_PEN) { const f = AI.el.querySelector('#aiPen_' + k); if (document.activeElement !== f) f.value = AI_PEN[k]; }
   { const f = AI.el.querySelector('#aiStopAfter'); if (document.activeElement !== f) f.value = AI.stopAfter; }
   { const f = AI.el.querySelector('#aiGens'); if (document.activeElement !== f) f.value = AI.gens; }
+  { const f = AI.el.querySelector('#aiOff'); if (document.activeElement !== f) f.value = AI_CFG.off; }
   const L = AI.lastExam;
-  AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training && AI.gens ? ` of ${AI.genEnd}` : ''}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
+  AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training && AI.gens ? ` of ${AI.genEnd}` : ''}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
   AI.el.querySelector('#aiTrain').classList.toggle('on', AI.training);
   AI.el.querySelector('#aiDrive').textContent = AI.drive ? 'Stop driving' : 'Drive it';

@@ -184,8 +184,10 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   was still stuck at the first hard bend after 80 generations (with the analogue pedal: a lap by generation 8-13).
 - **Penalties** (`AI_PEN`, editable there): every drive's score loses 1 m a metre driven off the road, 150 m for
   a wreck's worth of damage (in proportion), and 100 m for wrecking the car; optionally (0 by default) so much a
-  full swing of the steering or pedal output (their changes added up: jerky driving) and a reward per km/h of the
-  average speed along the line; the panel shows the last exam's.
+  full swing of the steering or pedal output (their changes added up: jerky driving), so much a metre of extra path
+  (driven beyond its progress along the line: running wide, weaving) and a reward per km/h of the average speed
+  along the line; the panel shows the last exam's. How far from the line a try ends is set there too (8 m by
+  default: wider gives it room for a line of its own, and to go astray).
   Off road, leaving the course (8 m from the line) ends a try anyway, before the gate posts.
 - **How it learns:** evolution strategies, no gradients through the physics. A generation tries 16 noisy
   copies of the weights (±pairs) for 15 s each from one place on the line (random, or half the time 100 m

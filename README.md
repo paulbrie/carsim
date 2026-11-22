@@ -166,9 +166,16 @@ here or in another browser (made with another car or course, it asks first, and 
 
 - **The network:** 7 inputs straight to 2 outputs (steering, and a pedal: + throttle, − brake), each the tanh
   of a weighted sum: 16 weights. **Bigger net** puts a hidden layer of 8 between (82 weights).
-- **What it sees:** its speed; where the racing line is 6, 15 and 30 m ahead (the sine of the bearing); how far
-  it is to the side of the line; its yaw rate; and a pace note: the speed the line can be taken at there (from
-  its bends and the ground's grip, the same profile the bots use) less its own.
+- **What it sees:** by default its speed; where the racing line is 6, 15 and 30 m ahead (the sine of the
+  bearing); how far it is to the side of the line; its yaw rate; and a pace note: the speed the line can be taken
+  at there (from its bends and the ground's grip, the same profile the bots use) less its own. **Inputs, outputs
+  and penalties** (in the panel) picks others too: the distances to the course's left and right edges (the
+  tarmac's on road, the gate posts' off it), 5 edge rays (feelers at ±60°, ±30° and ahead: how far until they
+  leave the course, up to 40 m, drawn on the track), its sideways speed; and a third output, the handbrake (on
+  above 0). Each set is a network and a training of its own (`AI_INPUTS`, `aiSetInputs`).
+- **Penalties** (`AI_PEN`, editable there): every drive's score loses 1 m a metre driven off the road, 150 m for
+  a wreck's worth of damage (in proportion), and 100 m for wrecking the car; the panel shows the last exam's.
+  Off road, leaving the course (8 m from the line) ends a try anyway, before the gate posts.
 - **How it learns:** evolution strategies, no gradients through the physics. A generation tries 16 noisy
   copies of the weights (±pairs) for 15 s each from one place on the line (random, or half the time 100 m
   before where it last went wrong), scores each by the metres covered (100 m less for ending off the course,

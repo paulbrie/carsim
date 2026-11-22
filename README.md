@@ -198,6 +198,9 @@ here or in another browser (made with another car or course, it asks first, and 
   (km/h, degrees, metres), each output (steer left/right, gas/brake %), and a line from each input to each output
   coloured and thickened by its pull right now (value × weight; orange +, blue −). On the track, three markers show
   the points on the racing line it looks at (6, 15 and 30 m ahead).
+- **When to stop:** once it laps, the chart shows each generation's lap time (faster higher, dashed the best),
+  and training stops by itself after so many generations without a better lap (30 unless set otherwise, 0:
+  never); the panel says how long since the best.
 - **How long:** on the figure-8 on sand with the buggy, two runs from scratch first lapped at generations 11
   and 13 (about 1–1.5 minutes of computing in headless Chrome), then got quicker (55.8 s).
 - Without the pace note, or with bearings in radians (a hairpin's jumps from +180° to −180°), or always

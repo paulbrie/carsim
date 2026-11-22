@@ -5767,7 +5767,7 @@ const aiShape = (inputs, hb, h) => {
   const nIn = AI_INPUTS.filter(d => inputs.includes(d.id)).reduce((a, d) => a + d.names.length, 0), nOut = hb ? 3 : 2;
   return { nIn, nOut, np: h ? nIn * h + h + h * nOut + nOut : nIn * nOut + nOut };
 };
-const AI = { h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
+const AI = { stopAfter: 30, sinceBest: 0, h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
   hist: [], cands: null, eps: null, fits: null, ci: 0, ep: null, ctl: null, snapH: null, snapC: null, acc: 0, dst: null, el: null };
 const aiX = new Float32Array(32), aiY = new Float32Array(3), aiHid = new Float32Array(8);
 // what the network takes in and gives out (kept in this browser; each set is a training of its own)
@@ -5781,9 +5781,10 @@ function aiConfig(inputs, hb) {
 try {
   const c = JSON.parse(localStorage.getItem('sandbuggy.ai.config') || 'null');
   aiConfig(c?.inputs || AI_DEFAULT_INPUTS, c?.hb); AI.kp = !!c?.kp; AI.ks = !!c?.ks;
+  if (Number.isInteger(c?.stopAfter) && c.stopAfter >= 0) AI.stopAfter = c.stopAfter;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's): another training (this one stays, under its own key)
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks) {
   if (AI.training) aiTrain(false);
@@ -5903,7 +5904,7 @@ const aiKey = () => `sandbuggy.ai.${courseKey()}.${VEH.key}.${AI.h}${aiSig()}`;
 const aiGauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
 function aiFresh() {
   const n = AI.np = aiShape(AI.inputs, AI.hb, AI.h).np, b = n - AI.nOut;
-  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, hist: [], cands: null, ep: null });
+  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null });
   for (let i = 0; i < n; i++) AI.w[i] = aiGauss() * 0.1;
   AI.w[b + 1] = 0.5;                                                  // a little throttle to begin with, or nothing moves
   if (AI.nOut > 2) AI.w[b + 2] = -1;                                  // the handbrake off, until it learns better
@@ -5913,11 +5914,11 @@ function aiLoad() {
   try {
     const d = JSON.parse(localStorage.getItem(AI.key) || 'null');
     if (d && d.w?.length === AI.np) Object.assign(AI, { w: Float32Array.from(d.w), m: Float32Array.from(d.m || AI.m), v: Float32Array.from(d.v || AI.v), k: d.k || 0, gen: d.gen || 0,
-      best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [] });
+      best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0 });
   } catch (e) { }
 }
 function aiSave() {
-  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, hist: AI.hist.slice(-300) })); } catch (e) { }
+  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-300) })); } catch (e) { }
 }
 function aiNewGen() {
   AI.eps = []; AI.cands = []; AI.fits = new Float32Array(AI_CFG.pop); AI.ci = 0;
@@ -5993,8 +5994,11 @@ function aiTick() {
   if (AI.exam) {                                                       // the generation's result
     AI.exam = false;
     AI.fail = E.st.dist < len ? E.st.dist : null;                       // half the next tries start 100 m before: practise where it goes wrong
-    if (fit > AI.bestFit) { AI.bestFit = fit; AI.best = Float32Array.from(E.w); AI.bestLap = E.st.dist >= len ? E.t : null; }
-    AI.hist.push([Math.round(fit), Math.round(AI.tryAvg)]); AI.lastExam = AI.last;
+    const lapT = E.st.dist >= len ? +E.t.toFixed(2) : null;
+    if (fit > AI.bestFit) { AI.bestFit = fit; AI.best = Float32Array.from(E.w); AI.bestLap = lapT; AI.sinceBest = 0; }
+    else if (AI.bestLap != null) AI.sinceBest++;                        // it laps: how long since a better one
+    if (AI.stopAfter && AI.bestLap != null && AI.sinceBest >= AI.stopAfter) AI.autoStop = true;
+    AI.hist.push([Math.round(fit), Math.round(AI.tryAvg), lapT]); AI.lastExam = AI.last;
     AI.gen++; aiSave();
     return false;
   }
@@ -6013,10 +6017,15 @@ function aiTrainFrame(dt) {
     while (performance.now() - t0 < AI_BUDGET && aiTick()) { }
   }
   refreshChunks(car.pos.x, car.pos.z, 6);
+  if (AI.autoStop) {                                                   // no better lap for a while: done
+    AI.autoStop = false; aiTrain(false);
+    flash(`Training stopped: no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`, '#9fd4ff', 3);
+  }
   if ((AI.hudT = (AI.hudT || 0) + 1) % 6 === 0) aiShow();
 }
 function aiTrain(on) {
   if (on === AI.training) return;
+  AI.autoStop = false;
   if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (on) {
     if (rp.on) stopReplay();
@@ -6180,12 +6189,14 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
       <label>− off the road, a metre <input type="number" id="aiPen_offRoad" min="0" max="20" step="0.5"></label>
       <label>− damage, a wreck's worth <input type="number" id="aiPen_damage" min="0" max="1000" step="10"></label>
       <label>− wrecked <input type="number" id="aiPen_wreck" min="0" max="1000" step="10"></label></div>
+    <label style="justify-content:space-between;margin-top:6px" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop)">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label>
     <small>Each set of inputs and outputs is a network, and a training, of its own (the others are kept). Penalties apply from the next try.</small>
   </details>
   <small>Watch at 1× runs the training at real speed (with sound) to follow each try. The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
   an output, orange + (left, throttle), blue − (right, brake), thicker stronger. On the track, the 3 points it looks at.
   Learns on this course with this car, ${AI_CFG.pop} tries a generation, and remembers it in this browser. Chart: how far
-  each generation gets from the start (orange) and its tries' average (white); dashed, a lap. <b>I</b> hides this.</small>`;
+  each generation gets from the start (orange) and its tries' average (white), dashed a lap; once it laps, each generation's
+  lap time (faster higher), dashed the best. <b>I</b> hides this.</small>`;
 document.body.appendChild(AI.el);
 AI.el.querySelector('#aiTrain').addEventListener('click', e => { e.currentTarget.blur(); aiTrain(!AI.training); });
 AI.el.querySelector('#aiDrive').addEventListener('click', e => { e.currentTarget.blur(); aiDrive(!AI.drive); });
@@ -6198,6 +6209,8 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
     const ins = [...AI.el.querySelectorAll('[data-in]')].filter(c => c.checked).map(c => c.dataset.in);
     if (!ins.length) { t.checked = true; return; }
     aiSetInputs(ins, AI.el.querySelector('#aiHb').checked, false, AI.el.querySelector('#aiKp').checked, AI.el.querySelector('#aiKs').checked);
+  } else if (t.id === 'aiStopAfter') {
+    const v = Math.round(+t.value); if (Number.isFinite(v) && v >= 0) { AI.stopAfter = v; aiKeepConfig(); }
   } else if (t.id.startsWith('aiPen_')) {
     const v = +t.value; if (Number.isFinite(v) && v >= 0) { AI_PEN[t.id.slice(6)] = v; aiKeepConfig(); }
   }
@@ -6278,12 +6291,13 @@ function aiShow() {
   const y0 = document.getElementById('hud').getBoundingClientRect().bottom + 10, help = document.getElementById('help');   // under the car's read-out, over the help
   AI.el.style.top = y0 + 'px'; AI.el.style.maxHeight = ((help.offsetHeight ? help.getBoundingClientRect().top - 10 : innerHeight - 12) - y0) + 'px';
   const len = botPath().len, pct = f => Math.min(100, Math.round(f / len * 100));
-  const best = AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? `a full lap in ${fmt(AI.bestLap)}` : `${Math.round(AI.bestFit)} m of ${Math.round(len)} m (${pct(AI.bestFit)} %)`;
+  const best = AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? `a full lap in ${fmt(AI.bestLap)}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `${Math.round(AI.bestFit)} m of ${Math.round(len)} m (${pct(AI.bestFit)} %)`;
   AI.el.querySelector('#aiSize').textContent = `${AI.h ? 'a tiny neural network' : 'the smallest network'}: ${AI.nIn} inputs ${AI.h ? `→ ${AI.h} hidden →` : 'straight to'} ${AI.nOut} outputs, ${AI.np} weights${AI.kp || AI.ks ? ` · ${[AI.kp && 'pedals', AI.ks && 'steering'].filter(Boolean).join(' and ')} like the keyboard` : ''}`;
   AI.el.querySelector('#aiH').textContent = AI.h ? 'Smaller net' : 'Bigger net';
   AI.el.querySelectorAll('[data-in]').forEach(c => { c.checked = AI.inputs.includes(c.dataset.in); });
   AI.el.querySelector('#aiHb').checked = AI.hb; AI.el.querySelector('#aiKp').checked = AI.kp; AI.el.querySelector('#aiKs').checked = AI.ks;
   for (const k in AI_PEN) { const f = AI.el.querySelector('#aiPen_' + k); if (document.activeElement !== f) f.value = AI_PEN[k]; }
+  { const f = AI.el.querySelector('#aiStopAfter'); if (document.activeElement !== f) f.value = AI.stopAfter; }
   const L = AI.lastExam;
   AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop} from ${Math.round(AI.from)} m`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
@@ -6296,6 +6310,19 @@ function aiShow() {
   AI.el.querySelector('#aiSaveF').disabled = !AI.gen;
   const cv = AI.el.querySelector('#aiChart'), g = cv.getContext('2d'), W = cv.width, Hc = cv.height, Hs = AI.hist.slice(-120), top = len * 1.1;
   g.clearRect(0, 0, W, Hc);
+  const laps = Hs.map(h => h[2] ?? null), lt = laps.filter(t => t != null);
+  if (AI.bestLap != null && lt.length) {                               // it laps: each generation's lap time, faster higher; dashed, the best
+    let lo = Math.min(...lt, AI.bestLap), hi = Math.max(...lt); if (hi - lo < 2) hi = lo + 2;
+    const y = t => 10 + (t - lo) / (hi - lo) * (Hc - 20), xs = i => Hs.length > 1 ? i / (Hs.length - 1) * W : W / 2;
+    g.strokeStyle = 'rgba(255,255,255,.35)'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(0, y(AI.bestLap)); g.lineTo(W, y(AI.bestLap)); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = '#ff7a1a'; g.fillStyle = '#ff7a1a'; g.lineWidth = 3; g.beginPath(); let on = false;
+    laps.forEach((t, i) => { if (t == null) { on = false; return; } on ? g.lineTo(xs(i), y(t)) : g.moveTo(xs(i), y(t)); on = true; });
+    g.stroke();
+    laps.forEach((t, i) => { if (t != null) { g.beginPath(); g.arc(xs(i), y(t), 3.5, 0, 7); g.fill(); } });
+    g.font = '600 20px system-ui, sans-serif'; g.textBaseline = 'top'; g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,.8)';
+    g.fillText(`lap times · best ${fmt(AI.bestLap)}`, 6, Hc - 26 > y(AI.bestLap) + 6 ? y(AI.bestLap) + 6 : 4);
+    return;
+  }
   g.strokeStyle = 'rgba(255,255,255,.35)'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(0, Hc - len / top * Hc); g.lineTo(W, Hc - len / top * Hc); g.stroke(); g.setLineDash([]);
   for (const [k, col] of [[1, 'rgba(255,255,255,.6)'], [0, '#ff7a1a']]) {
     g.strokeStyle = col; g.lineWidth = 3; g.beginPath();

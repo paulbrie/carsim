@@ -5767,7 +5767,7 @@ const aiShape = (inputs, hb, h) => {
   const nIn = AI_INPUTS.filter(d => inputs.includes(d.id)).reduce((a, d) => a + d.names.length, 0), nOut = hb ? 3 : 2;
   return { nIn, nOut, np: h ? nIn * h + h + h * nOut + nOut : nIn * nOut + nOut };
 };
-const AI = { stopAfter: 30, sinceBest: 0, h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
+const AI = { gens: 0, genEnd: 0, stopAfter: 30, sinceBest: 0, h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
   hist: [], cands: null, eps: null, fits: null, ci: 0, ep: null, ctl: null, snapH: null, snapC: null, acc: 0, dst: null, el: null };
 const aiX = new Float32Array(32), aiY = new Float32Array(3), aiHid = new Float32Array(8);
 // what the network takes in and gives out (kept in this browser; each set is a training of its own)
@@ -5782,9 +5782,10 @@ try {
   const c = JSON.parse(localStorage.getItem('sandbuggy.ai.config') || 'null');
   aiConfig(c?.inputs || AI_DEFAULT_INPUTS, c?.hb); AI.kp = !!c?.kp; AI.ks = !!c?.ks;
   if (Number.isInteger(c?.stopAfter) && c.stopAfter >= 0) AI.stopAfter = c.stopAfter;
+  if (Number.isInteger(c?.gens) && c.gens >= 0) AI.gens = c.gens;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's): another training (this one stays, under its own key)
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks) {
   if (AI.training) aiTrain(false);
@@ -5997,7 +5998,8 @@ function aiTick() {
     const lapT = E.st.dist >= len ? +E.t.toFixed(2) : null;
     if (fit > AI.bestFit) { AI.bestFit = fit; AI.best = Float32Array.from(E.w); AI.bestLap = lapT; AI.sinceBest = 0; }
     else if (AI.bestLap != null) AI.sinceBest++;                        // it laps: how long since a better one
-    if (AI.stopAfter && AI.bestLap != null && AI.sinceBest >= AI.stopAfter) AI.autoStop = true;
+    if (AI.stopAfter && AI.bestLap != null && AI.sinceBest >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
+    if (AI.gens && AI.gen + 1 >= AI.genEnd) AI.autoStop = `${AI.gens} generation${AI.gens > 1 ? 's' : ''} done`;   // (gen counts this one just below)
     AI.hist.push([Math.round(fit), Math.round(AI.tryAvg), lapT]); AI.lastExam = AI.last;
     AI.gen++; aiSave();
     return false;
@@ -6017,15 +6019,16 @@ function aiTrainFrame(dt) {
     while (performance.now() - t0 < AI_BUDGET && aiTick()) { }
   }
   refreshChunks(car.pos.x, car.pos.z, 6);
-  if (AI.autoStop) {                                                   // no better lap for a while: done
-    AI.autoStop = false; aiTrain(false);
-    flash(`Training stopped: no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`, '#9fd4ff', 3);
+  if (AI.autoStop) {                                                   // its generations done, or no better lap for a while
+    AI.autoStopWhy = AI.autoStop; AI.autoStop = false; aiTrain(false);
+    flash(`Training stopped: ${AI.autoStopWhy}`, '#9fd4ff', 3);
   }
   if ((AI.hudT = (AI.hudT || 0) + 1) % 6 === 0) aiShow();
 }
 function aiTrain(on) {
   if (on === AI.training) return;
   AI.autoStop = false;
+  if (on) AI.genEnd = AI.gen + AI.gens;                                // so many more, from now
   if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (on) {
     if (rp.on) stopReplay();
@@ -6195,7 +6198,8 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
       <label>− off the road, a metre <input type="number" id="aiPen_offRoad" min="0" max="20" step="0.5"></label>
       <label>− damage, a wreck's worth <input type="number" id="aiPen_damage" min="0" max="1000" step="10"></label>
       <label>− wrecked <input type="number" id="aiPen_wreck" min="0" max="1000" step="10"></label></div>
-    <label style="justify-content:space-between;margin-top:6px" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop)">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label>
+    <label style="justify-content:space-between;margin-top:6px" title="Each Train (or Train more) runs this many generations, then stops (0: until you pause it)">train this many generations at a time <input type="number" id="aiGens" min="0" max="10000" step="10"></label>
+    <label style="justify-content:space-between" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop)">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label>
     <small>Each set of inputs and outputs is a network, and a training, of its own (the others are kept). Penalties apply from the next try.</small>
   </details>
   <small>Watch at 1× runs the training at real speed (with sound) to follow each try. The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
@@ -6215,6 +6219,8 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
     const ins = [...AI.el.querySelectorAll('[data-in]')].filter(c => c.checked).map(c => c.dataset.in);
     if (!ins.length) { t.checked = true; return; }
     aiSetInputs(ins, AI.el.querySelector('#aiHb').checked, false, AI.el.querySelector('#aiKp').checked, AI.el.querySelector('#aiKs').checked);
+  } else if (t.id === 'aiGens') {
+    const v = Math.round(+t.value); if (Number.isFinite(v) && v >= 0) { AI.gens = v; aiKeepConfig(); if (AI.training) AI.genEnd = AI.gen + v; }
   } else if (t.id === 'aiStopAfter') {
     const v = Math.round(+t.value); if (Number.isFinite(v) && v >= 0) { AI.stopAfter = v; aiKeepConfig(); }
   } else if (t.id.startsWith('aiPen_')) {
@@ -6363,8 +6369,9 @@ function aiShow() {
   AI.el.querySelector('#aiHb').checked = AI.hb; AI.el.querySelector('#aiKp').checked = AI.kp; AI.el.querySelector('#aiKs').checked = AI.ks;
   for (const k in AI_PEN) { const f = AI.el.querySelector('#aiPen_' + k); if (document.activeElement !== f) f.value = AI_PEN[k]; }
   { const f = AI.el.querySelector('#aiStopAfter'); if (document.activeElement !== f) f.value = AI.stopAfter; }
+  { const f = AI.el.querySelector('#aiGens'); if (document.activeElement !== f) f.value = AI.gens; }
   const L = AI.lastExam;
-  AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop} from ${Math.round(AI.from)} m`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
+  AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training && AI.gens ? ` of ${AI.genEnd}` : ''}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
   AI.el.querySelector('#aiTrain').classList.toggle('on', AI.training);
   AI.el.querySelector('#aiDrive').textContent = AI.drive ? 'Stop driving' : 'Drive it';

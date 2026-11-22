@@ -5106,7 +5106,7 @@ function frame(now) {
     if ((chunkTimer += dt) > 0.25) { chunkTimer = 0; refreshChunks(orbit.target.x, orbit.target.z, 4); }
     lap.msgT = Math.max(0, lap.msgT - dt);
   } else if (rp.on) { playReplay(dt); updateParticles(dt); lap.msgT = Math.max(0, lap.msgT - dt); if ((chunkTimer += dt) > 0.25) { chunkTimer = 0; refreshChunks(car.pos.x, car.pos.z, 6); } }
-  else if (AI.training) aiTrainFrame();
+  else if (AI.training) aiTrainFrame(dt);
   else if (!window.__sim.paused) simulate(dt);
   for (const id of dirty) { const ch = chunks.get(id); if (ch) ch.update(); }
   dirty.clear();
@@ -5739,7 +5739,7 @@ const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_LAP_BONUS = 5;
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
 const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100 };
 const AI_LOOK = [6, 15, 30];
-const AI = { h: 0, np: aiNP(0), look: [], viewW: null, open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
+const AI = { h: 0, np: aiNP(0), look: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
   hist: [], cands: null, eps: null, fits: null, ci: 0, ep: null, ctl: null, snapH: null, snapC: null, acc: 0, dst: null, el: null };
 const aiX = new Float32Array(AI_IN), aiY = new Float32Array(2), aiHid = new Float32Array(8);
 
@@ -5778,7 +5778,7 @@ function aiObserve(st) {
   aiX[6] = (p.v - aiX[0] * 20) / 10;                                  // the course's pace note: how much faster it could go here
 }
 function aiAct(w, st) {
-  aiObserve(st); aiNet(w, aiX, aiY); AI.viewW = w;
+  aiObserve(st); aiNet(w, aiX, aiY); AI.viewW = w; AI.nAct++;
   return { throttle: Math.max(0, aiY[1]), brake: Math.max(0, -aiY[1]), steer: aiY[0], handbrake: false };
 }
 // readInput's controls while training or driving (null: the player's)
@@ -5855,7 +5855,7 @@ function aiStep() {
   AI.acc += AI_DT;
   while (AI.acc >= DT) { stepCar(DT); collideGates(DT); AI.acc -= DT; }
   car.grace = Math.max(0, car.grace - AI_DT); hitCooldown = 1;   // (no crash messages for each try)
-  E.t += AI_DT; E.max = Math.max(E.max, E.st.dist);
+  E.t += AI_DT; E.max = Math.max(E.max, E.st.dist); AI.nSim += AI_DT;
   const why = E.st.dist >= len ? 'lap' : Math.abs(E.st.lat) > AI_CFG.off ? 'off' : E.st.dist < E.max - 15 ? 'back' : car.wrecked ? 'wreck' : up.y < 0.3 ? 'over'
     : E.t >= E.limit ? 'time' : E.t >= E.chk + 4 && E.st.dist - E.chkDist < 4 ? 'stuck' : null;
   if (E.t >= E.chk + 4) { E.chk = E.t; E.chkDist = E.st.dist; }
@@ -5889,10 +5889,16 @@ function aiTick() {
   if (++AI.ci >= AI_CFG.pop) aiEndGen();
   return true;
 }
-function aiTrainFrame() {
+function aiTrainFrame(dt) {
   if (aiKey() !== AI.key) { aiTrain(false); return; }                 // another course or car
-  const t0 = performance.now();
-  while (performance.now() - t0 < AI_BUDGET && aiTick()) { }
+  if (AI.watch) {                                                      // at 1x: as much driving as time went by, with the sound
+    audio = AI.mute;
+    AI.wacc = Math.min((AI.wacc || 0) + dt, 4 * AI_DT);
+    while (AI.wacc >= AI_DT) { AI.wacc -= AI_DT; aiTick(); }
+  } else {
+    const t0 = performance.now();
+    while (performance.now() - t0 < AI_BUDGET && aiTick()) { }
+  }
   refreshChunks(car.pos.x, car.pos.z, 6);
   if ((AI.hudT = (AI.hudT || 0) + 1) % 6 === 0) aiShow();
 }
@@ -5911,6 +5917,7 @@ function aiTrain(on) {
     AI.training = false; AI.ep = null; AI.cands = null; AI.exam = false; AI.ctl = null;
     if (AI.snapH) { H.set(AI.snapH); C.set(AI.snapC); AI.snapH = AI.snapC = null; for (const ch of chunks.values()) ch.update(); updateFar(); }
     if (AI.mute) { audio = AI.mute; AI.mute = null; }
+    AI.watch = false;
     restartRun();
   }
   aiShow();
@@ -5933,6 +5940,18 @@ const aiMarks = [0, 1, 2].map(k => {
 let aiVizT = 0;
 function aiViz(dt) {
   const live = (AI.training || AI.drive) && !!AI.viewW;
+  // decisions a second (the network runs on the main thread, in readInput: once a frame driving, once every
+  // AI_DT of simulated time training, as many as fit in AI_BUDGET ms a frame)
+  const now = performance.now(), el = (now - (AI.rateT || now)) / 1000;     // real seconds (a frame's dt is capped)
+  if (!AI.rateT) AI.rateT = now;
+  else if (el >= 1) {
+    const n = AI.nAct / el, x = AI.nSim / el;
+    const f = v => v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString('en');
+    AI.rate = !live ? '' : AI.training ? `${f(n)} decisions/s on the main thread · ${AI.watch ? 'at real speed (watching)' : `driving at ${f(x)}× real time`}`
+      : `${f(n)} decisions/s on the main thread (one a frame)`;
+    AI.nAct = 0; AI.nSim = 0; AI.rateT = now;
+    if (AI.open) AI.el.querySelector('#aiRate').textContent = AI.rate;
+  }
   for (let k = 0; k < 3; k++) {
     const m = aiMarks[k], q = AI.look[k];
     m.visible = live && AI.open && !!q && !rp.on;
@@ -6011,19 +6030,26 @@ document.head.insertAdjacentHTML('beforeend', `<style>
 </style>`);
 AI.el = document.createElement('div'); AI.el.id = 'aiPanel'; AI.el.className = 'panel';
 AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"></div>
-  <div class="st" id="aiStat"></div>
+  <div class="st" id="aiStat"></div><div class="sub" id="aiRate"></div>
   <canvas id="aiNet" width="540" height="330" title="Each line: an input's pull on an output right now (its value × its weight). Orange pushes + (steer left, throttle), blue − (steer right, brake); thicker, stronger."></canvas>
   <canvas id="aiChart" width="540" height="108"></canvas>
-  <button id="aiTrain">Train</button><button id="aiDrive">Drive it</button><button id="aiReset">Start over</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button>
+  <button id="aiTrain">Train</button><button id="aiDrive">Drive it</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><button id="aiReset">Start over</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button>
   <button id="aiSaveF" title="Download this training (the weights, the generations, the chart) as a file">Save to file</button><button id="aiLoadF" title="Load a training saved to a file">Load file</button>
   <input type="file" id="aiFile" accept=".json,application/json" style="display:none">
-  <small>The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
+  <small>Watch at 1× runs the training at real speed (with sound) to follow each try. The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
   an output, orange + (left, throttle), blue − (right, brake), thicker stronger. On the track, the 3 points it looks at.
   Learns on this course with this car, ${AI_CFG.pop} tries a generation, and remembers it in this browser. Chart: how far
   each generation gets from the start (orange) and its tries' average (white); dashed, a lap. <b>I</b> hides this.</small>`;
 document.body.appendChild(AI.el);
 AI.el.querySelector('#aiTrain').addEventListener('click', e => { e.currentTarget.blur(); aiTrain(!AI.training); });
 AI.el.querySelector('#aiDrive').addEventListener('click', e => { e.currentTarget.blur(); aiDrive(!AI.drive); });
+AI.el.querySelector('#aiWatch').addEventListener('click', e => {
+  e.currentTarget.blur();
+  AI.watch = !AI.watch; AI.wacc = 0;
+  if (!AI.watch && AI.mute) { AI.mute.node.port.postMessage({ on: 0 }); audio = null; }   // full speed: silent again
+  if (AI.watch && !AI.training) aiTrain(true);
+  aiShow();
+});
 AI.el.querySelector('#aiH').addEventListener('click', e => {
   e.currentTarget.blur();
   const was = AI.training; if (was) aiTrain(false);
@@ -6100,6 +6126,8 @@ function aiShow() {
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
   AI.el.querySelector('#aiTrain').classList.toggle('on', AI.training);
   AI.el.querySelector('#aiDrive').textContent = AI.drive ? 'Stop driving' : 'Drive it';
+  AI.el.querySelector('#aiWatch').textContent = AI.watch ? 'Full speed' : 'Watch at 1×';
+  AI.el.querySelector('#aiWatch').classList.toggle('on', !!AI.watch);
   AI.el.querySelector('#aiDrive').classList.toggle('on', AI.drive);
   AI.el.querySelector('#aiDrive').disabled = AI.bestFit < 0;
   AI.el.querySelector('#aiSaveF').disabled = !AI.gen;

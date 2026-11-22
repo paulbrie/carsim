@@ -175,6 +175,10 @@ here or in another browser (made with another car or course, it asks first, and 
   stuck or wrecked), and moves the weights toward the better ones (by rank, with Adam). Then an exam: the new
   weights from the start line for a lap; the best exam's weights are the autopilot. Physics only, 12 ms a
   frame; the ground's ruts are put back after every try.
+- **Watch at 1×** runs the training at real speed, with the sound, to follow every try (it learns the same, only
+  slower); **Full speed** goes back. The panel shows the decisions a second: the network runs on the main thread,
+  in the sim's input step, as it needs the car's physics state, which lives there (31 ns a decision for the 16
+  weights; a training step is ~67 µs, nearly all physics: ~15,000 decisions/s flat out, ~250× real time).
 - **Watching it think:** the panel draws the network live while it trains or drives: each input with its value
   (km/h, degrees, metres), each output (steer left/right, gas/brake %), and a line from each input to each output
   coloured and thickened by its pull right now (value × weight; orange +, blue −). On the track, three markers show

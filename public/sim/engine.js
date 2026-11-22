@@ -1489,7 +1489,7 @@ addEventListener('keydown', e => {
   if (MP.on && mpKeyBlocked(e)) return;
   if (e.code === 'KeyE') { if (rp.on) stopReplay(); toggleEditor(!ed.on); return; }
   if (ed.on) { if ((e.code === 'Delete' || e.code === 'Backspace') && ed.tool === 'wp' && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) { e.preventDefault(); deleteWaypoint(ed.sel); } return; }
-  if (e.code === 'KeyI' && !MP.on) { aiToggle(); return; }
+  if (e.code === 'KeyI') { aiToggle(); return; }
   if (e.code === 'KeyY') { rp.on ? stopReplay() : startReplay(); return; }
   if (rp.on) { replayKey(e); if (e.code === 'KeyC') nextCam(); if (e.code === 'KeyH') document.getElementById('help').style.display = document.getElementById('help').style.display === 'none' ? '' : 'none'; if (e.code === 'KeyM') muted = !muted; return; }
   if (e.code === 'KeyK') { togglePaintPanel(); return; }
@@ -5164,6 +5164,7 @@ function mpKeyBlocked(e) {
 
 // grid slot n: two columns, staggered, behind the start line along the course
 function mpGrid(slot) {
+  aiHalt(true);
   if (rp.on) stopReplay();
   restartRun();
   lap.lapNo = 0; lap.last = null; lap.laps = []; lap.valid = []; lap.history = [];   // lap 1 of the race, whatever was driven before
@@ -5190,7 +5191,7 @@ function mpProgress() {
 
 // called by finishLap, before it moves on: lap lap.lapNo is done (a best lap, maybe; in a race, one of its laps)
 function mpLap(t, valid) {
-  if (!MP.on || MP.spectator || lap.lapNo < 1) return;
+  if (!MP.on || MP.spectator || lap.lapNo < 1 || AI.drive) return;   // the autopilot's laps aren't ours
   const time = t - lap.lapStart, trace = valid && (lap.best == null || time < lap.best) ? mpTrace(lap.lapStart, t) : null;   // lap.best: still the one before
   mpPost({ t: 'lap', lap: lap.lapNo, time, valid, splits: lap.splits, ...(trace ? { trace } : {}) });
   if (MP.phase !== 'racing' || MP.finished) return;
@@ -5529,6 +5530,7 @@ function mpReplayHits(pe) {
   for (const h of MP.hits.get(pe.id) || []) bodyHit(pe.V, h, mpPeerVel(pe));
 }
 function mpSendHit(h) {
+  if (AI.training) return;
   const now = performance.now();
   MP.hitBudget = Math.min(MP_HIT_RATE, (MP.hitBudget ?? MP_HIT_RATE) + (now - (MP.hitT || now)) / 1000 * MP_HIT_RATE); MP.hitT = now;
   if (MP.hitBudget < 1) return;
@@ -5652,7 +5654,7 @@ function mpFrame(dt) {
   flushSkids();
   // ours, to the others
   car.wheels.forEach((W, i) => { if (i < 4) mpSkMax[i] = Math.max(mpSkMax[i], W.skid || 0); });
-  if ((MP.sendT += dt) >= 0.05 && !rp.on && !ed.on) {
+  if ((MP.sendT += dt) >= 0.05 && !rp.on && !ed.on && !AI.training) {
     MP.sendT = 0;
     const R = car.wheels[2];
     mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo, sk: mpSkidsOut() });
@@ -5695,9 +5697,9 @@ if (MP.on) {
   BOTS.n = 0;
   MP.hits = new Map();
   dentablesOf(BUGGY); MP.buggyTpl = buggy.clone(true);       // the others' buggies: copies of ours as built (its body meshes marked to dent)
-  carHitHook = mpSendHit; carRepairHook = () => mpPost({ t: 'repair' });
+  carHitHook = mpSendHit; carRepairHook = () => { if (!AI.training) mpPost({ t: 'repair' }); };
   const help = document.getElementById('help');
-  help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>Shift/right-drag</b> look around &nbsp; <b>P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide this';
+  help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>Shift/right-drag</b> look around &nbsp; <b>P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>I</b> autopilot (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide this';
   addEventListener('message', e => { if (e.origin === location.origin && e.source === parent) mpMessage(e.data); });
 }
 if (MP.edit) {
@@ -5895,6 +5897,7 @@ function aiTrainFrame() {
 }
 function aiTrain(on) {
   if (on === AI.training) return;
+  if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (on) {
     if (rp.on) stopReplay();
     if (ed.on) toggleEditor(false);
@@ -5913,13 +5916,16 @@ function aiTrain(on) {
 }
 function aiDrive(on) {
   if (on && !(AI.best || AI.w)) return;
+  if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (AI.training) aiTrain(false);
   AI.drive = on;
   if (on) { restartRun(); AI.dst = { i: -1, dist: 0, lat: 0 }; flash('Autopilot: hands off (any driving key takes over)', '#9fd4ff', 2.5); }
   aiShow();
 }
 // before the world changes under it (called from regenerateWorld, also at boot, before AI exists)
-function aiHalt() { try { if (AI.training) aiTrain(false); } catch (e) { } }
+function aiHalt(drive) { try { if (AI.training) aiTrain(false); if (drive && AI.drive) { AI.drive = false; aiShow(); } } catch (e) { } }
+// in a race room: not on the grid or in a race (before our finish); there the others see none of it (mpFrame, mpSendHit)
+const aiAllowed = () => !MP.on || !(MP.hold || ((MP.phase === 'countdown' || MP.phase === 'racing') && !MP.finished && !MP.spectator));
 // for tests (the headless browser draws a frame a second): whole generations, now
 function aiTrainSync(gens = 1, cfg) {
   if (cfg) { if (cfg.h != null && cfg.h !== AI.h) { AI.h = cfg.h; AI.key = ''; } Object.assign(AI_CFG, cfg); }
@@ -5971,10 +5977,25 @@ AI.el.querySelector('#aiReset').addEventListener('click', e => {
   const was = AI.training; if (was) aiTrain(false);
   AI.drive = false; try { localStorage.removeItem(aiKey()); } catch (err) { } aiLoad(); if (was) aiTrain(true); aiShow();
 });
+// the button, in the column on the right; in a race room left of Replay (that column is the room's), gone in a race
+document.head.insertAdjacentHTML('beforeend', `<style>
+  #aiBtn{position:fixed;top:452px;right:12px;font:inherit;font-size:13px;font-weight:700;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(20,14,6,.65)}
+  #aiBtn:hover,#aiBtn.on{background:rgba(255,90,0,.85)}
+  body.mp-race #aiBtn{display:none!important}
+</style>`);
+AI.btn = document.createElement('button'); AI.btn.id = 'aiBtn'; AI.btn.textContent = '🧠 Autopilot';
+AI.btn.title = 'A tiny neural network learns to drive a lap of this course, with this car (I)';
+document.body.appendChild(AI.btn);
+AI.btn.addEventListener('click', e => { e.currentTarget.blur(); aiToggle(); });
+setInterval(() => {
+  if (!MP.on) return;
+  const r = document.getElementById('replayBtn').getBoundingClientRect();
+  if (r.width) { AI.btn.style.top = r.top + 'px'; AI.btn.style.right = (innerWidth - r.left + 8) + 'px'; }
+}, 250);
 function aiToggle() {
   AI.open = !AI.open;
   if (AI.open && aiKey() !== AI.key && !AI.training) aiLoad();
-  AI.el.style.display = AI.open ? 'block' : 'none';
+  AI.el.style.display = AI.open ? 'block' : 'none'; AI.btn.classList.toggle('on', AI.open);
   aiShow();
 }
 function aiShow() {

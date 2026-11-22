@@ -1,5 +1,5 @@
 # Autopilot (ticket #311): the smallest neural network that learns to drive a lap, trained in the browser on the
-# sim's own physics (single player; I opens its panel). 6 inputs -> 8 tanh units -> steer and pedal: 74 weights,
+# sim's own physics (I, or the Autopilot button, opens its panel; in a race room too, but not in a race). 6 inputs -> 8 tanh units -> steer and pedal: 74 weights,
 # trained by evolution strategies (no gradients through the physics needed). See the block's header below.
 # Applies to public/sim after the other patches (last in the chain):
 #   python3 scripts/patches/autopilot.py <dir with engine.js and index.html>
@@ -204,6 +204,7 @@ function aiTrainFrame() {
 }
 function aiTrain(on) {
   if (on === AI.training) return;
+  if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (on) {
     if (rp.on) stopReplay();
     if (ed.on) toggleEditor(false);
@@ -222,13 +223,16 @@ function aiTrain(on) {
 }
 function aiDrive(on) {
   if (on && !(AI.best || AI.w)) return;
+  if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (AI.training) aiTrain(false);
   AI.drive = on;
   if (on) { restartRun(); AI.dst = { i: -1, dist: 0, lat: 0 }; flash('Autopilot: hands off (any driving key takes over)', '#9fd4ff', 2.5); }
   aiShow();
 }
 // before the world changes under it (called from regenerateWorld, also at boot, before AI exists)
-function aiHalt() { try { if (AI.training) aiTrain(false); } catch (e) { } }
+function aiHalt(drive) { try { if (AI.training) aiTrain(false); if (drive && AI.drive) { AI.drive = false; aiShow(); } } catch (e) { } }
+// in a race room: not on the grid or in a race (before our finish); there the others see none of it (mpFrame, mpSendHit)
+const aiAllowed = () => !MP.on || !(MP.hold || ((MP.phase === 'countdown' || MP.phase === 'racing') && !MP.finished && !MP.spectator));
 // for tests (the headless browser draws a frame a second): whole generations, now
 function aiTrainSync(gens = 1, cfg) {
   if (cfg) { if (cfg.h != null && cfg.h !== AI.h) { AI.h = cfg.h; AI.key = ''; } Object.assign(AI_CFG, cfg); }
@@ -280,10 +284,25 @@ AI.el.querySelector('#aiReset').addEventListener('click', e => {
   const was = AI.training; if (was) aiTrain(false);
   AI.drive = false; try { localStorage.removeItem(aiKey()); } catch (err) { } aiLoad(); if (was) aiTrain(true); aiShow();
 });
+// the button, in the column on the right; in a race room left of Replay (that column is the room's), gone in a race
+document.head.insertAdjacentHTML('beforeend', `<style>
+  #aiBtn{position:fixed;top:452px;right:12px;font:inherit;font-size:13px;font-weight:700;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(20,14,6,.65)}
+  #aiBtn:hover,#aiBtn.on{background:rgba(255,90,0,.85)}
+  body.mp-race #aiBtn{display:none!important}
+</style>`);
+AI.btn = document.createElement('button'); AI.btn.id = 'aiBtn'; AI.btn.textContent = '🧠 Autopilot';
+AI.btn.title = 'A tiny neural network learns to drive a lap of this course, with this car (I)';
+document.body.appendChild(AI.btn);
+AI.btn.addEventListener('click', e => { e.currentTarget.blur(); aiToggle(); });
+setInterval(() => {
+  if (!MP.on) return;
+  const r = document.getElementById('replayBtn').getBoundingClientRect();
+  if (r.width) { AI.btn.style.top = r.top + 'px'; AI.btn.style.right = (innerWidth - r.left + 8) + 'px'; }
+}, 250);
 function aiToggle() {
   AI.open = !AI.open;
   if (AI.open && aiKey() !== AI.key && !AI.training) aiLoad();
-  AI.el.style.display = AI.open ? 'block' : 'none';
+  AI.el.style.display = AI.open ? 'block' : 'none'; AI.btn.classList.toggle('on', AI.open);
   aiShow();
 }
 function aiShow() {
@@ -323,7 +342,7 @@ rep("""  const o = window.__sim?.override;""", """  const o = aiInput() || windo
 rep("""  else if (!window.__sim.paused) simulate(dt);""", """  else if (AI.training) aiTrainFrame();
   else if (!window.__sim.paused) simulate(dt);""")
 rep("""  if (e.code === 'KeyY') { rp.on ? stopReplay() : startReplay(); return; }""",
-    """  if (e.code === 'KeyI' && !MP.on) { aiToggle(); return; }
+    """  if (e.code === 'KeyI') { aiToggle(); return; }
   if (e.code === 'KeyY') { rp.on ? stopReplay() : startReplay(); return; }""")
 # a new world, or the course editor: training stops first (it puts back the ground it saved when it began)
 rep("""function regenerateWorld() {
@@ -336,6 +355,19 @@ rep("""function toggleEditor(on) {
   if (on === ed.on) return;
   if (on) aiHalt();
 """)
+# in a race room: a race stops it; while it trains, the others see none of it (no position, dents, repairs); its laps aren't ours
+rep("""function mpGrid(slot) {
+  if (rp.on) stopReplay();""", """function mpGrid(slot) {
+  aiHalt(true);
+  if (rp.on) stopReplay();""")
+rep("""  if ((MP.sendT += dt) >= 0.05 && !rp.on && !ed.on) {""", """  if ((MP.sendT += dt) >= 0.05 && !rp.on && !ed.on && !AI.training) {""")
+rep("""function mpSendHit(h) {
+""", """function mpSendHit(h) {
+  if (AI.training) return;
+""")
+rep("""carRepairHook = () => mpPost({ t: 'repair' });""", """carRepairHook = () => { if (!AI.training) mpPost({ t: 'repair' }); };""")
+rep("""  if (!MP.on || MP.spectator || lap.lapNo < 1) return;""", """  if (!MP.on || MP.spectator || lap.lapNo < 1 || AI.drive) return;   // the autopilot's laps aren't ours""")
+rep("""<b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute""", """<b>Y</b> replay (not in a race) &nbsp; <b>I</b> autopilot (not in a race) &nbsp; <b>M</b> mute""")
 rep("""  if (BOTS.n) setBots(BOTS.n);""", """  Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
   if (BOTS.n) setBots(BOTS.n);""")
 open(ep, 'w').write(s)

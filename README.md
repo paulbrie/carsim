@@ -154,9 +154,11 @@ the edge lines and 1.5 m shoulders; on the road the bridges' decks, ramps and cu
 Switching between sand and the other two rebuilds the world (other hills), as switching the road on or
 off already did.
 
-## Autopilot: a tiny network that learns to drive (single player, I)
+## Autopilot: a tiny network that learns to drive (I)
 
-**I** opens the Autopilot panel; **Train** has a neural network learn to drive a lap of this course with this
+**I** or the **🧠 Autopilot** button opens the Autopilot panel (single player, and in a race room in the lobby
+or after your finish, not on the grid or in a race: a race starting stops it; while it trains there the others
+see none of it, and its laps are never your best laps); **Train** has a neural network learn to drive a lap of this course with this
 car, in the browser, on the sim's own physics (`scripts/patches/autopilot.py`); **Drive it** hands the car to
 the best one so far (any driving key takes it back). What it learnt is kept per course and car in the browser.
 

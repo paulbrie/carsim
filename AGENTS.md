@@ -13,7 +13,7 @@ See README.md for the layout. Notes:
   the cars made from downloaded models (XJR, SL 63, 911 Turbo: specs, sounds, menus) `cars.py`
   skid marks (ours and, in a race, the others' from their `sk`) `skids.py` and the grounds' landscapes (dunes for
   sand, countryside for earth and road; the road's width) `grounds.py`, the autopilot (a tiny network trained in
-  the browser to drive a lap, single player, I) `autopilot.py`, last in the chain
+  the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, last in the chain
   (check: extract the original `index.html` to a scratch
   dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
@@ -50,6 +50,8 @@ See README.md for the layout. Notes:
   anything that keeps state between drives must be reset in `aiStartEpisode` (gear, revs, wheel spin...: two
   tries that start differently can't be compared), and it saves `H` / `C` when training starts and puts them
   back after every try: anything that rebuilds the world must call `aiHalt()` first (`regenerateWorld` does).
+  In a race room it is off in races (`aiAllowed`, `mpGrid` halts it) and silent while it trains: no `s`, `hit`
+  or `repair` goes out, and `mpLap` posts none of the autopilot's laps.
   Tests: `__sim.aiTrainSync(gens)`, `__sim.aiTry(weights)` (how a drive ends), one generation per call from a
   timer (a long synchronous run gets the headless tab killed).
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on

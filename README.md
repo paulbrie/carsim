@@ -177,7 +177,9 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   leave the course, up to 40 m, drawn on the track), its sideways speed, its wheels' sinkage (the deepest:
   digging in on sand), its tilt (roll and pitch: about to roll over), the g (forward and sideways acceleration,
   smoothed over 0.1 s); and a third output, the handbrake (on
-  above 0). Each set is a network and a training of its own (`AI_INPUTS`, `aiSetInputs`).
+  above 0). Each set is a network and a training of its own (`AI_INPUTS`, `aiSetInputs`); a set not trained yet
+  starts from the one it was changed from, the new inputs' (and a new handbrake's) weights at nothing, so it drives as
+  that one did and training carries on from there (`aiCarry`).
 - **Like the keyboard** (two options there): the pedal snapped to full throttle / off / full brake (above +⅓,
   between, below −⅓), as W and S give, and the steering to full left / straight / full right as A and D give. Each
   is a training of its own. Harder to learn: with keyboard pedals, a run from scratch on the figure-8 (sand, buggy)
@@ -213,7 +215,18 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   side** set, instead of the centre), **look ahead by time** (0.3 / 0.7 / 1.4 s instead of 6 / 15 / 30 m: one
   steering for every speed), **tries start rolling** (at 85 % of the notes' speed, not from a standstill), and a
   **recorded lap to follow** (`__sim.aiDemo(trace)`, a ghost's trace, e.g. your best lap's from `data/ghosts`): its
-  line and speeds take the place of the racing line and the notes. With an RS 6 on the figure-8 (road), from a
+  line and speeds take the place of the racing line and the notes. **Exams are flying laps** (two laps in a row from the
+  start line, the second timed, as Drive it's laps after the first and a driver's best are: at speed over the line, on
+  the ground the first lap wore, with its knocks; from a standstill a lap is ~1.5 s slower, and one lap alone hides a
+  network that can't keep it up: the RS 6's 31.78 s on one wrecked in the next lap's first bend): switching it
+  re-examines the best on the new exam when training starts. **Flying laps an exam times**: so many in a row after the
+  first, the slowest counting, the knocks of each carried into the next: a network quick for a lap that then loses it
+  scores its bad lap (the RS 6 with the handbrake, judged on one: 30.95, 31.39, then 37.89 s in Drive it; on three:
+  31.00 / 31.03 / 31.05 in its exam, and six laps from 30.95 to 31.54 in Drive it, all under the record). Tries and exams start on the ground as built, not the one the
+  driving before them wore (ruts and loosened ground made the same network's 31.48 s 31.68 after a few laps), and from
+  a car as new (traction control and gear-change timing too): the same weights always give the same lap. Drive it decides as training does, every 1/60 s (held
+  between frames), not once a frame (150 a second on a 120 Hz screen). **Back to the best** carries training on from the best weights, when it has
+  wandered off from them. With an RS 6 on the figure-8 (road), from a
   36.1 s flying lap with the defaults to 33.6 s (realistic notes, look-ahead by time, rolling starts) and 32.26 s
   following the record lap (31.66 s, a driver's).
 - **When to stop:** once it laps, the chart shows each generation's lap time (faster higher, dashed the best),

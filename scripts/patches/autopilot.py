@@ -43,9 +43,10 @@ BLOCK = r"""
 const AI_SIZES = [0, 8];
 const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_LAP_BONUS = 5;
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
-const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false };
+const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1 };
 const AI_LOOK_T = [0.3, 0.7, 1.4];                                     // the look-ahead in seconds, if by time (at least AI_LOOK_MIN m)
 const AI_LOOK_MIN = [3, 6, 12];
+const AI_AHEAD_T = 0.5, AI_AHEAD_MIN = 5;                                // the pace note ahead: so far ahead
 const AI_LOOK = [6, 15, 30], AI_RAYS = [60, 30, 0, -30, -60], AI_RAY_MAX = 40;
 const aiDeg = v => Math.round(Math.asin(clamp(v / AI_CFG.bearing, -1, 1)) * 180 / Math.PI) + '°';
 // the inputs to choose from (Inputs & outputs, in the panel): each gives one number or a few, roughly -1..1, shown in real units
@@ -57,6 +58,7 @@ const AI_INPUTS = [
   { id: 'offset', names: ['offset'], tip: 'how far it is to the side of the racing line (+ left)', show: v => (v * 5).toFixed(1) + ' m' },
   { id: 'yaw', names: ['yaw rate'], tip: 'how fast it is turning', show: v => Math.round(v * 115) + '°/s' },
   { id: 'pace', names: ['pace note'], tip: "the speed the line can be taken at here (from its bends and the ground's grip) less its own", show: v => (v > 0 ? '+' : '') + Math.round(v * 36) + ' km/h' },
+  { id: 'ahead', names: ['pace note ahead'], tip: `the pace note's speed ${AI_AHEAD_T} s ahead (at its speed, at least ${AI_AHEAD_MIN} m) less its own: what's coming, to brake for it in time`, show: v => (v > 0 ? '+' : '') + Math.round(v * 36) + ' km/h' },
   { id: 'edges', names: ['left edge', 'right edge'], tip: "how far the course's edges are, left and right (the tarmac's on road, the gate posts' off it)", show: v => (v * 10).toFixed(1) + ' m' },
   { id: 'rays', names: AI_RAYS.map(a => a ? `ray ${Math.abs(a)}° ${a > 0 ? 'L' : 'R'}` : 'ray ahead'), tip: `5 feelers, 60° and 30° to either side and straight ahead: how far each goes before it leaves the course (up to ${AI_RAY_MAX} m)`, show: v => Math.round(v * AI_RAY_MAX) + ' m' },
   { id: 'slide', names: ['sideways'], tip: 'how fast it slides sideways (+ to the left)', show: v => (v * 10).toFixed(1) + ' m/s' },
@@ -99,16 +101,36 @@ try {
   if (Number.isFinite(c?.gAccel) && c.gAccel >= 0 && c.gAccel <= 2) AI_CFG.gAccel = c.gAccel;
   AI_CFG.racingLine = !!c?.racingLine;
   if (Number.isFinite(c?.lineW) && c.lineW >= 0 && c.lineW <= 15) AI_CFG.lineW = c.lineW;
-  AI_CFG.lookTime = !!c?.lookTime; AI_CFG.rolling = !!c?.rolling;
+  AI_CFG.lookTime = !!c?.lookTime; AI_CFG.rolling = !!c?.rolling; AI_CFG.flying = !!c?.flying;
+  if (Number.isInteger(c?.examLaps) && c.examLaps >= 1 && c.examLaps <= 5) AI_CFG.examLaps = c.examLaps;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
-// another set of inputs or outputs (or pedals / steering like the keyboard's): another training (this one stays, under its own key)
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, pen: AI_PEN })); } catch (e) { } };
+// another set of inputs or outputs (or pedals / steering like the keyboard's): another training (this one stays, under its own key);
+// one not trained yet starts from this one's weights, the new inputs' (and outputs') at nothing: it drives as this one did
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks) {
   if (AI.training) aiTrain(false);
   AI.drive = false;
+  const was = AI.w && (AI.gen || AI.best) ? { names: AI.names.slice(), nIn: AI.nIn, nOut: AI.nOut, h: AI.h, w: AI.best || AI.w } : null;
   aiConfig(inputs, hb); AI.kp = !!kp; AI.ks = !!ks; aiKeepConfig();
-  if (!quiet) { aiLoad(); aiShow(); }
+  if (quiet) return;
+  aiLoad();
+  if (was && !AI.gen && !AI.best && was.h === AI.h) { aiCarry(was); flash('Carried over: the new inputs start at nothing', '#9fd4ff', 2); }
+  aiShow();
+}
+function aiCarry(o) {
+  const I = AI.nIn, O = AI.nOut, h = AI.h, n = AI.np, w = new Float32Array(n), on = o.w.length, oo = Math.min(O, o.nOut);
+  const from = AI.names.map(nm => o.names.indexOf(nm));                 // each input's place in the old network, or -1
+  for (let r = 0; r < (h || oo); r++) for (let i = 0; i < I; i++) if (from[i] >= 0) w[r * I + i] = o.w[r * o.nIn + from[i]];   // W (linear) or W1
+  if (h) for (let j = 0; j < h; j++) {
+    w[I * h + j] = o.w[o.nIn * h + j];                                  // b1
+    for (let k = 0; k < oo; k++) w[I * h + h + j * O + k] = o.w[o.nIn * h + h + j * o.nOut + k];   // W2
+  }
+  for (let k = 0; k < oo; k++) w[n - O + k] = o.w[on - o.nOut + k];   // b (b2)
+  if (O > 2 && o.nOut <= 2) w[n - O + 2] = -1;                          // a new handbrake: off
+  AI.w = w; AI.m = new Float32Array(n); AI.v = new Float32Array(n); AI.k = 0;
+  AI.best = Float32Array.from(w); AI.examKind = '';                    // its best so far: where it starts, examined as training starts
+  aiSave();
 }
 
 // the network: linear [W (outputs x inputs), b (outputs)]; with h hidden units [W1 (h x inputs), b1 (h), W2 (h x outputs), b2 (outputs)];
@@ -274,6 +296,7 @@ function aiObserve(st, dt = AI_DT) {
     case 'offset': aiX[j++] = off / 5; break;
     case 'yaw': aiX[j++] = car.w.y / 2; break;
     case 'pace': aiX[j++] = (aiPace()[bi] * AI_CFG.pace - v) / 10; break;   // (the notes for the grip set: aiPace)                    // the course's pace note: how much faster it could go here
+    case 'ahead': aiX[j++] = (aiPace()[(bi + Math.round(Math.max(AI_AHEAD_MIN, Math.abs(v) * AI_AHEAD_T) / Pt.ds)) % n] * AI_CFG.pace - v) / 10; break;
     case 'edges': { const W = aiHalfW(); aiX[j++] = (W - st.lat) / 10; aiX[j++] = (W + st.lat) / 10; break; }
     case 'rays': AI_RAYS.forEach((a, k) => { aiX[j++] = aiRay(cx, cz, a, k) / AI_RAY_MAX; }); break;
     case 'slide': aiX[j++] = (car.vel.x * cz - car.vel.z * cx) / 10; break;
@@ -299,7 +322,10 @@ function aiInput(dt) {
   if (keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD || keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight) {
     AI.drive = false; flash('You have the wheel', '#fff', 1.5); aiShow(); return null;
   }
-  return aiAct(AI.best || AI.w, AI.dst, dt);
+  // as it was trained and examined: a decision every AI_DT, held between (one a frame, at 120 Hz or more, drives otherwise)
+  AI.dAcc = (AI.dAcc || 0) + dt;
+  if (!AI.dCtl || AI.dAcc >= AI_DT) { AI.dAcc = Math.min(AI.dAcc - AI_DT, AI_DT); AI.dCtl = aiAct(AI.best || AI.w, AI.dst, AI_DT); }
+  return AI.dCtl;
 }
 
 // ---------- training ----------
@@ -309,7 +335,7 @@ const aiKey = () => `sandbuggy.ai.${courseKey()}.${VEH.key}.${AI.h}${aiSig()}`;
 const aiGauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
 function aiFresh() {
   const n = AI.np = aiShape(AI.inputs, AI.hb, AI.h).np, b = n - AI.nOut;
-  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null });
+  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null, examKind: aiExamKind() });
   for (let i = 0; i < n; i++) AI.w[i] = aiGauss() * 0.1;
   AI.w[b + 1] = 0.5;                                                  // a little throttle to begin with, or nothing moves
   if (AI.nOut > 2) AI.w[b + 2] = -1;                                  // the handbrake off, until it learns better
@@ -319,11 +345,11 @@ function aiLoad() {
   try {
     const d = JSON.parse(localStorage.getItem(AI.key) || 'null');
     if (d && d.w?.length === AI.np) Object.assign(AI, { w: Float32Array.from(d.w), m: Float32Array.from(d.m || AI.m), v: Float32Array.from(d.v || AI.v), k: d.k || 0, gen: d.gen || 0,
-      best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0 });
+      best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0, examKind: d.exam || 'line' });
   } catch (e) { }
 }
 function aiSave() {
-  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-300) })); } catch (e) { }
+  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-300), exam: AI.examKind })); } catch (e) { }
 }
 function aiNewGen() {
   AI.eps = []; AI.cands = []; AI.fits = new Float32Array(AI_CFG.pop); AI.ci = 0;
@@ -340,7 +366,7 @@ function aiEndGen() {
   const g = new Float32Array(AI.np);
   AI.eps.forEach((e, p) => { const d = u[2 * p] - u[2 * p + 1]; for (let i = 0; i < AI.np; i++) g[i] += d * e[i] / (AI_CFG.pop * AI_CFG.sigma); });
   AI.k++;
-  const b1 = 1 - 0.9 ** AI.k, b2 = 1 - 0.999 ** AI.k, lr = AI_CFG.lr * (AI.bestLap != null ? 0.3 : 1);   // smaller steps once it laps: refine, don't wander off
+  const b1 = 1 - 0.9 ** AI.k, b2 = 1 - 0.999 ** AI.k, lr = AI_CFG.lr * (AI.bestLap != null || AI.hist.some(h => h[2] != null) ? 0.3 : 1);   // smaller steps once it laps (or did, under an exam since made harder): refine, don't wander off
   for (let i = 0; i < AI.np; i++) {
     AI.m[i] = 0.9 * AI.m[i] + 0.1 * g[i]; AI.v[i] = 0.999 * AI.v[i] + 0.001 * g[i] * g[i];
     AI.w[i] += lr * (AI.m[i] / b1) / (Math.sqrt(AI.v[i] / b2) + 1e-8);
@@ -349,15 +375,16 @@ function aiEndGen() {
   AI.tryAvg = sum / AI_CFG.pop;
   AI.cands = null; AI.exam = true;                                     // next: the new weights, from the start line
 }
-// a drive: w from d metres along the racing line (0: the start line, behind it as a lap starts), at most limit s
-function aiStartEpisode(w, d, limit) {
-  H.set(AI.snapH); C.set(AI.snapC);
+// a drive: w from d metres along the racing line (0: the start line, behind it as a lap starts), at most limit s;
+// lead: so many metres driven before the lap that counts starts (a flying lap: a whole lap first); laps: so many timed
+function aiStartEpisode(w, d, limit, lead = 0, laps = 1) {
+  if (AI.freshC) { H.set(B); C.set(AI.freshC); } else { H.set(AI.snapH); C.set(AI.snapC); }
   repairAll(); AI.acc = 0;
   if (!d) placeAtGate(0, -8);
   else { const q = aiLineAt(d); resetCar(q.x, q.z, Math.atan2(q.tx, q.tz)); lap.prev.copy(car.pos); }
   // as a fresh car: nothing carried over from the last drive (gear, revs, wheel spin, steering), or no two drives compare
   for (const W of car.wheels) Object.assign(W, { omega: 0, spin: 0, t: car.REST, comp: 0, contact: false, sink: 0, slip: 0, slipSpeed: 0 });
-  Object.assign(car.eng, { gear: 1, rpm: ENG.idle, cut: false, shiftT: 0, reverse: false, load: 0, liftT: 9 });
+  Object.assign(car.eng, { gear: 1, rpm: ENG.idle, cut: false, shiftT: 0, reverse: false, load: 0, liftT: 9, tc: 1, sinceShift: 0, lastPower: 0, popT: 0 });
   car.throttle = 0; car.steer = 0;
   // rolling (AI_CFG.rolling): a try away from the start line begins at most of the pace note's speed there, in a gear that
   // suits it, as the car would arrive in a lap (from a standstill, most of a try is spent getting up to speed)
@@ -370,7 +397,7 @@ function aiStartEpisode(w, d, limit) {
     Object.assign(car.eng, { gear, rpm: Math.max(ENG.idle, om * ENG.gears[gear - 1] * ENG.fd * 60 / (2 * Math.PI)) });
     car.throttle = 1;
   }
-  AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0, swing: 0, pc: null, driven: 0 };
+  AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0, swing: 0, pc: null, driven: 0, lead, laps, t0: lead ? null : 0, mark: 0, times: [], hb: 0 };
 }
 // one physics step of the episode under way: its score when it ends, else null
 function aiStep() {
@@ -378,6 +405,7 @@ function aiStep() {
   AI.ctl = aiAct(E.w, E.st, AI_DT);
   if (E.pc) E.swing += Math.abs(AI.applied[0] - E.pc[0]) + Math.abs(AI.applied[1] - E.pc[1]);   // how much the controls moved
   E.pc = [AI.applied[0], AI.applied[1]];
+  if (AI.ctl.handbrake) E.hb += AI_DT;                                   // how long it pulls the handbrake
   readInput(AI_DT);
   AI.acc += AI_DT;
   while (AI.acc >= DT) { stepCar(DT); collideGates(DT); AI.acc -= DT; }
@@ -385,16 +413,33 @@ function aiStep() {
   E.t += AI_DT; E.max = Math.max(E.max, E.st.dist); AI.nSim += AI_DT;
   const sp = Math.hypot(car.vel.x, car.vel.z) * AI_DT; E.driven += sp;
   if (Math.abs(E.st.lat) > aiHalfW()) E.offM += sp;                    // off the road
-  const why = E.st.dist >= len ? 'lap' : Math.abs(E.st.lat) > AI_CFG.off ? 'off' : E.st.dist < E.max - 15 ? 'back' : car.wrecked ? 'wreck' : up.y < 0.3 ? 'over'
+  if (E.t0 == null && E.st.dist >= E.lead) E.t0 = E.mark = E.t;        // a flying lap: the clock starts at the line, a lap on
+  if (E.t0 != null && E.st.dist >= E.lead + (E.times.length + 1) * len) { E.times.push(E.t - E.mark); E.mark = E.t; }   // a timed lap done
+  const why = E.times.length >= E.laps ? 'lap' : Math.abs(E.st.lat) > AI_CFG.off ? 'off' : E.st.dist < E.max - 15 ? 'back' : car.wrecked ? 'wreck' : up.y < 0.3 ? 'over'
     : E.t >= E.limit ? 'time' : E.t >= E.chk + 4 && E.st.dist - E.chkDist < 4 ? 'stuck' : null;
   if (E.t >= E.chk + 4) { E.chk = E.t; E.chkDist = E.st.dist; }
   if (!why) return null;
-  const dmg = 1 - carCondition(), kmh = E.max / Math.max(E.t, 1) * 3.6, extra = Math.max(0, E.driven - E.max);
+  // (from the line, the second time on a flying lap); timed laps: the slowest counts, so a network has to keep it up
+  const timed = E.t - (E.t0 ?? E.t), run = E.times.length ? Math.max(...E.times) : timed, prog = E.max - E.lead;
+  const dmg = 1 - carCondition(), kmh = Math.max(0, prog) / Math.max(timed, 1) * 3.6, extra = Math.max(0, E.driven - E.max);
   const pen = AI_PEN.offRoad * E.offM + AI_PEN.damage * dmg + (car.wrecked ? AI_PEN.wreck : 0) + AI_PEN.smooth * E.swing + AI_PEN.path * extra - AI_PEN.speed * kmh;
-  const fit = (why === 'lap' ? len + AI_LAP_BONUS * Math.max(0, AI_T - E.t) : E.max) - pen;
-  AI.last = { why, at: Math.round(E.max), t: +E.t.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1), extra: Math.round(extra) };
+  const fit = (why === 'lap' ? len + AI_LAP_BONUS * Math.max(0, AI_T - run) : prog / E.laps) - pen;   // (not all the laps: below any that did them)
+  AI.last = { why, at: Math.round(prog), t: +E.t.toFixed(1), lap: why === 'lap' ? +run.toFixed(2) : null, laps: E.times.map(x => +x.toFixed(2)), hb: +E.hb.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1), extra: Math.round(extra) };
   return fit;
 }
+// The ground as the world was built (the heights are B's, the editor's strokes in both; how packed it is, C, is kept
+// here): tries and exams start on it, not on whatever the driving before them wore into it (ruts, loosened sand, a
+// lap's worth of an exam at 31.48 s ran 31.68 after a few laps of Drive it)
+function aiFreshGround() { AI.freshC = C.slice(); }
+// the exam: a lap from the start line; a flying one (AI_CFG.flying), the second of two in a row, as Drive it's after the
+// first (on the ground the first has worn and with its knocks: nothing put back between them)
+// what an exam's score depends on besides the weights (the exam, what the network is shown, what it's scored on): when
+// it changes, the best's score is another exam's
+function aiExamKind() {
+  return [AI_CFG.flying ? (AI_CFG.examLaps > 1 ? 'flying2x' + AI_CFG.examLaps : 'flying2') : 'line', AI_CFG.pace, AI_CFG.gCorner, AI_CFG.gBrake, AI_CFG.gAccel, AI_CFG.racingLine ? AI_CFG.lineW : '-',
+    AI_CFG.lookTime ? 't' : 'm', AI_CFG.off, aiDemoNow() ? 'demo' : '', JSON.stringify(AI_PEN)].join(' ');
+}
+const aiExamStart = w => AI_CFG.flying ? aiStartEpisode(w, 0, AI_T * (1 + AI_CFG.examLaps) / 2, botPath().len, AI_CFG.examLaps) : aiStartEpisode(w, 0, AI_T);
 // the racing line's point d metres on from the start line (botPath's start, s0, is elsewhere)
 function aiLineAt(d) {
   const Pt = botPath();
@@ -404,14 +449,14 @@ function aiLineAt(d) {
 // a step of the training; false when the frame's work should stop (a generation done)
 function aiTick() {
   if (!AI.cands && !AI.exam) { aiNewGen(); AI.from = AI.fail != null && Math.random() < 0.5 ? Math.max(1, AI.fail - 100) : 1 + Math.random() * (botPath().len - 1); }
-  if (!AI.ep) AI.exam ? aiStartEpisode(AI.w, 0, AI_T) : aiStartEpisode(AI.cands[AI.ci], AI.from, AI_CFG.window);
+  if (!AI.ep) AI.exam ? aiExamStart(AI.w) : aiStartEpisode(AI.cands[AI.ci], AI.from, AI_CFG.window);
   const E = AI.ep, len = botPath().len, fit = aiStep();
   if (fit == null) return true;
   AI.ep = null;
   if (AI.exam) {                                                       // the generation's result
     AI.exam = false;
-    AI.fail = E.st.dist < len ? E.st.dist : null;                       // half the next tries start 100 m before: practise where it goes wrong
-    const lapT = E.st.dist >= len ? +E.t.toFixed(2) : null;
+    AI.fail = AI.last.why !== 'lap' ? E.st.dist % len : null;              // half the next tries start 100 m before: practise where it goes wrong
+    const lapT = AI.last.lap;
     if (fit > AI.bestFit) { AI.bestFit = fit; AI.best = Float32Array.from(E.w); AI.bestLap = lapT; AI.sinceBest = 0; }
     else if (AI.bestLap != null) AI.sinceBest++;                        // it laps: how long since a better one
     if (AI.stopAfter && AI.bestLap != null && AI.sinceBest >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
@@ -454,6 +499,7 @@ function aiTrain(on) {
     AI.snapH = H.slice(); AI.snapC = C.slice(); AI.ep = null; AI.cands = null; AI.exam = false;
     AI.training = true; AI.mute = audio; audio = null;                   // the tries are silent (no engine, no crashes)
     if (AI.mute) AI.mute.node.port.postMessage({ on: 0 });
+    if (AI.examKind !== aiExamKind()) aiReexam();
   } else {
     AI.training = false; AI.ep = null; AI.cands = null; AI.exam = false; AI.ctl = null;
     if (AI.snapH) { H.set(AI.snapH); C.set(AI.snapC); AI.snapH = AI.snapC = null; for (const ch of chunks.values()) ch.update(); updateFar(); }
@@ -463,12 +509,28 @@ function aiTrain(on) {
   }
   aiShow();
 }
+// the exams changed (flying laps or from the line, the pace notes, the line, the penalties...): the best's score was
+// another exam's, so it takes the new one
+function aiReexam() {
+  AI.examKind = aiExamKind();
+  if (!AI.best) return;
+  aiExamStart(AI.best);
+  let fit; while ((fit = aiStep()) == null) { }
+  AI.ep = null; AI.bestFit = fit; AI.bestLap = AI.last.lap; AI.sinceBest = 0; aiSave();
+}
+// training carries on from the best weights (after wandering off from them), not from where it got to
+function aiBackToBest() {
+  if (!AI.best) return;
+  AI.w = Float32Array.from(AI.best); AI.m.fill(0); AI.sinceBest = 0;
+  AI.cands = null; AI.exam = false; AI.ep = null;
+  aiSave(); aiShow(); flash('Training carries on from the best', '#9fd4ff', 1.5);
+}
 function aiDrive(on) {
   if (on && !(AI.best || AI.w)) return;
   if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (AI.training) aiTrain(false);
   AI.drive = on;
-  if (on) { restartRun(); AI.dst = { i: -1, dist: 0, lat: 0 }; flash('Autopilot: hands off (any driving key takes over)', '#9fd4ff', 2.5); }
+  if (on) { restartRun(); AI.dst = { i: -1, dist: 0, lat: 0 }; AI.dCtl = null; AI.dAcc = 0; flash('Autopilot: hands off (any driving key takes over)', '#9fd4ff', 2.5); }
   aiShow();
 }
 // ---------- watching it think: the network, live, and on the track the points it looks at ----------
@@ -551,15 +613,15 @@ function aiCtlDraw(dt, live) {
 function aiViz(dt) {
   const live = (AI.training || AI.drive) && !!AI.viewW;
   aiCtlDraw(dt, live);
-  // decisions a second (the network runs on the main thread, in readInput: once a frame driving, once every
-  // AI_DT of simulated time training, as many as fit in AI_BUDGET ms a frame)
+  // decisions a second (the network runs on the main thread, in readInput: once every AI_DT of simulated time, driving
+  // or training, as many as fit in AI_BUDGET ms a frame)
   const now = performance.now(), el = (now - (AI.rateT || now)) / 1000;     // real seconds (a frame's dt is capped)
   if (!AI.rateT) AI.rateT = now;
   else if (el >= 1) {
     const n = AI.nAct / el, x = AI.nSim / el;
     const f = v => v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString('en');
     AI.rate = !live ? '' : AI.training ? `${f(n)} decisions/s on the main thread · ${AI.watch ? 'at real speed (watching)' : `driving at ${f(x)}× real time`}`
-      : `${f(n)} decisions/s on the main thread (one a frame)`;
+      : `${f(n)} decisions/s on the main thread (as trained: one every ${Math.round(AI_DT * 1000)} ms)`;
     AI.nAct = 0; AI.nSim = 0; AI.rateT = now;
     if (AI.open) AI.el.querySelector('#aiRate').textContent = AI.rate;
   }
@@ -631,11 +693,12 @@ function aiTrainSync(gens = 1, cfg) {
   return { gen: AI.gen, bestFit: AI.bestFit, bestLap: AI.bestLap, len: botPath().len, hist: AI.hist.slice(-gens) };
 }
 // one try with these weights (the best so far), as training drives it: how it ended
-function aiTry(w = AI.best || AI.w, log = 0) {
+function aiTry(w, log = 0) {
   aiTrain(true);
-  aiStartEpisode(w, 0, AI_T);
+  w = w || AI.best || AI.w;                                           // (after aiTrain: a change of exam re-examines the best first)
+  aiExamStart(w);
   const trace = []; let fit = null, n = 0;
-  while ((fit = aiStep()) == null) if (log && ++n % log === 0) trace.push([+AI.ep.t.toFixed(1), Math.round(AI.ep.st.dist), +AI.ep.st.lat.toFixed(1), +car.vel.length().toFixed(1), +car.steer.toFixed(2), +AI.ctl.throttle.toFixed(2), +AI.ctl.brake.toFixed(2)]);
+  while ((fit = aiStep()) == null) if (log && ++n % log === 0) trace.push([+AI.ep.t.toFixed(1), Math.round(AI.ep.st.dist), +AI.ep.st.lat.toFixed(1), +car.vel.length().toFixed(1), +car.steer.toFixed(2), +AI.ctl.throttle.toFixed(2), +AI.ctl.brake.toFixed(2), AI.ctl.handbrake ? 1 : 0]);
   const r = { ...AI.last, fit, trace };
   aiTrain(false);
   return r;
@@ -665,7 +728,7 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
   <div class="st" id="aiStat"></div><div class="sub" id="aiRate"></div>
   <canvas id="aiNet" width="540" height="330" title="Each line: an input's pull on an output right now (its value × its weight). Orange pushes + (steer left, throttle), blue − (steer right, brake); thicker, stronger."></canvas>
   <canvas id="aiChart" width="540" height="108"></canvas>
-  <button id="aiTrain">Train</button><button id="aiDrive">Drive it</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><button id="aiReset">Start over</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button>
+  <button id="aiTrain">Train</button><button id="aiDrive">Drive it</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><button id="aiReset">Start over</button><button id="aiBack" title="Carry on training from the best weights so far (the exam's best lap), not from where training wandered to">Back to the best</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button>
   <button id="aiSaveF" title="Download this training (the weights, the generations, the chart) as a file">Save to file</button><button id="aiLoadF" title="Load a training saved to a file">Load file</button>
   <button id="aiSaveS" title="Save this training on the server, under a name: you, or anyone, can load it there">Save to server</button><button id="aiLoadS" title="The autopilots saved on the server: load one (yours or anyone's), delete yours">From server</button>
   <div id="aiServer" style="display:none"></div>
@@ -684,6 +747,8 @@ AI.el.innerHTML = `<div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"><
       <label>− wrecked <input type="number" id="aiPen_wreck" min="0" max="1000" step="10"></label></div>
     <label style="margin-top:6px" title="Steer by, and take the pace notes from, the smoothest line within the road (out, clip the inside, out again) instead of the course's centre"><input type="checkbox" id="aiRL"> follow a racing line, not the centre</label>
     <label title="Tries away from the start line begin at 85% of the pace note's speed there, not from a standstill: more practice at speed"><input type="checkbox" id="aiRoll"> tries start rolling</label>
+    <label title="Each generation's exam (the lap that picks the best) is a flying lap: two laps in a row from the start line, the second timed, as Drive it's laps after the first (and a driver's best lap) are: at speed across the line, on the ground the first lap wore, with its knocks. Not one lap from a standstill"><input type="checkbox" id="aiFly"> exams are flying laps</label>
+    <label style="justify-content:space-between" title="Flying exams: so many timed laps in a row after the first, the slowest counting (and the knocks of each carried into the next): a network that is quick for a lap and then loses it scores its bad lap">flying laps an exam times <input type="number" id="aiExamLaps" min="1" max="5" step="1"></label>
     <label title="Where the line is looked at: 6, 15 and 30 m ahead, or 0.3, 0.7 and 1.4 s ahead at its speed (at least 3, 6, 12 m): one steering for every speed"><input type="checkbox" id="aiLT"> look ahead by time, not metres</label>
     <label style="justify-content:space-between" title="How far either side of the centre the racing line may go (0: the road's edge less 1.6 m, so the car stays on it; more: onto the verge, as drivers do)">racing line: room either side, m <input type="number" id="aiLW" min="0" max="15" step="0.5"></label>
     <label style="justify-content:space-between" title="How hard the car can speed up, for the pace notes (0: as fast as the bends allow at once)">pace notes: acceleration g <input type="number" id="aiGa" min="0" max="2" step="0.05"></label>
@@ -714,6 +779,8 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
     aiSetInputs(ins, AI.el.querySelector('#aiHb').checked, false, AI.el.querySelector('#aiKp').checked, AI.el.querySelector('#aiKs').checked);
   } else if (t.id === 'aiRoll') {
     AI_CFG.rolling = t.checked; aiKeepConfig();
+  } else if (t.id === 'aiFly') {
+    AI_CFG.flying = t.checked; aiKeepConfig();
   } else if (t.id === 'aiLT') {
     AI_CFG.lookTime = t.checked; aiKeepConfig();
   } else if (t.id === 'aiRL') {
@@ -726,6 +793,8 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
     const v = +t.value; if (Number.isFinite(v) && v >= 0.2 && v <= 2) { AI_CFG[t.id === 'aiGc' ? 'gCorner' : 'gBrake'] = v; aiKeepConfig(); }
   } else if (t.id === 'aiPace') {
     const v = +t.value; if (Number.isFinite(v) && v >= 0.5 && v <= 2) { AI_CFG.pace = v; aiKeepConfig(); }
+  } else if (t.id === 'aiExamLaps') {
+    const v = Math.round(+t.value); if (v >= 1 && v <= 5) { AI_CFG.examLaps = v; aiKeepConfig(); }
   } else if (t.id === 'aiOff') {
     const v = +t.value; if (Number.isFinite(v) && v >= 3 && v <= 30) { AI_CFG.off = v; aiKeepConfig(); }
   } else if (t.id === 'aiGens') {
@@ -735,6 +804,7 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
   } else if (t.id.startsWith('aiPen_')) {
     const v = +t.value; if (Number.isFinite(v) && v >= 0) { AI_PEN[t.id.slice(6)] = v; aiKeepConfig(); }
   }
+  if (AI.training && AI.examKind !== aiExamKind()) { aiTrain(false); aiTrain(true); }   // (the best takes the new exam)
 });
 AI.el.querySelector('#aiWatch').addEventListener('click', e => {
   e.currentTarget.blur();
@@ -839,6 +909,7 @@ async function aiServerList() {
     return row;
   }));
 }
+AI.el.querySelector('#aiBack').addEventListener('click', e => { e.currentTarget.blur(); aiBackToBest(); });
 AI.el.querySelector('#aiReset').addEventListener('click', e => {
   e.currentTarget.blur();
   if (!confirm(`Forget what the autopilot learnt with the ${VEH.name} on this course?`)) return;
@@ -880,11 +951,12 @@ function aiShow() {
   { const f = AI.el.querySelector('#aiStopAfter'); if (document.activeElement !== f) f.value = AI.stopAfter; }
   { const f = AI.el.querySelector('#aiGens'); if (document.activeElement !== f) f.value = AI.gens; }
   { const f = AI.el.querySelector('#aiOff'); if (document.activeElement !== f) f.value = AI_CFG.off; }
+  { const f = AI.el.querySelector('#aiExamLaps'); if (document.activeElement !== f) f.value = AI_CFG.examLaps; }
   { const f = AI.el.querySelector('#aiPace'); if (document.activeElement !== f) f.value = AI_CFG.pace; }
-  AI.el.querySelector('#aiRL').checked = AI_CFG.racingLine; AI.el.querySelector('#aiLT').checked = AI_CFG.lookTime; AI.el.querySelector('#aiRoll').checked = AI_CFG.rolling;
+  AI.el.querySelector('#aiRL').checked = AI_CFG.racingLine; AI.el.querySelector('#aiLT').checked = AI_CFG.lookTime; AI.el.querySelector('#aiRoll').checked = AI_CFG.rolling; AI.el.querySelector('#aiFly').checked = AI_CFG.flying;
   for (const [id, k] of [['#aiGc', 'gCorner'], ['#aiGb', 'gBrake'], ['#aiGa', 'gAccel'], ['#aiLW', 'lineW']]) { const f = AI.el.querySelector(id); if (document.activeElement !== f) f.value = AI_CFG[k]; }
   const L = AI.lastExam;
-  AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training && AI.gens ? ` of ${AI.genEnd}` : ''}${AI.training ? ` · ${AI.exam ? 'exam: a lap from the start' : `try ${AI.ci + 1}/${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
+  AI.el.querySelector('#aiStat').innerHTML = `Generation ${AI.gen}${AI.training && AI.gens ? ` of ${AI.genEnd}` : ''}${AI.training ? ` · ${AI.exam ? `exam: a ${AI_CFG.flying ? 'flying ' : ''}lap from the start` : `try ${AI.ci + 1}/${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}`}` : ''}<br>Best: ${best}${L ? `<br><span style="opacity:.75;font-size:12px">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.hb ? ` · handbrake ${L.hb} s` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</span>` : ''}`;
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
   AI.el.querySelector('#aiTrain').classList.toggle('on', AI.training);
   AI.el.querySelector('#aiDrive').textContent = AI.drive ? 'Stop driving' : 'Drive it';
@@ -892,6 +964,7 @@ function aiShow() {
   AI.el.querySelector('#aiWatch').classList.toggle('on', !!AI.watch);
   AI.el.querySelector('#aiDrive').classList.toggle('on', AI.drive);
   AI.el.querySelector('#aiDrive').disabled = AI.bestFit < 0;
+  AI.el.querySelector('#aiBack').disabled = !AI.best;
   AI.el.querySelector('#aiSaveF').disabled = AI.el.querySelector('#aiSaveS').disabled = !AI.gen;
   const cv = AI.el.querySelector('#aiChart'), g = cv.getContext('2d'), W = cv.width, Hc = cv.height, Hs = AI.hist.slice(-120), top = len * 1.1;
   g.clearRect(0, 0, W, Hc);
@@ -930,6 +1003,13 @@ rep("""  else if (!window.__sim.paused) simulate(dt);""", """  else if (AI.train
 rep("""  if (e.code === 'KeyY') { rp.on ? stopReplay() : startReplay(); return; }""",
     """  if (e.code === 'KeyI') { aiToggle(); return; }
   if (e.code === 'KeyY') { rp.on ? stopReplay() : startReplay(); return; }""")
+# the ground as built, before any wheel wore it: every try starts on it
+rep("""  if (!graded) for (const op of COURSE.ops) applyOp(op, false);
+  H.set(B);
+}""", """  if (!graded) for (const op of COURSE.ops) applyOp(op, false);
+  H.set(B);
+  aiFreshGround();
+}""")
 # a new world, or the course editor: training stops first (it puts back the ground it saved when it began)
 rep("""function regenerateWorld() {
 """, """function regenerateWorld() {

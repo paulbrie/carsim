@@ -60,6 +60,10 @@ See README.md for the layout. Notes:
   back after every try: anything that rebuilds the world must call `aiHalt()` first (`regenerateWorld` does).
   In a race room it is off in races (`aiAllowed`, `mpGrid` halts it) and silent while it trains: no `s`, `hit`
   or `repair` goes out, and `mpLap` posts none of the autopilot's laps.
+  Every try starts on the ground as built (`B`, and `AI.freshC` from `aiFreshGround` at the end of `generateTerrain`),
+  not the worn one: anything else that builds how packed the ground is (`C`) must save it again there.
+  The exam (`aiExamStart`) is what picks the best: keep it what a real lap is (the flying one: two laps, the second
+  timed, nothing put back between), and a change of exam a change of `aiExamKind` (the best is examined again).
   Tests: `__sim.aiTrainSync(gens)`, `__sim.aiTry(weights)` (how a drive ends), one generation per call from a
   timer (a long synchronous run gets the headless tab killed).
 - Claude bridge (README): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and

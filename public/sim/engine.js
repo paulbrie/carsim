@@ -6698,9 +6698,16 @@ AI.el.querySelector('#aiSaveS').addEventListener('click', async e => {
   const d = aiExport();
   const name = prompt('Save this autopilot on the server as:', `${VEH.short} · ${AI.np} weights · gen ${AI.gen}${AI.bestLap != null ? ' · lap ' + fmt(AI.bestLap) : ''}`);
   if (!name || !name.trim()) return;
-  try { await aiApi('', { method: 'POST', body: JSON.stringify({ name, training: d }) }); flash(`Saved on the server: ${name.trim()}`, '#9fd4ff', 2); if (AI.listOpen) aiServerList(); }
-  catch (err) { flash(err.message, '#ff8a7a', 3); }
+  try { await aiSaveServer(name, d); } catch (err) { flash(err.message, '#ff8a7a', 3); }
 });
+// this training saved on the server under a name (the button asks for it; __sim.aiSaveServer, the Claude bridge's way)
+async function aiSaveServer(name, d = aiExport()) {
+  name = String(name || '').trim();
+  if (!name) throw new Error('Give it a name');
+  const r = await aiApi('', { method: 'POST', body: JSON.stringify({ name, training: d }) });
+  flash(`Saved on the server: ${name}`, '#9fd4ff', 2); if (AI.listOpen) aiServerList();
+  return r;
+}
 AI.el.querySelector('#aiLoadS').addEventListener('click', e => {
   e.currentTarget.blur();
   AI.listOpen = !AI.listOpen;
@@ -6841,7 +6848,7 @@ setTimeout(() => {
   Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
   Object.assign(window.__sim, { renderer });                                      // for the Claude bridge's screenshots (bridge.js)
-  Object.assign(window.__sim, { aiDemo });
+  Object.assign(window.__sim, { aiDemo, aiSaveServer });
   if (BOTS.n) setBots(BOTS.n);
   requestAnimationFrame(t => { last = t; frame(t); });
   mpPost({ t: 'ready' });

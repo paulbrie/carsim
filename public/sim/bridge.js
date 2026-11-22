@@ -17,7 +17,7 @@
 // No arbitrary JavaScript; never the bridge's own panel, password fields, or the app's API.
 const BASE = location.pathname.replace(/\/sim\/[^/]*$/, ''), API = BASE + '/api/bridge/page';
 const SIM_FNS = ['restartRun', 'respawn', 'switchVehicle', 'setSurface', 'setCamMode', 'placeAtGate', 'step', 'toggleEditor', 'setBots',
-  'aiTrainSync', 'aiTry', 'aiDrive', 'aiDemo', 'repairCar', 'startReplay', 'stopReplay'];
+  'aiTrainSync', 'aiTry', 'aiDrive', 'aiDemo', 'aiSaveServer', 'repairCar', 'startReplay', 'stopReplay'];
 const KEEP = 'carsim.bridge';
 const st = { pageId: null, token: null, es: null, agent: null, code: null, codeUntil: 0, log: [], shot: null, el: null, btn: null };
 const S = () => window.__sim;
@@ -137,10 +137,10 @@ const COMMANDS = {
     dispatchEvent(new KeyboardEvent('keyup', { code, key: code, bubbles: true }));
     return {};
   },
-  sim({ fn, args = [] }) {
+  async sim({ fn, args = [] }) {
     if (!SIM_FNS.includes(fn)) throw new Error(`Not one of: ${SIM_FNS.join(', ')}`);
     const f = S()?.[fn]; if (typeof f !== 'function') throw new Error(`${fn} isn't there (yet)`);
-    return { result: plain(f(...(Array.isArray(args) ? args : [args]))) ?? null };
+    return { result: plain(await f(...(Array.isArray(args) ? args : [args]))) ?? null };   // (a promise's value: aiSaveServer)
   },
   get({ path, slice, pick }) {
     if (typeof path !== 'string' || !path) throw new Error('A path, e.g. ai.hist');

@@ -244,7 +244,8 @@ For the super admin (as trafficsim's bridge, cut to the sim): **🤝 Claude** (u
 **Connect** shows a 6-digit code (10 minutes); a Claude session claims it with `node scripts/bridge.mjs claim
 <code>` and then works in that page, in the browser it runs in (yours, with its frame rate), every command shown in
 the panel's log: `state` (car, lap, autopilot, race, the panels' text), `screenshot` (the 3D view), `text`, `click`,
-`set` (a field), `key`, `get` (a value of `window.__sim`), `sim` (a few of its functions by name), `reload`. No
+`set` (a field), `key`, `get` (a value of `window.__sim`), `sim` (a few of its functions by name, e.g. `aiSaveServer(name)`: the autopilot
+saved on the server, as Save to server does without its name prompt), `reload`. No
 arbitrary JavaScript; the bridge's own panel and password fields are out of its reach. Write to it in the panel
 (`node scripts/bridge.mjs events` reads it). **Disconnect** ends it; a reload keeps it; a server restart ends it.
 As MCP tools (`sim_pair`, `sim_state`, `sim_screenshot` (an image), `sim_command`, `sim_events`, `sim_status`):

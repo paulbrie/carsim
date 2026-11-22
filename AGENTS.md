@@ -10,7 +10,7 @@ See README.md for the layout. Notes:
   camera `cameras.py`, the maps (a room's course, the `?edit=1` map editor) `maps.py`, car damage
   (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py`, looking
   around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`,
-  the cars made from downloaded models (XJR, SL 63, 911 Turbo: specs, sounds, menus) `cars.py`
+  the cars made from downloaded models (XJR, SL 63, 911 Turbo, Cayenne Turbo S, GT500, X5 M, GLE 63: specs, sounds, menus) `cars.py`
   skid marks (ours and, in a race, the others' from their `sk`) `skids.py` and the grounds' landscapes (dunes for
   sand, countryside for earth and road; the road's width) `grounds.py`, the autopilot (a tiny network trained in
   the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, the Claude bridge's loader
@@ -24,7 +24,14 @@ See README.md for the layout. Notes:
   dimensions and body profiles for its `roadSpec` (the collision hull comes from those). Rename
   materials there so `attachModel` finds them: `paint`, `glass`/`window`, `tire`, `taillight`. A
   steering wheel buried in a cabin mesh: `--probe <box>` lists the pieces in a box. Deterministic:
-  rebuilding gives the same bytes.
+  rebuilding gives the same bytes. Start a recipe from `--list` (every part's path, material, size), and
+  mind what the sim does with names: any material with `paint` in its name is repainted (a calliper called
+  `..._paint1Mtl` went blue), a see-through one that is not named as a lamp (`lens`, `lamp`, `head`, `tail`)
+  becomes a dark window, and only `decal_*` keeps a texture's cut-out alpha. The recipe has the tools for
+  awkward sources (see the head of `cars.mjs`): `split` one material by place, `texSplit` paint out of a
+  painted texture, `panes` for a missing window, `loose` / `merge` to lighten a mesh of many pieces. A new
+  car also goes in `VEHICLES` (`lib/race/shared.mjs`, read by the race server at start: restart it) and
+  `DEFAULT_PAINT` (`components/race-controls.tsx`).
 - Bridges' earthworks (`scripts/patches/bridges.py`, after even.py): a bridged crossing keeps its two branches'
   heights apart (`bridgedCrossing`): any profile code that brings crossing branches to one height must skip it.
 - Grounds (#308, `grounds.py`): the world's hills come from the ground: `COUNTRY` (earth or road) builds them with

@@ -6,7 +6,7 @@
 //   part_<kind>_<side> (pieces that can be knocked off), each centred on its own origin.
 // Prints what engine.js needs about it (MODELS entry, roadSpec dimensions) and writes the body's
 // profiles to .cache/models/<key>.json. Zipped sources are unpacked into .cache/models/<key>/.
-//   node scripts/models/build-car.mjs <key> [--out dir] [--keep (the .glb too)] [--probe box]   (cars in ./cars.mjs)
+//   node scripts/models/build-car.mjs <key> [--out dir] [--keep (the .glb too)] [--list [regex]] [--probe box] [--verbose (what simplifying did to each mesh)]   (cars in ./cars.mjs)
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
@@ -195,14 +195,18 @@ function weld(p) {
   keep.forEach((i, r) => { pos.set(p.pos.subarray(i * 3, i * 3 + 3), r * 3); nrm?.set(p.nrm.subarray(i * 3, i * 3 + 3), r * 3); uv?.set(p.uv.subarray(i * 2, i * 2 + 2), r * 2); });
   return { ...p, pos, nrm, uv, idx: p.idx.map(i => remap[i]) };
 }
-function simplify(p, ratio, err) {
+function simplify(p, ratio, err, loose) {
   const tris = p.idx.length / 3;
   if (ratio >= 1 || tris < 300) return p;
   const w = weld(p), target = Math.max(3, Math.floor(w.idx.length * ratio / 3) * 3);
+  // panels keep their borders (no cracks between them); loose: a mesh of many small pieces (a grille, lamp
+  // internals) may lose its borders and its smallest pieces, or it would not get any lighter
+  const flags = loose ? ['Prune'] : ['LockBorder'];
   // the normals count too, so curved panels keep enough triangles to shade smoothly
-  const [idx] = w.nrm ? MeshoptSimplifier.simplifyWithAttributes(w.idx, w.pos, 3, w.nrm, 3, [0.6, 0.6, 0.6], null, target, err, ['LockBorder'])
-    : MeshoptSimplifier.simplify(w.idx, w.pos, 3, target, err, ['LockBorder']);
+  const [idx] = w.nrm && !loose ? MeshoptSimplifier.simplifyWithAttributes(w.idx, w.pos, 3, w.nrm, 3, [0.6, 0.6, 0.6], null, target, err, flags)
+    : MeshoptSimplifier.simplify(w.idx, w.pos, 3, target, err, flags);
   const s = subset({ ...w, idx }, () => true);
+  if (process.argv.includes('--verbose')) console.log(`  ${label(p).slice(-60).padEnd(60)} ${String(tris).padStart(7)} → ${String(idx.length / 3).padStart(7)}  (welded ${p.pos.length / 3} → ${w.pos.length / 3} vertices${loose ? ', loose' : ''})`);
   return s || w;
 }
 function computeNormals(p) {
@@ -236,6 +240,16 @@ console.log(`read ${parts.length} parts, ${parts.reduce((a, p) => a + p.idx.leng
   }
 }
 const label = p => `${p.path} ${mats.get(p.mat)?.name || ''}`;
+// --list: every part (its path and material: what the recipe's patterns match), its triangles, centre and size
+// in the sim's axes, before centring; --list <regex> only those matching. To write a new car's recipe from.
+if (process.argv.includes('--list')) {
+  const re = arg('--list') && !arg('--list').startsWith('--') ? new RegExp(arg('--list')) : null, by = new Map();
+  for (const p of parts) { const l = label(p); if (re && !re.test(l)) continue; if (!by.has(l)) by.set(l, []); by.get(l).push(p); }
+  for (const [l, ps] of by) { const b = bounds(ps); console.log(l.padEnd(78), String(ps.reduce((a, p) => a + p.idx.length / 3, 0)).padStart(7), 'tris  c', b.c.map(x => x.toFixed(2)).join(','), ' size', b.s.map(x => x.toFixed(2)).join(',')); }
+  const b = bounds(parts); console.log('all: centre', b.c.map(x => x.toFixed(3)).join(','), ' size', b.s.map(x => x.toFixed(3)).join(','));
+  console.log('materials:'); for (const m of mats.values()) console.log(' ', (m.name || '(none)').padEnd(44), 'rgb', m.color.map(x => (+x).toFixed(2)).join(','), 'a', (+m.alpha).toFixed(2), m.blend ? 'blend' : '', m.map ? 'map' : '', m.normalMap ? 'normal' : '', m.emissiveMap ? 'emissive' : '');
+  process.exit(0);
+}
 // drop what is never seen (engine internals under a shut bonnet, duplicate shells, a scene's floor)
 let list = parts.filter(p => !(C.drop || []).some(re => re.test(label(p))));
 // copy one side's part onto the other (e.g. a door the source has open: mirror the shut one)
@@ -277,6 +291,42 @@ if (arg('--probe')) {
 }
 
 const tc = [0, 0, 0];
+// a window the source left out: a pane of an existing material. half: its outline up one side, [x, y, z] in the sim's
+// axes from the bottom to the top (x > 0), mirrored for the other side and filled from its middle
+for (const f of C.panes || []) {
+  const mat = [...mats].find(([, m]) => f.like.test(m.name))?.[0]; if (!mat) throw new Error(`panes: no material like ${f.like}`);
+  const pts = [...f.half, ...f.half.slice().reverse().map(([x, y, z]) => [-x, y, z])], n = pts.length;
+  const c = [0, 1, 2].map(j => pts.reduce((a, q) => a + q[j], 0) / n), pos = new Float32Array((n + 1) * 3), idx = new Uint32Array(n * 3);
+  pts.forEach((q, i) => pos.set(q, i * 3)); pos.set(c, n * 3);
+  for (let i = 0; i < n; i++) idx.set([i, (i + 1) % n, n], i * 3);
+  list.push({ name: 'pane', path: '/pane', pos, nrm: null, uv: null, idx, mat });
+}
+// one material for several things (all the glass: windows, lamp covers): the triangles in a box get a copy under another name
+for (const r of C.split || []) {
+  const [mn, mx] = r.box || [[-99, -99, -99], [99, 99, 99]], inBox = (p, a, b, c) => { triCentre(p, a, b, c, tc); if (r.sym) tc[0] = Math.abs(tc[0]); return tc.every((x, j) => x >= mn[j] && x <= mx[j]); };
+  for (const p of list.slice()) {
+    const m = mats.get(p.mat); if (!m || !r.mat.test(m.name) || (r.path && !r.path.test(p.path))) continue;
+    const id = p.mat + ':' + r.name; if (!mats.has(id)) mats.set(id, { ...m, name: r.name });
+    const inside = subset(p, (a, b, c) => inBox(p, a, b, c)), rest = subset(p, (a, b, c) => !inBox(p, a, b, c));
+    list.splice(list.indexOf(p), 1, ...[rest, inside && { ...inside, mat: id }].filter(Boolean));
+  }
+}
+// a body whose colour is painted into its texture (one atlas: paint, lamps, grilles): the triangles whose texels all pass
+// the test become a plain material of that name (the paint, which the sim can then recolour), the rest keep the texture
+for (const r of C.texSplit || []) {
+  const px = new Map();
+  for (const p of list.slice()) {
+    const m = mats.get(p.mat); if (!m || !r.mat.test(m.name) || !m.map || !p.uv) continue;
+    if (!px.has(m.map)) px.set(m.map, await sharp(imgs.get(m.map).bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true }));
+    const { data, info } = px.get(m.map), W = info.width, H = info.height, wrap = x => x - Math.floor(x);
+    const at = (u, v) => { const o = (Math.min(H - 1, wrap(C.kind === 'fbx' ? 1 - v : v) * H | 0) * W + Math.min(W - 1, wrap(u) * W | 0)) * 3; return r.test(data[o], data[o + 1], data[o + 2]); };
+    const BARY = [[1 / 3, 1 / 3, 1 / 3], [0.7, 0.15, 0.15], [0.15, 0.7, 0.15], [0.15, 0.15, 0.7], [0.45, 0.45, 0.1], [0.1, 0.45, 0.45], [0.45, 0.1, 0.45]];
+    const plain = (a, b, c) => BARY.every(([x, y, z]) => at(p.uv[a * 2] * x + p.uv[b * 2] * y + p.uv[c * 2] * z, p.uv[a * 2 + 1] * x + p.uv[b * 2 + 1] * y + p.uv[c * 2 + 1] * z));
+    const id = p.mat + ':' + r.name; if (!mats.has(id)) mats.set(id, { ...m, name: r.name, map: null, normalMap: null });
+    const yes = subset(p, plain), no = subset(p, (a, b, c) => !plain(a, b, c));
+    list.splice(list.indexOf(p), 1, ...[no, yes && { ...yes, mat: id, uv: null }].filter(Boolean));
+  }
+}
 // a material used front and back (one lights texture): its rear half becomes a material of its own (the brake lights)
 for (const r of C.rearMat || []) {
   for (const p of list.slice()) {
@@ -293,8 +343,8 @@ const put = (name, p) => { if (!nodes.has(name)) nodes.set(name, { parts: [] });
 const wheelOf = (x, z) => (x > 0 ? 'L' : 'R') + (z > 0 ? 'F' : 'B');
 for (const p of list) {
   const l = label(p);
-  if (C.spin.test(l) || C.stat.test(l)) {          // split by wheel: which corner each triangle is in
-    const pre = C.stat.test(l) ? 'stat' : 'spin';
+  if (C.spin.test(l) || C.stat?.test(l)) {          // split by wheel: which corner each triangle is in
+    const pre = C.stat?.test(l) ? 'stat' : 'spin';
     for (const w of ['LF', 'RF', 'LB', 'RB']) { const s = subset(p, (a, b, c) => { triCentre(p, a, b, c, tc); return wheelOf(tc[0], tc[2]) === w; }); if (s) put(pre + w, s); }
     continue;
   }
@@ -306,6 +356,10 @@ for (const p of list) {
     const inBox = (a, b, c) => inside.has(comp.of(a));
     const s = inside.size && subset(p, inBox); if (s) { put('steer', s); rest = subset(p, (a, b, c) => !inBox(a, b, c)); if (!rest) continue; }
   } else if (C.steer?.match && C.steer.match.test(l)) { put('steer', p); continue; }
+  if (part && part[1].endsWith('_*')) {      // one mesh for both sides (the two mirrors): a part each
+    for (const side of ['l', 'r']) { const h = subset(rest, (a, b, c) => (triCentre(rest, a, b, c, tc)[0] > 0) === (side === 'l')); if (h) put('part_' + part[1].slice(0, -1) + side, h); }
+    continue;
+  }
   put(part ? 'part_' + part[1] : 'body', rest);
 }
 // pivots: the wheels' hubs; a part's middle; the steering wheel's hub and column
@@ -337,9 +391,9 @@ for (const [id, m] of mats) {
   const rule = (C.mats || []).find(([re]) => re.test(m.name));
   if (rule) {
     const o = rule[1];
-    if (o.name) m.name = o.name;
+    if (o.name) m.name = typeof o.name === 'function' ? o.name(m.name) : o.name;
     if (o.color != null) m.color = new THREE.Color(o.color).toArray();
-    for (const k of ['metal', 'rough', 'alpha', 'blend', 'doubleSided']) if (o[k] != null) m[k] = o[k];
+    for (const k of ['metal', 'rough', 'alpha', 'blend', 'mask', 'doubleSided']) if (o[k] != null) m[k] = o[k];
     if (o.emissive != null) m.emissive = new THREE.Color(o.emissive).toArray();
     if (o.map === false) m.map = null;
     if (o.normalMap === false) m.normalMap = null;
@@ -352,7 +406,17 @@ await MeshoptSimplifier.ready;
 const before = [...nodes.values()].reduce((a, N) => a + N.parts.reduce((b, p) => b + p.idx.length / 3, 0), 0);
 for (const [n, N] of nodes) {
   const r = (C.ratio && (C.ratio[n] ?? C.ratio[n.replace(/[LR][FB]$/, '')] ?? C.ratio.all)) ?? 1;
-  N.parts = N.parts.map(p => simplify(p, r, C.error ?? 0.002));
+  const looseOf = p => (C.loose || []).find(([re]) => re.test(label(p)));
+  if (C.merge) {      // a model in hundreds of small meshes: one per material (and kind of simplifying), or none is big enough to simplify
+    const by = new Map(); for (const p of N.parts) { const k = p.mat + '|' + (C.loose || []).indexOf(looseOf(p)); if (!by.has(k)) by.set(k, []); by.get(k).push(p); }
+    N.parts = [...by.values()].map(ps => {
+      if (ps.length === 1) return ps[0];
+      const nv = ps.reduce((a, p) => a + p.pos.length / 3, 0), pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), uv = ps.some(p => p.uv) ? new Float32Array(nv * 2) : null, idx = [];
+      let o = 0; for (const p of ps) { if (!p.nrm) computeNormals(p); pos.set(p.pos, o * 3); nrm.set(p.nrm, o * 3); if (p.uv) uv.set(p.uv, o * 2); for (const k of p.idx) idx.push(k + o); o += p.pos.length / 3; }
+      return { ...ps[0], pos, nrm, uv, idx: Uint32Array.from(idx) };
+    });
+  }
+  N.parts = N.parts.map(p => { const l = looseOf(p); return l ? simplify(p, l[1], l[2] ?? 0.01, true) : simplify(p, r, C.error ?? 0.002); });
 }
 const after = [...nodes.values()].reduce((a, N) => a + N.parts.reduce((b, p) => b + p.idx.length / 3, 0), 0);
 console.log(`triangles ${before | 0} → ${after | 0}`);
@@ -376,7 +440,7 @@ async function material(id) {
   if (matOut.has(id)) return matOut.get(id);
   const m = mats.get(id) || { name: 'none', color: [0.5, 0.5, 0.5], alpha: 1, metal: 0, rough: 0.8, emissive: [0, 0, 0] };
   const o = doc.createMaterial(m.name).setBaseColorFactor([...m.color, m.alpha ?? 1]).setMetallicFactor(m.metal ?? 0).setRoughnessFactor(m.rough ?? 0.8)
-    .setEmissiveFactor(m.emissive || [0, 0, 0]).setDoubleSided(!!m.doubleSided).setAlphaMode(m.blend || (m.alpha ?? 1) < 1 ? 'BLEND' : 'OPAQUE');
+    .setEmissiveFactor(m.emissive || [0, 0, 0]).setDoubleSided(!!m.doubleSided).setAlphaMode(m.mask ? 'MASK' : m.blend || (m.alpha ?? 1) < 1 ? 'BLEND' : 'OPAQUE');
   const bt = await texture(m.map, 'map'); if (bt) o.setBaseColorTexture(bt);
   const nt = await texture(m.normalMap, 'normalMap'); if (nt) o.setNormalTexture(nt);
   const et = await texture(m.emissiveMap, 'emissiveMap'); if (et) o.setEmissiveTexture(et);

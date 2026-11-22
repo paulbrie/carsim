@@ -284,12 +284,18 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
-  Three of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63** and the
-  **Porsche 911 Turbo** (992), are built from downloaded models (`models/`, not in git) by
-  `scripts/models/build-car.mjs`: into the sim's axes and metres, wheels, callipers and steering wheel
-  split out, paint and glass found by name, lighter (meshoptimizer, textures ≤ 512 px), gzipped
-  (1–6 MB). Their specs are the real cars' (power, torque, gearbox, weight, drive); their bodies'
-  profiles, which the collision hull is built from, are measured off the models.
+  Seven of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
+  **Porsche 911 Turbo** (992), the **Porsche Cayenne Turbo S** (2009), the **Ford Mustang Shelby GT500**
+  (2020), the **BMW X5 M Competition** and the **Mercedes-AMG GLE 63 S Coupé**, are built from downloaded
+  models (`models/`, not in git) by `scripts/models/build-car.mjs`: into the sim's axes and metres,
+  wheels, callipers and steering wheel split out, paint and glass found by name, lighter
+  (meshoptimizer, textures ≤ 512 px), gzipped (1–6 MB). Their specs are the real cars' (power, torque,
+  gearbox, weight, drive); their bodies' profiles, which the collision hull is built from, are measured
+  off the models. The GT500's body colour came painted in a texture (blue, white stripes): its painted
+  areas are plain paint here, so the paint picker works on it, without the stripes. The X5 M's model has
+  no rear window: the build adds one. The GLE 63 is based on "Mercedes-AMG GLE 63 Coupe 2022"
+  (https://sketchfab.com/3d-models/mercedes-amg-gle-63-coupe-2022-ac4667c76f4e4e6c813ff3e72bc07ff8) by
+  ceron_alex (https://sketchfab.com/ceron_alex), licensed CC-BY-4.0: the credit its licence asks for.
   **Shift+drag** or **right-drag** looks around: the chase camera swings round the car (drag right:
   the view turns right; down: from higher up), the cockpit view turns your head (up to ~130° each way);
   let go and it eases back behind after 0.7 s. The orbit (C) and editor cameras keep their own mouse controls.

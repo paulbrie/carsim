@@ -199,6 +199,10 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   slower); **Full speed** goes back. The panel shows the decisions a second: the network runs on the main thread,
   in the sim's input step, as it needs the car's physics state, which lives there (31 ns a decision for the 16
   weights; a training step is ~67 µs, nearly all physics: ~15,000 decisions/s flat out, ~250× real time).
+- **Its hands and feet:** while it drives or trains, a steering wheel and the brake and gas pedals, top right
+  (between the timer and the minimap), show exactly what it applies: the wheel turned as far as it steers (full
+  lock: three quarters of a turn), each pedal pushed down as far as it is pressed, a foot on it, and the handbrake
+  if it has one.
 - **Watching it think:** the panel draws the network live while it trains or drives: each input with its value
   (km/h, degrees, metres), each output (steer left/right, gas/brake %), and a line from each input to each output
   coloured and thickened by its pull right now (value × weight; orange +, blue −). On the track, three markers show

@@ -194,7 +194,7 @@ const aiKey3 = v => v > 1 / 3 ? 1 : v < -1 / 3 ? -1 : 0;
 function aiAct(w, st, dt) {
   aiObserve(st, dt); aiNet(w, aiX, aiY); AI.viewW = w; AI.nAct++;
   const steer = AI.applied[0] = AI.ks ? aiKey3(aiY[0]) : aiY[0], pedal = AI.applied[1] = AI.kp ? aiKey3(aiY[1]) : aiY[1];
-  return { throttle: Math.max(0, pedal), brake: Math.max(0, -pedal), steer, handbrake: AI.nOut > 2 && aiY[2] > 0 };
+  return AI.lastCtl = { throttle: Math.max(0, pedal), brake: Math.max(0, -pedal), steer, handbrake: AI.nOut > 2 && aiY[2] > 0 };
 }
 // readInput's controls while training or driving (null: the player's)
 function aiInput(dt) {
@@ -375,8 +375,75 @@ const aiRayLines = new THREE.LineSegments(new THREE.BufferGeometry().setAttribut
   new THREE.LineBasicMaterial({ color: 0x5fe0ff, transparent: true, opacity: 0.8, depthTest: false }));
 aiRayLines.renderOrder = 20; aiRayLines.visible = false; aiRayLines.frustumCulled = false; scene.add(aiRayLines);
 let aiVizT = 0;
+// ---------- its hands and feet: the wheel and the pedals as it works them, top right, while it has the car ----------
+const aiCtlCv = document.createElement('canvas'); aiCtlCv.id = 'aiCtl'; aiCtlCv.className = 'panel'; aiCtlCv.width = 560; aiCtlCv.height = 250;
+aiCtlCv.style.cssText = 'display:none;position:fixed;top:12px;width:280px;height:125px;padding:0;pointer-events:none;z-index:2';
+document.body.appendChild(aiCtlCv);
+let aiCtlT = 0, aiCtlPlaceT = 0, aiCtlFoot = 0;
+function aiCtlDraw(dt, live) {
+  const show = live && !rp.on && !!AI.lastCtl;
+  if ((aiCtlCv.style.display !== 'none') !== show) aiCtlCv.style.display = show ? 'block' : 'none';
+  if (!show) return;
+  if ((aiCtlPlaceT -= dt) <= 0) {                                      // left of the minimap; under the best laps if they are there
+    aiCtlPlaceT = 0.5;
+    // between the timer and the minimap, as wide as fits (180 to 280 px); under the best laps if they are there; else under the minimap
+    const m = document.getElementById('mapWrap').getBoundingClientRect(), t = timerEl.getBoundingClientRect(), bl = document.getElementById('bestLaps'), b = bl && bl.offsetWidth ? bl.getBoundingClientRect() : null;
+    const right = innerWidth - m.left + 10, gap = m.left - 10 - (t.right + 10), w = Math.min(280, gap);
+    const over = b && b.right > m.left - 10 - w && b.left < m.left - 10;
+    if (w >= 180) { aiCtlCv.style.width = w + 'px'; aiCtlCv.style.height = w * 125 / 280 + 'px'; aiCtlCv.style.right = right + 'px'; aiCtlCv.style.top = (over ? b.bottom + 10 : 12) + 'px'; }
+    else { aiCtlCv.style.width = '220px'; aiCtlCv.style.height = 220 * 125 / 280 + 'px'; aiCtlCv.style.right = right + 'px'; aiCtlCv.style.top = (m.bottom + 10) + 'px'; }
+  }
+  if ((aiCtlT += dt) < 1 / 30) return; aiCtlT = 0;
+  const g = aiCtlCv.getContext('2d'), W = aiCtlCv.width, Hc = aiCtlCv.height, c = AI.lastCtl, steer = c.steer, gas = c.throttle, brk = c.brake;
+  g.clearRect(0, 0, W, Hc);
+  g.font = '600 20px system-ui, sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,.7)';
+  g.fillText(AI.training ? 'AUTOPILOT · TRAINING' : 'AUTOPILOT', 18, 22);
+  // the wheel: full lock either way is three quarters of a turn
+  const cx = 120, cy = 124, R = 70, a = -steer * Math.PI * 1.5;
+  g.save(); g.translate(cx, cy); g.rotate(a);
+  g.lineWidth = 16; g.strokeStyle = '#2a2a2e'; g.beginPath(); g.arc(0, 0, R, 0, 7); g.stroke();
+  g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.arc(0, 0, R + 8, 0, 7); g.stroke();
+  g.lineWidth = 16; g.strokeStyle = '#ff7a1a'; g.beginPath(); g.arc(0, 0, R, -Math.PI / 2 - 0.13, -Math.PI / 2 + 0.13); g.stroke();   // the top mark
+  g.lineWidth = 12; g.strokeStyle = '#3a3a40';
+  for (const s of [Math.PI, 0, Math.PI / 2]) { g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(s) * R, Math.sin(s) * R); g.stroke(); }
+  g.fillStyle = '#4a4a52'; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.fill();
+  g.restore();
+  g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = '700 22px system-ui, sans-serif';
+  g.fillText(Math.abs(steer) < 0.02 ? 'straight' : `${steer > 0 ? '◀ ' : ''}${Math.round(Math.abs(steer) * 100)}%${steer < 0 ? ' ▶' : ''}`, cx, cy + R + 32);
+  // the pedals: brake and gas, each pushed down as far as it is pressed; the foot on the one it presses
+  const pedal = (x, w, v, col, label) => {
+    const top = 64, h = 110, dy = v * 34;
+    g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(x - 4, top - 6, w + 8, h + 30);
+    g.save(); g.translate(x + w / 2, top + dy);
+    g.fillStyle = v > 0.01 ? col : '#3a3a40'; g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 2;
+    g.beginPath(); g.roundRect(-w / 2, 0, w, h - dy * 0.4, 8); g.fill(); g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 3;
+    for (let k = 1; k < 5; k++) { const yy = k * (h - dy * 0.4) / 5; g.beginPath(); g.moveTo(-w / 2 + 8, yy); g.lineTo(w / 2 - 8, yy); g.stroke(); }
+    g.restore();
+    g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(x, top + h + 12, w, 10);
+    g.fillStyle = col; g.fillRect(x, top + h + 12, w * v, 10);
+    g.fillStyle = '#fff'; g.font = '600 18px system-ui, sans-serif'; g.textAlign = 'center';
+    g.fillText(label, x + w / 2, top + h + 40); g.fillText(`${Math.round(v * 100)}%`, x + w / 2, top + h + 62);
+    return { x: x + w / 2, y: top + dy };
+  };
+  const bp = pedal(290, 84, brk, '#e0352b', 'BRAKE'), gp = pedal(430, 64, gas, '#2fbf4a', 'GAS');
+  // the foot: over the gas, over the brake, or resting between, eased so it moves as a foot would
+  const want = gas > 0.01 ? 1 : brk > 0.01 ? -1 : 0; aiCtlFoot += (want - aiCtlFoot) * Math.min(1, dt * 12);
+  const fx = lerp(lerp(bp.x, gp.x, 0.5), aiCtlFoot > 0 ? gp.x : bp.x, Math.abs(aiCtlFoot)), fy = lerp(60, aiCtlFoot > 0 ? gp.y : bp.y, Math.abs(aiCtlFoot)) - 8;
+  g.save(); g.translate(fx, fy); g.rotate(-0.25);
+  g.fillStyle = '#d9d2c5'; g.strokeStyle = '#1b1b1b'; g.lineWidth = 3;
+  g.beginPath(); g.roundRect(-26, -44, 52, 70, 22); g.fill(); g.stroke();                       // the shoe, from above
+  g.fillStyle = '#b5ada0'; g.beginPath(); g.ellipse(0, -48, 18, 10, 0, 0, 7); g.fill(); g.stroke();   // the ankle
+  g.restore();
+  // the handbrake, if it has one
+  if (AI.nOut > 2) {
+    g.fillStyle = c.handbrake ? '#ff3b2f' : 'rgba(255,255,255,.15)'; g.beginPath(); g.roundRect(W - 92, 8, 80, 28, 14); g.fill();
+    g.fillStyle = '#fff'; g.font = '700 16px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('H-BRAKE', W - 52, 23);
+  }
+}
 function aiViz(dt) {
   const live = (AI.training || AI.drive) && !!AI.viewW;
+  aiCtlDraw(dt, live);
   // decisions a second (the network runs on the main thread, in readInput: once a frame driving, once every
   // AI_DT of simulated time training, as many as fit in AI_BUDGET ms a frame)
   const now = performance.now(), el = (now - (AI.rateT || now)) / 1000;     // real seconds (a frame's dt is capped)

@@ -234,6 +234,8 @@ the panel's log: `state` (car, lap, autopilot, race, the panels' text), `screens
 `set` (a field), `key`, `get` (a value of `window.__sim`), `sim` (a few of its functions by name), `reload`. No
 arbitrary JavaScript; the bridge's own panel and password fields are out of its reach. Write to it in the panel
 (`node scripts/bridge.mjs events` reads it). **Disconnect** ends it; a reload keeps it; a server restart ends it.
+As MCP tools (`sim_pair`, `sim_state`, `sim_screenshot` (an image), `sim_command`, `sim_events`, `sim_status`):
+`scripts/bridge-mcp.mjs`, which `.mcp.json` starts for Claude Code in this project.
 Server: `lib/bridge/store.mjs` (in memory), `app/api/bridge/page/*` (the super admin's session and the pairing's
 token), `app/api/bridge/agent/*` (the agent's token); the page: `public/sim/bridge.js` (`scripts/patches/bridge.py`
 loads it and puts the renderer on `__sim` for the screenshots).

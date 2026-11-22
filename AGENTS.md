@@ -58,6 +58,7 @@ See README.md for the layout. Notes:
 - Claude bridge (README): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and
   `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
   (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.
+  Or the MCP tools (`.mcp.json` → `scripts/bridge-mcp.mjs`): `sim_pair { code }`, `sim_state`, `sim_screenshot`, `sim_command`.
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
   every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
   `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).

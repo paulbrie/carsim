@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "carsim-sim": {
+      "command": "node",
+      "args": ["scripts/bridge-mcp.mjs"],
+      "env": { "CARSIM_URL": "http://localhost:7001/projects/carsim" }
+    }
+  }
+}

@@ -173,6 +173,10 @@ here or in another browser (made with another car or course, it asks first, and 
   tarmac's on road, the gate posts' off it), 5 edge rays (feelers at ±60°, ±30° and ahead: how far until they
   leave the course, up to 40 m, drawn on the track), its sideways speed; and a third output, the handbrake (on
   above 0). Each set is a network and a training of its own (`AI_INPUTS`, `aiSetInputs`).
+- **Like the keyboard** (two options there): the pedal snapped to full throttle / off / full brake (above +⅓,
+  between, below −⅓), as W and S give, and the steering to full left / straight / full right as A and D give. Each
+  is a training of its own. Harder to learn: with keyboard pedals, a run from scratch on the figure-8 (sand, buggy)
+  was still stuck at the first hard bend after 80 generations (with the analogue pedal: a lap by generation 8-13).
 - **Penalties** (`AI_PEN`, editable there): every drive's score loses 1 m a metre driven off the road, 150 m for
   a wreck's worth of damage (in proportion), and 100 m for wrecking the car; the panel shows the last exam's.
   Off road, leaving the course (8 m from the line) ends a try anyway, before the gate posts.

@@ -17,7 +17,7 @@
 // No arbitrary JavaScript; never the bridge's own panel, password fields, or the app's API.
 const BASE = location.pathname.replace(/\/sim\/[^/]*$/, ''), API = BASE + '/api/bridge/page';
 const SIM_FNS = ['restartRun', 'respawn', 'switchVehicle', 'setSurface', 'setCamMode', 'placeAtGate', 'step', 'toggleEditor', 'setBots',
-  'aiTrainSync', 'aiTry', 'aiDrive', 'aiDemo', 'aiSaveServer', 'repairCar', 'startReplay', 'stopReplay'];
+  'aiTrainSync', 'aiTry', 'aiDrive', 'aiDemo', 'aiSaveServer', 'aiForget', 'repairCar', 'startReplay', 'stopReplay'];
 const KEEP = 'carsim.bridge';
 const st = { pageId: null, token: null, es: null, agent: null, code: null, codeUntil: 0, log: [], shot: null, el: null, btn: null };
 const S = () => window.__sim;

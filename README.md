@@ -188,6 +188,25 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
 - **Brake** (ticked by default): unticked, the pedal output is gas or nothing (below 0: off, `AI.nb`), so it slows
   by lifting off or, with the handbrake output, by pulling the handbrake. A training of its own (`+nobrake` in its
   key), started from the one with the brake; saved files and the server keep it (`noBrake`).
+- **A rival** (two networks racing, without colliding): another of the same road car on the course, driven by an
+  earlier best of the same network. **A replay** drives its own lap as if alone (a tape recorded before each try,
+  `aiRvRecord`) and doesn't react: ours learns to keep off it, follow and pass. **A car** is a second car with physics
+  of its own: the sim's physics drives one car (`car`, with `VEH`, `ENG`, `PRESSURES`, the box, `input` and the frame
+  vectors), so the rival is a whole car's state kept aside and swapped in for its steps (`aiRvSwap`); both see each
+  other, and they push and dent each other (`aiCarContact`: the bots' two circles a car, both pushed by their masses).
+  The **rival inputs** (rival ahead, behind, side, closing: all 0 beyond 30 m along the line) let the network see
+  it. Training: a share of generations (`rivalShare`, half) start their tries with it ahead and slower (to catch),
+  alongside, or close behind (`aiScenario`); each impact costs **contact** metres per m/s, the car behind taking 3/4
+  of the blame and alongside half (so braking in front of it costs too), and **gained** pays per metre gained on it
+  (0 by default: it races the clock). The rivals are copies of the best, one every 10 generations (the last 4 kept,
+  `AI.rvPool`; the best races the newest at once). Every exam is also a race: a lap from the grid alongside the
+  newest rival, its impacts, damage and not finishing taken off the exam's score (`aiRaceCost`). **Race it** drives
+  ours against the best as rival, and shows the gap and contacts. Only with road cars (the buggy is built once).
+  **Rival car**: the same as ours, or another model, which then drives with its own best training on this course in
+  this browser (`aiBrainOf`: the fastest lap among its trainings; train one with that car first) as it was trained:
+  its inputs, size and outputs from the training's key, its pace notes, racing line and look-ahead from its exam's
+  settings, its own record lap as its demo. Its driver is swapped in for its decisions as its car is for its steps
+  (`aiBrainSwap`); it doesn't learn (no earlier bests of ours as rivals), and a better training of it re-examines ours.
 - **Like the keyboard** (two options there): the pedal snapped to full throttle / off / full brake (above +⅓,
   between, below −⅓), as W and S give, and the steering to full left / straight / full right as A and D give. Each
   is a training of its own. Harder to learn: with keyboard pedals, a run from scratch on the figure-8 (sand, buggy)
@@ -211,8 +230,15 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   weights; a training step is ~67 µs, nearly all physics: ~15,000 decisions/s flat out, ~250× real time).
 - **Its hands and feet:** while it drives or trains, a steering wheel and the brake and gas pedals, top right
   (between the timer and the minimap), show exactly what it applies: the wheel turned as far as it steers (full
-  lock: three quarters of a turn), each pedal pushed down as far as it is pressed, a foot on it, and the handbrake
-  if it has one.
+  lock: three quarters of a turn), the pedals in 3D (a renderer of their own, drawn into that overlay: the brake hung
+  from under the dash, the gas hinged at the floor) each pressed and lit as far as it is pressed, with a see-through
+  foot moving between them, and the handbrake if it has one. Without WebGL for it, a flat drawing.
+- **Full screen (⤢ in the panel's corner, Esc back):** three columns. The numbers (generation, best, last exam), the
+  buttons and the wheel and pedals; the network as large as the screen allows (hover a dot: what it is, its value,
+  its pulls on the outputs) over two charts with axes, a legend and the values under the pointer (each exam's
+  score and its tries' average, the lap times and the best so far, all the generations kept); every setting in
+  cards, each with what it does written under it, the inputs and outputs with a line on what they are for and
+  their values live.
 - **Watching it think:** the panel draws the network live while it trains or drives: each input with its value
   (km/h, degrees, metres), each output (steer left/right, gas/brake %), and a line from each input to each output
   coloured and thickened by its pull right now (value × weight; orange +, blue −). On the track, three markers show
@@ -253,7 +279,7 @@ For the super admin (as trafficsim's bridge, cut to the sim): **🤝 Claude** (u
 <code>` and then works in that page, in the browser it runs in (yours, with its frame rate), every command shown in
 the panel's log: `state` (car, lap, autopilot, race, the panels' text), `screenshot` (the 3D view), `text`, `click`,
 `set` (a field), `key`, `get` (a value of `window.__sim`), `sim` (a few of its functions by name, e.g. `aiSaveServer(name)`: the autopilot
-saved on the server, as Save to server does without its name prompt), `reload`. No
+saved on the server, as Save to server does without its name prompt; `aiForget()`: Start over without its confirm), `reload`. No
 arbitrary JavaScript; the bridge's own panel and password fields are out of its reach. Write to it in the panel
 (`node scripts/bridge.mjs events` reads it). **Disconnect** ends it; a reload keeps it; a server restart ends it.
 As MCP tools (`sim_pair`, `sim_state`, `sim_screenshot` (an image), `sim_command`, `sim_events`, `sim_status`):

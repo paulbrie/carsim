@@ -67,8 +67,12 @@ See README.md for the layout. Notes:
   not the worn one: anything else that builds how packed the ground is (`C`) must save it again there.
   The exam (`aiExamStart`) is what picks the best: keep it what a real lap is (the flying one: two laps, the second
   timed, nothing put back between), and a change of exam a change of `aiExamKind` (the best is examined again).
-  Tests: `__sim.aiTrainSync(gens)`, `__sim.aiTry(weights)` (how a drive ends), one generation per call from a
-  timer (a long synchronous run gets the headless tab killed).
+  Tests: `__sim.aiTrainSync(gens)`, `__sim.aiTry(weights)` (how a drive ends; `aiTry(w, 0, true)`: the exam's race
+  with the rival), one generation per call from a timer (a long synchronous run gets the headless tab killed).
+  The autopilot's rival car is a second car's whole state swapped into `car` and the globals for its steps (`aiRvSwap`:
+  `car`'s own fields, `VEH`, `VIS`, `ENG`, `PRESSURES`, `CAR_HW/ZF/ZR`, `input`, `up/fwd/down`, `hitCooldown`, the room
+  hooks): per-car state the physics or damage code keeps anywhere else must be added there, or the two cars share it.
+  `car.isRival` marks it swapped in (no wreck screen, its own controls in `readInput`).
 - Claude bridge (README): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and
   `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
   (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.

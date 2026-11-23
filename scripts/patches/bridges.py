@@ -82,7 +82,8 @@ function buildEmbankments(X) {
   const F = 9, Lc = [0, 0], hu = [0, 0];
   if (!gully) for (const [i, sg] of [[0, -1], [1, 1]]) {
     let h = hAlong(X.uUnder, sg * 45); Lc[i] = clamp(F + Math.max(0, h - bed) / 0.07, 24, 45);
-    h = hAlong(X.uUnder, sg * Lc[i]); hu[i] = h; Lc[i] = clamp(F + Math.max(0, h - bed) / 0.07, 24, 45);
+    h = hAlong(X.uUnder, sg * Lc[i]); Lc[i] = clamp(F + Math.max(0, h - bed) / 0.07, 24, 45);
+    hu[i] = hAlong(X.uUnder, sg * Lc[i]);          // the road's height where the cutting ends (not where it was measured from): no step there
   }
   const over = [], under = [];
   P.forEach((p, i) => { const u = i / n, so = arcDist(u, X.uOver), su = gully ? 99 : arcDist(u, X.uUnder);
@@ -92,6 +93,7 @@ function buildEmbankments(X) {
     if (bi < 0) return [1e5, 0];
     const [a, b, t] = alongCourse(bi, x, z); return [Math.hypot(x - lerp(P[a].x, P[b].x, t), z - lerp(P[a].z, P[b].z, t)), arcDist((a + t) / n, u0)]; };
   const R0 = Math.max(a0 + RAMP * 1.5 + 14, gully ? 0 : 45 + 16), rc = Math.ceil(R0 / CELL);
+  const hRoad = new Map(under.map(([x, z, i]) => [i, Bat(x, z)]));         // the road's own height along the under-road, before the cutting
   for (let j = Math.max(1, cj0 - rc); j <= Math.min(N - 1, cj0 + rc); j++) for (let i = Math.max(1, ci0 - rc); i <= Math.min(N - 1, ci0 + rc); i++) {
     const x = -HALF + i * CELL, z = -HALF + j * CELL, k = j * V + i;
     if (gully) {         // a dry wash dug across the course under the deck, with sloping banks
@@ -101,7 +103,9 @@ function buildEmbankments(X) {
     } else {
       const [du, su] = nearest(under, x, z, X.uUnder), as = Math.abs(su), sd = su < 0 ? 0 : 1;
       if (as < Lc[sd] && du < 5.5 + 12) {          // the cutting: the road at its grade, banks of 1 in 1.5 up to the ground
-        const t = as <= F ? bed : bed + (hu[sd] - bed) * evenRamp((as - F) / (Lc[sd] - F), 0.25);
+        // the cutting's bed at its grade, and over its last 10 m the road's own cross-fall (banking) coming back in, so it meets the road beyond it
+        const cross = (B[k] - (hRoad.get(((Math.round(X.uUnder * n + su / ds)) % n + n) % n) ?? B[k])) * (1 - smooth(clamp((Lc[sd] - as) / 10, 0, 1)));
+        const t = (as <= F ? bed : bed + (hu[sd] - bed) * evenRamp((as - F) / (Lc[sd] - F), 0.25)) + cross;
         if (du < 5.5) { B[k] = t; C[k] = Math.max(C[k], 0.35); }
         else B[k] = Math.min(B[k], t + (du - 5.5) / 1.5);
       }

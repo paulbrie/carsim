@@ -116,6 +116,10 @@ A bridge reshapes the course around it (`scripts/patches/bridges.py`):
   it for every bridge (the automatic ones at crossings too).
 - **Tidy ends**: the abutments reach down to the cutting; past their width the embankment starts a few
   metres beyond the deck's end, a slope rather than a cliff.
+- **The cutting's ends meet the road** (#314): the cutting climbs to the road's height where it ends
+  (it used to aim at the height where it was first measured, up to 35 cm off: a step a car hit at speed),
+  and over its last 10 m the road's banking comes back in (it was flat to the end, then banked: a step
+  at the road's edge on a bend just past an underpass).
 
 On the Figure-8 map: the deck went from 4.4 m above the ground to 5 m over a 2.3 m cutting (1.7 m lower),
 and the ramps from S-curves peaking at 10-11% to an even 8% and 6.6%.
@@ -279,7 +283,11 @@ guests never are). Only the super admin can create, edit and delete maps; anyone
   `--name`; a map of that name already there is left alone, `--replace` saves the file's course over
   it), or in the app: *New map* from the file. *Serpentine* (#312): 1.59 km, twice the figure-8, about
   40 bends (the tightest 17 m, most 25–60 m) and a 270 m straight along one side of the world with the
-  start on it; banked 8°, levelled, no grade over 6%.
+  start on it; banked 8°, levelled, no grade over 6%. *Trefoil* (#314): 3.1 km, twice Serpentine, in the
+  same 400 m world: its middle is a trefoil knot, three crossings bridged (the `bridges` entries pick which
+  road goes over), and three lobes of hairpins about 34 m apart around it (switchback columns up the hill
+  across the north, rows down the west and east, fingers in the south-east), on hills raised with terrain
+  strokes (up to ~18 m); banked 8°, levelled, no grade over 8% (the cuttings' ends ~10%).
 - **In a room** the host picks the map (lobby, or New race). The page loads its course and hands it
   to the sim as `window.__simCourse` before the iframe boots; a change goes as a `course` message and
   the sim rebuilds the world. The room's ground still applies over the map's. A room reads its map

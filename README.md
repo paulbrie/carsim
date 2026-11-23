@@ -233,6 +233,32 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   lock: three quarters of a turn), the pedals in 3D (a renderer of their own, drawn into that overlay: the brake hung
   from under the dash, the gas hinged at the floor) each pressed and lit as far as it is pressed, with a see-through
   foot moving between them, and the handbrake if it has one. Without WebGL for it, a flat drawing.
+- **Several cores** ("cores to train on", in the panel's *This computer* card): this tab plans each generation and
+  drives some of its tries (the ones on screen); copies of the sim in Web Workers, one a core, drive the others and
+  the exams at full speed, an exam alongside the next generation's tries (whose start, where the last exam went
+  wrong, is then one exam late). A worker is this very `engine.js`, fetched and loaded without its imports (three
+  from the import map; the drawing add-ons and the WebGL renderer stand-ins) over a DOM that is a stub taking
+  anything (`aiWorkerMain`, `AI_WK`: no frames, no render chunks), booted from a copy of this tab's localStorage
+  with its course, ground and car; it is used only if its ground's hash is this tab's, and drives with the same
+  physics (an exam of the RS 6 network: 1634.3400375909766 in the tab and in a worker). A worker with nothing to do
+  drives the tab's try too (the same result: the first in counts). About 70 MB a worker; 7 cores ran ~8
+  generations where 3 ran 2 (headless). `aiTrainSync` / `aiTry` stay in the tab.
+- **Beside Train:** the cores, the most generations to train (empty: no limit; the same setting as in *Tries, exams
+  and when to stop*), and the speed (1×, 2×, 4×) Watch plays the training and Drive it / Race it drive at (more
+  physics steps a frame). On several cores the pedals and the network aren't animated while it trains (they cost
+  this tab's thread), unless watching; the diagram shows the weights.
+- **How busy the cores are** (under the status, while it trains): browsers don't give a page the CPU's load per core,
+  so each second it shows how much of it each of our threads worked (this tab: its frames, start to end; a worker:
+  from being sent a job to its answer), the longest frame (a freeze shows there), Chrome's CPU pressure
+  (`PressureObserver`), and this tab's JavaScript heap (`performance.memory`; a worker's isn't reported). The
+  best's re-race against the newest rival (every 10 generations with a rival car) runs in a worker: in the tab it
+  froze the page for about a second.
+- **Best laps on this course** (left column): every training in this browser on this course, one row a car and
+  network, the fastest first, with its generations and (hover) its exam and when the best was set (`bestAt`).
+- A training step that throws stops the training with a message (`aiTrainFail`, the error in `AI.lastError`), not
+  the frame loop; the Claude bridge logs the page's errors.
+- **Drawing** (same card): the pedals and foot in 3D or flat; and the 3D world drawn while it trains or not (not:
+  the picture stops, the panel goes on, and the training gets 15 ms of each frame instead of 12).
 - **Full screen (⤢ in the panel's corner, Esc back):** three columns. The numbers (generation, best, last exam), the
   buttons and the wheel and pedals; the network as large as the screen allows (hover a dot: what it is, its value,
   its pulls on the outputs) over two charts with axes, a legend and the values under the pointer (each exam's

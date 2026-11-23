@@ -8,6 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
    and talks to it with postMessage (see the MULTIPLAYER section near the end). Without ?mp=1 it is the
    single-player sim as it was. */
 const MPQ = new URLSearchParams(location.search);
+const AI_WK = !!globalThis.__aiWorker;                     // the autopilot's worker: this engine without a screen (autopilot.py)
 const MP = { on: MPQ.get('mp') === '1', edit: MPQ.get('edit') === '1', courseKey: null, sig: null, hold: false, phase: 'free', race: 0, laps: 3, slot: -1, goAt: 0, greenSim: 0, missed: 0, finished: false,
   peers: new Map(), myId: null, sendT: 0, pIdx: -1, spectator: false };
 
@@ -613,6 +614,7 @@ farMesh.receiveShadow = true; farMesh.frustumCulled = false;
 scene.add(farMesh);
 
 function updateFar() {
+  if (AI_WK) return;
   const pos = farGeo.attributes.position.array, nrm = farGeo.attributes.normal.array, col = farGeo.attributes.color.array, dis = farGeo.attributes.aDist.array, bmp = farGeo.attributes.aSurf.array;
   for (let j = 0; j < FV; j++) for (let i = 0; i < FV; i++) {
     const gi = i * FS, gj = j * FS, k = gj * V + gi, o = (j * FV + i) * 3;
@@ -628,6 +630,7 @@ function updateFar() {
 }
 
 function refreshChunks(px, pz, budget = Infinity) {
+  if (AI_WK) return;                                         // (nothing to draw in a worker)
   let changed = false;
   for (let b = 0; b < NCH; b++) for (let a = 0; a < NCH; a++) {
     const id = b * NCH + a;
@@ -5241,14 +5244,15 @@ function simulate(dt) {
   recordFrame();
 }
 function frame(now) {
+  const aiF0 = performance.now(); aiLoadGap(now);                   // (how busy this tab is: the autopilot's panel)
   const dt = Math.min((now - last) / 1000, 0.05); last = now;
   if (ed.on) {
     updateEditor(dt);
     if ((chunkTimer += dt) > 0.25) { chunkTimer = 0; refreshChunks(orbit.target.x, orbit.target.z, 4); }
     lap.msgT = Math.max(0, lap.msgT - dt);
   } else if (rp.on) { playReplay(dt); updateParticles(dt); lap.msgT = Math.max(0, lap.msgT - dt); if ((chunkTimer += dt) > 0.25) { chunkTimer = 0; refreshChunks(car.pos.x, car.pos.z, 6); } }
-  else if (AI.training) aiTrainFrame(dt);
-  else if (!window.__sim.paused) simulate(dt);
+  else if (AI.training) { try { aiTrainFrame(dt); } catch (e) { aiTrainFail(e); } }   // (a failure stops the training, not the sim)
+  else if (!window.__sim.paused) { simulate(dt); if (AI.drive) for (let k = 1; k < AI_CFG.speed; k++) simulate(dt); }   // (Drive it at 2x, 4x: more steps a frame)
   for (const id of dirty) { const ch = chunks.get(id); if (ch) ch.update(); }
   dirty.clear();
   aiRvSync(); syncVisual(); syncBots(); mpFrame(dt);
@@ -5261,7 +5265,8 @@ function frame(now) {
   updateHud(dt);
   updateLapHud(dt);
   aiViz(dt);
-  renderer.render(scene, camera);
+  if (!AI.training || AI_CFG.draw || AI.watch) renderer.render(scene, camera);   // (training, maybe not drawn: more time for it)
+  AI_LOAD.busy += performance.now() - aiF0;
   requestAnimationFrame(frame);
 }
 
@@ -5876,9 +5881,9 @@ if (MP.edit) {
    Saved per course and car in this browser. window.__sim.ai: AI, aiTrainSync(gens) for tests.
    ===================================================================== */
 const AI_SIZES = [0, 8];
-const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_LAP_BONUS = 5;
+const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_BUDGET_BLIND = 15, AI_LAP_BONUS = 5;
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
-const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '' };
+const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '', cores: 1, draw: true, ped3d: true, speed: 1 };
 // the rival (#311): another of this car on the course, near enough to matter within AI_RV_NEAR m along the line
 const AI_RV_NEAR = 30, AI_RV_MODES = ['off', 'replay', 'car'];
 const AI_LOOK_T = [0.3, 0.7, 1.4];                                     // the look-ahead in seconds, if by time (at least AI_LOOK_MIN m)
@@ -5948,9 +5953,12 @@ try {
   if (AI_RV_MODES.includes(c?.rival)) AI_CFG.rival = c.rival;
   if (Number.isFinite(c?.rivalShare) && c.rivalShare >= 0 && c.rivalShare <= 1) AI_CFG.rivalShare = c.rivalShare;
   if (typeof c?.rivalCar === 'string' && (!c.rivalCar || ROAD_CARS[c.rivalCar])) AI_CFG.rivalCar = c.rivalCar;
+  if (Number.isInteger(c?.cores) && c.cores >= 1 && c.cores <= 16) AI_CFG.cores = c.cores;
+  if ([1, 2, 4].includes(c?.speed)) AI_CFG.speed = c.speed;
+  if (c?.draw === false) AI_CFG.draw = false; if (c?.ped3d === false) AI_CFG.ped3d = false;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, cores: AI_CFG.cores, speed: AI_CFG.speed, draw: AI_CFG.draw, ped3d: AI_CFG.ped3d, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's, or no brake): another training (this one stays, under its own key);
 // one not trained yet starts from this one's weights, the new inputs' (and outputs') at nothing: it drives as this one did
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks, nb = AI.nb) {
@@ -6196,7 +6204,7 @@ const aiKey = () => `sandbuggy.ai.${courseKey()}.${VEH.key}.${AI.h}${aiSig()}`;
 const aiGauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
 function aiFresh() {
   const n = AI.np = aiShape(AI.inputs, AI.hb, AI.h).np, b = n - AI.nOut;
-  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null, examKind: aiExamKind(), rvPool: [], bestSolo: null });
+  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null, examKind: aiExamKind(), rvPool: [], bestSolo: null, bestAt: null });
   for (let i = 0; i < n; i++) AI.w[i] = aiGauss() * 0.1;
   AI.w[b + 1] = 0.5;                                                  // a little throttle to begin with, or nothing moves
   if (AI.nOut > 2) AI.w[b + 2] = -1;                                  // the handbrake off, until it learns better
@@ -6206,11 +6214,11 @@ function aiLoad() {
   try {
     const d = JSON.parse(localStorage.getItem(AI.key) || 'null');
     if (d && d.w?.length === AI.np) Object.assign(AI, { w: Float32Array.from(d.w), m: Float32Array.from(d.m || AI.m), v: Float32Array.from(d.v || AI.v), k: d.k || 0, gen: d.gen || 0,
-      best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0, examKind: d.exam || 'line', bestSolo: d.bestSolo ?? null });
+      best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0, examKind: d.exam || 'line', bestSolo: d.bestSolo ?? null, bestAt: d.bestAt || null });
   } catch (e) { }
 }
 function aiSave() {
-  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-300), exam: AI.examKind, bestSolo: AI.bestSolo })); } catch (e) { }
+  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-300), exam: AI.examKind, bestSolo: AI.bestSolo, bestAt: AI.bestAt || null })); } catch (e) { }
 }
 function aiNewGen() {
   AI.eps = []; AI.cands = []; AI.fits = new Float32Array(AI_CFG.pop); AI.ci = 0;
@@ -6363,7 +6371,7 @@ function aiTick() {
     AI.exam = false;
     AI.fail = AI.last.why !== 'lap' ? dist % len : null;                 // half the next tries start 100 m before: practise where it goes wrong
     const lapT = AI.last.lap;
-    if (fit > AI.bestFit) { AI.bestFit = fit; AI.bestSolo = solo; AI.best = Float32Array.from(E.w); AI.bestLap = lapT; AI.sinceBest = 0; }
+    if (fit > AI.bestFit) { AI.bestFit = fit; AI.bestSolo = solo; AI.best = Float32Array.from(E.w); AI.bestLap = lapT; AI.sinceBest = 0; AI.bestAt = Date.now(); }
     else if (AI.bestLap != null) AI.sinceBest++;                        // it laps: how long since a better one
     if (AI.stopAfter && AI.bestLap != null && AI.sinceBest >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
     if (AI.gens && AI.gen + 1 >= AI.genEnd) AI.autoStop = `${AI.gens} generation${AI.gens > 1 ? 's' : ''} done`;   // (gen counts this one just below)
@@ -6375,17 +6383,271 @@ function aiTick() {
   if (++AI.ci >= AI_CFG.pop) aiEndGen();
   return true;
 }
+// ---------- the best laps on this course: every training in this browser (a car, a network), the fastest first ----------
+function aiBestLaps() {
+  const pre = `sandbuggy.ai.${courseKey()}.`, flags = ['hb', 'kp', 'ks', 'nobrake'], rows = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i); if (!k || !k.startsWith(pre)) continue;
+    const m = k.slice(pre.length).match(/^([^.]+)\.(\d+)(?:\.(.+))?$/); if (!m || !VEHICLE_LIST[m[1]]) continue;
+    let d; try { d = JSON.parse(localStorage.getItem(k)); } catch (e) { continue; }
+    if (d?.bestLap == null) continue;
+    const tok = m[3] ? m[3].split('+') : [], inputs = m[3] ? tok.filter(t => !flags.includes(t)) : AI_DEFAULT_INPUTS, ex = String(d.exam || 'line').split(' ')[0];
+    rows.push({ key: k, car: m[1], lap: d.bestLap, gen: d.gen | 0, at: d.bestAt || null, np: aiShape(inputs, tok.includes('hb'), +m[2]).np, h: +m[2],
+      opts: [tok.includes('hb') && 'handbrake', tok.includes('nobrake') && 'no brake', tok.includes('kp') && '⌨ pedals', tok.includes('ks') && '⌨ steering', inputs.includes('rival') && 'rival inputs'].filter(Boolean),
+      exam: ex === 'line' ? 'a lap from the line' : ex.startsWith('flying2x') ? `slowest of ${ex.slice(8)} flying laps` : 'a flying lap' });
+  }
+  return rows.sort((a, b) => a.lap - b.lap);
+}
+function aiLapsShow(force) {
+  const box = AI.el.querySelector('#aiLaps'), now = performance.now();
+  if (!force && now - (AI.lapsT || 0) < 3000 && AI.lapsBest === AI.bestLap) return;   // (it reads every training: now and then)
+  AI.lapsT = now; AI.lapsBest = AI.bestLap;
+  const rows = aiBestLaps(), ago = t => { const s = (Date.now() - t) / 1000; return s < 90 ? 'just now' : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
+  box.innerHTML = !rows.length ? '<div class="sub">No autopilot has lapped this course in this browser yet.</div>'
+    : `<table><tr><th>Car</th><th>Best lap</th><th>Network</th><th>Gen.</th></tr>${rows.map((r, k) => `<tr class="${r.key === AI.key ? 'cur' : ''}" title="${r.exam}${r.opts.length ? ' · ' + r.opts.join(', ') : ''}${r.at ? ' · best set ' + ago(r.at) : ''}${r.key === AI.key ? ' · the one in training now' : ''}">`
+      + `<td>${k === 0 ? '🏆 ' : ''}${VEHICLE_LIST[r.car].name}</td><td><b>${fmt(r.lap)}</b></td><td>${r.np} w${r.h ? ` · ${r.h} hidden` : ''}${r.opts.length ? ' · ' + r.opts.join(', ') : ''}</td><td>${r.gen}</td></tr>`).join('')}</table>`
+      + '<div class="sub" style="margin-top:4px">Each its own exam (hover a row): compare laps of the same kind.</div>';
+}
+// ---------- how busy the cores are, and the memory (the panel, while it trains) ----------
+// Browsers don't tell a page the CPU's load per core: measured instead, each second, is how much of it each of our
+// threads spent working: this tab's frames (from the frame's start to its end: the training, the physics, drawing
+// the scene), each worker's jobs (from being sent one to its answer). And the longest frame: the page freezing shows
+// there. Memory: this tab's JavaScript heap (performance.memory, Chrome); a worker's isn't reported to the page.
+const AI_LOAD = { t0: performance.now(), busy: 0, frames: 0, maxGap: 0, lastNow: 0, view: null, pressure: '', po: null };
+function aiLoadGap(now) { if (AI_LOAD.lastNow) AI_LOAD.maxGap = Math.max(AI_LOAD.maxGap, now - AI_LOAD.lastNow); AI_LOAD.lastNow = now; AI_LOAD.frames++; }
+function aiLoadTick() {
+  const L = AI_LOAD, now = performance.now(), span = now - L.t0;
+  if (span < 900) return;
+  const pc = ms => Math.min(100, Math.round(ms / span * 100));
+  L.view = { tab: pc(L.busy), fps: Math.round(L.frames * 1000 / span), maxGap: Math.round(L.maxGap),
+    ws: AI_POOL.ws.map(x => ({ ok: x.ok, job: x.job ? x.job.kind : '', load: pc((x.acc || 0) + (x.job ? now - Math.max(x.jobT, L.t0) : 0)) })),
+    heap: performance.memory ? { used: performance.memory.usedJSHeapSize, limit: performance.memory.jsHeapSizeLimit } : null };
+  L.t0 = now; L.busy = 0; L.frames = 0; L.maxGap = 0;
+  for (const x of AI_POOL.ws) x.acc = 0;
+  if (!L.po && typeof PressureObserver === 'function') {              // the CPU's pressure, as Chrome tells it (nominal, fair, serious, critical)
+    L.po = true;
+    try { const o = new PressureObserver(r => { L.pressure = r[r.length - 1]?.state || ''; }); o.observe('cpu', { sampleInterval: 1000 }).catch(() => { }); } catch (e) { }
+  }
+  if (AI.open) aiLoadShow();
+}
+function aiLoadShow() {
+  const el = AI.el.querySelector('#aiLoad'), V = AI_LOAD.view;
+  if (!V || !(AI.training || AI_POOL.ws.length)) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const mb = b => Math.round(b / 1048576).toLocaleString('en') + ' MB';
+  const bar = (name, load, what, tip) => `<div class="ld" title="${tip}"><span>${name}</span><i><b style="width:${load}%;background:${load > 85 ? '#d9621a' : '#3d97ee'}"></b></i><em>${load}%</em><small>${what}</small></div>`;
+  el.innerHTML = `<div class="gh2">Cores, busy over the last second</div>`
+    + bar('this tab', V.tab, AI.ep ? (AI.job ? AI.job.kind : 'try') : AI.training ? 'waiting' : '', 'This tab\'s main thread: its frames (the training\'s share of each, the physics, drawing), out of the time that went by')
+    + V.ws.map((w, k) => bar(`worker ${k + 1}`, w.load, !w.ok ? 'starting' : w.job || 'idle', 'A copy of the sim in the background: the time it spent on its jobs (a try, an exam, a race)')).join('')
+    + `<div class="lx">Longest frame <b style="color:${V.maxGap > 100 ? '#ff8a7a' : 'inherit'}">${V.maxGap} ms</b> · ${V.fps} frames/s${AI_LOAD.pressure ? ` · CPU pressure: <b>${AI_LOAD.pressure}</b>` : ''}</div>`
+    + `<div class="lx">Memory: this tab's JavaScript ${V.heap ? `<b>${mb(V.heap.used)}</b> (it may use ${mb(V.heap.limit)})` : '(not reported by this browser)'}${V.ws.length ? ` · workers about 70 MB each (not reported to the page; measured once)` : ''}</div>`;
+}
+// ---------- training on several cores (AI_CFG.cores): the sim again, in Web Workers ----------
+// Each worker runs this whole engine without a screen (AI_WK: its DOM a stub that takes anything, no frames, no render
+// chunks), booted from a copy of this tab's localStorage with this course, ground and car, so it builds the same world
+// (checked: the ground's hash) and drives a try or an exam with the same physics, as it is sent them. This tab plans the
+// generations, drives its share of the tries (the ones on screen) and keeps the books; the workers take the other tries
+// and the exams, which run while the next generation's tries do (whose start comes from the exam before: one late).
+const AI_POOL = { log: [], ws: [], sig: '', src: null, jobs: [], exams: new Map(), seq: 0, next: 0, epoch: 0, gen: null, err: '' };
+const aiCoresMax = () => Math.max(1, Math.min(16, navigator.hardwareConcurrency || 4));
+const aiPoolOk = () => AI_POOL.ws.filter(x => x.ok).length;
+// the job's drive, begun (in the tab: stepped a frame at a time; in a worker: all at once)
+function aiParBegin(j) {
+  if (j.kind === 'try') aiStartEpisode(j.w, j.from, AI_CFG.window, 0, 1, j.scen);
+  else if (j.kind === 'race') aiStartEpisode(j.w, 0, AI_T, 0, 1, aiRaceScen());   // (the best against the newest rival: aiRvKeep)
+  else { j.phase = 0; aiExamStart(j.w); }
+}
+// a drive of it ended with this score: the job's result (null: an exam's race, next)
+function aiParEnd(j, fit) {
+  const E = AI.ep; AI.ep = null;
+  if (j.kind === 'try') return { fit: fit - (AI.last.why === 'time' || AI.last.why === 'lap' ? 0 : AI_CFG.crash), why: AI.last.why, at: AI.last.at };   // (as aiTick)
+  if (j.kind === 'race') { const cost = aiRaceCost(AI.last); return { fit: -cost, cost, why: AI.last.why }; }
+  if (!j.phase) {
+    j.lap = { fit, last: AI.last, dist: E.st.dist };
+    if (aiRaceExam()) { j.phase = 1; aiStartEpisode(j.w, 0, AI_T, 0, 1, aiRaceScen()); return null; }
+    return { fit, solo: fit, last: AI.last, race: null, dist: E.st.dist };
+  }
+  return { fit: j.lap.fit - aiRaceCost(AI.last), solo: j.lap.fit, last: j.lap.last, race: AI.last, dist: j.lap.dist };
+}
+// the next job for this tab (tries; the exams too while no worker is up) or a worker (exams first: the longest)
+function aiParTake(tab) {
+  const J = AI_POOL.jobs, ex = J.findIndex(j => j.kind !== 'try'), tr = J.findIndex(j => j.kind === 'try');
+  const k = tab && aiPoolOk() ? tr : ex >= 0 ? ex : tr;
+  return k < 0 ? null : J.splice(k, 1)[0];
+}
+// a generation's tries, when none are under way (and not too many exams behind)
+function aiParPlan() {
+  const P = AI_POOL;
+  if (P.gen || P.exams.size > Math.max(1, aiPoolOk())) return;
+  aiNewGen(); AI.from = AI.fail != null && Math.random() < 0.5 ? Math.max(1, AI.fail - 100) : 1 + Math.random() * (botPath().len - 1); AI.scen = aiScenario();
+  P.gen = { left: AI_CFG.pop };
+  for (let i = 0; i < AI_CFG.pop; i++) P.jobs.push({ kind: 'try', i, w: AI.cands[i], from: AI.from, scen: AI.scen, epoch: P.epoch });
+}
+// a job's result (from this tab or a worker)
+function aiParDone(j, r) {
+  const P = AI_POOL;
+  if (j.epoch !== P.epoch || j.done) return;                          // (training stopped since; or driven twice, and in already)
+  j.done = true;
+  P.log.push([j.kind, j.i ?? j.seq ?? 'keep', r.nAct ? 'w' : 'tab', Math.round(r.fit), r.why ?? r.last.why]); if (P.log.length > 300) P.log.shift();   // (what drove what: for a look from the console)
+  if (r.nAct) { AI.nAct += r.nAct; AI.nSim += r.nSim; }
+  if (j.keep) {                                                        // the best's race against the newest rival (aiRvKeep): its score, if still the best
+    if (AI.best && j.w.length === AI.best.length && j.w.every((v, k) => v === AI.best[k])) { if (j.kind === 'race') AI.bestFit = AI.bestSolo - r.cost; else { AI.bestFit = r.fit; AI.bestSolo = r.solo; } }
+    return;
+  }
+  if (j.kind === 'exam') { P.exams.get(j.seq).r = r; return; }          // (its books are kept in order, between drives: aiParExams)
+  AI.fits[j.i] = r.fit;
+  if (--P.gen.left > 0) return;
+  aiEndGen(); AI.exam = false; P.gen = null;                            // the generation's step; its exam, first in line
+  const ex = { kind: 'exam', w: Float32Array.from(AI.w), seq: P.seq++, tryAvg: AI.tryAvg, epoch: P.epoch };
+  P.exams.set(ex.seq, { j: ex, r: null }); P.jobs.unshift(ex);
+  aiPoolPump();
+}
+// the exams' results, in the generations' order (as aiTick's): the best, the history, the rivals
+function aiParExams() {
+  const P = AI_POOL, len = botPath().len;
+  for (let x; AI.training && (x = P.exams.get(P.next)) && x.r; ) {
+    P.exams.delete(P.next++);
+    const { j, r } = x, lapT = r.last.lap;
+    AI.last = r.last; AI.lastRace = r.race;
+    AI.fail = r.last.why !== 'lap' ? r.dist % len : null;
+    if (r.fit > AI.bestFit) { AI.bestFit = r.fit; AI.bestSolo = r.solo; AI.best = Float32Array.from(j.w); AI.bestLap = lapT; AI.sinceBest = 0; AI.bestAt = Date.now(); }
+    else if (AI.bestLap != null) AI.sinceBest++;
+    if (AI.stopAfter && AI.bestLap != null && AI.sinceBest >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
+    if (AI.gens && AI.gen + 1 >= AI.genEnd) AI.autoStop = `${AI.gens} generation${AI.gens > 1 ? 's' : ''} done`;
+    AI.hist.push([Math.round(r.fit), Math.round(j.tryAvg), lapT]); AI.lastExam = AI.last; AI.lastExamRace = AI.lastRace;
+    AI.gen++; aiRvKeep(); aiSave();
+    if (AI.autoStop) return;
+  }
+}
+// a step of the training on several cores; false when this tab has nothing to drive now (the workers have it all)
+function aiTickPar() {
+  if (AI.job && AI.job.done) { AI.ep = null; AI.job = null; }          // a worker drove this one too, and was first
+  if (!AI.ep) { aiParExams(); if (AI.autoStop) return false; aiParPlan(); aiPoolPump(); }
+  if (!AI.ep) {
+    const j = aiParTake(true); if (!j) return false;
+    AI.job = j; aiParBegin(j);
+  }
+  const fit = aiStep(); if (fit == null) return true;
+  const j = AI.job, r = aiParEnd(j, fit);
+  if (r) { AI.job = null; aiParDone(j, r); }
+  return true;
+}
+// what the workers are told: as training starts (the network's shape, the car's settings), and with every job (the rest)
+const aiPoolSetup = () => ({ t: 'setup', ai: { h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb }, car: { pIdx: car.pIdx, awd: car.awd, aids: car.aids } });
+function aiPoolPump() {
+  const P = AI_POOL;
+  for (const x of P.ws) {
+    if (!x.ok || x.job) continue;
+    let j = aiParTake(false);
+    if (!j && AI.job && !AI.job.done && !P.ws.some(y => y.job === AI.job)) j = AI.job;   // nothing else: this tab's drive too (the same result, sooner)
+    if (!j) return;
+    x.job = j; x.jobT = performance.now();
+    x.port.postMessage({ t: 'run', job: { kind: j.kind, i: j.i, w: j.w, from: j.from, scen: j.scen }, ctx: { cfg: AI_CFG, pen: AI_PEN, pool: AI.rvPool, best: AI.best, w: AI.w } });
+  }
+}
+// the workers for this training (as many more as the cores less this tab's), those of another course or car let go
+async function aiPoolStart() {
+  const P = AI_POOL, n = Math.min(AI_CFG.cores, aiCoresMax()) - 1, sig = JSON.stringify(COURSE) + '|' + VEH.key;
+  if (P.sig !== sig) { for (const x of P.ws) x.w.terminate(); P.ws = []; P.sig = sig; P.err = ''; }
+  while (P.ws.length > n) P.ws.pop().w.terminate();
+  for (const x of P.ws) if (x.ok) x.port.postMessage(aiPoolSetup());
+  if (P.ws.length >= n) return;
+  try { P.src = P.src || await aiWorkerSrc(); } catch (e) { P.err = 'could not load the sim for them'; aiShow(); return; }
+  while (P.ws.length < n && AI.training && P.sig === sig) aiPoolSpawn(P.src);
+}
+function aiPoolStop() { for (const x of AI_POOL.ws) x.w.terminate(); AI_POOL.ws = []; AI_POOL.sig = ''; }
+// the engine as a worker's: this file without its imports (three from the import map; the add-ons only draw: stand-ins),
+// and no WebGL renderer
+async function aiWorkerSrc() {
+  const map = JSON.parse(document.querySelector('script[type=importmap]').textContent).imports, three = new URL(map.three, location.href).href;
+  let s = await (await fetch(import.meta.url)).text();
+  s = s.replace(/^(import [^\n]*\n)+/, '').replace(/new THREE\.WebGLRenderer\(/g, 'new __aiwStub(');
+  s = `import * as THREE from '${three}';\nconst { OrbitControls, RoundedBoxGeometry, mergeGeometries, GLTFLoader } = globalThis.__aiwAddons;\n` + s;
+  const blob = t => URL.createObjectURL(new Blob([t], { type: 'text/javascript' }));
+  return { three, engine: blob(s), entry: blob(`(${aiWorkerMain.toString()})();`) };
+}
+function aiPoolSpawn(src) {
+  const P = AI_POOL, w = new Worker(src.entry, { type: 'module', name: 'autopilot' }), ch = new MessageChannel(), x = { w, port: ch.port1, ok: false, job: null };
+  const store = [];
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('sandbuggy.')) store.push([k, localStorage.getItem(k)]); }
+  store.push(['sandbuggy.course', JSON.stringify(COURSE)], ['sandbuggy.vehicle', VEH.key], ['sandbuggy.surface', ROAD ? 'road' : COURSE.base]);
+  x.port.onmessage = e => aiPoolMsg(x, e.data);
+  w.onerror = e => aiPoolMsg(x, { t: 'error', error: e.message || 'it failed to start' });
+  w.postMessage({ t: 'boot', port: ch.port2, store, three: src.three, engine: src.engine }, [ch.port2]);
+  P.ws.push(x);
+}
+function aiPoolMsg(x, m) {
+  const P = AI_POOL;
+  if (!P.ws.includes(x)) return;
+  if (m.t === 'ready') {
+    if (m.hash !== aiGroundHash()) { aiPoolDrop(x, 'its world came out different from this tab\'s'); return; }
+    x.ok = true; x.port.postMessage(aiPoolSetup()); aiPoolPump(); aiShow();
+  } else if (m.t === 'done') { const j = x.job; x.job = null; x.acc = (x.acc || 0) + performance.now() - Math.max(x.jobT, AI_LOAD.t0); if (j) aiParDone(j, m.r); aiPoolPump(); }
+  else if (m.t === 'error') aiPoolDrop(x, m.error);
+}
+function aiPoolDrop(x, why) {
+  const P = AI_POOL; P.ws.splice(P.ws.indexOf(x), 1); x.w.terminate();
+  if (x.job && x.job.epoch === P.epoch) P.jobs.unshift(x.job);        // (another drives it)
+  P.err = String(why).split('\n')[0].slice(0, 160); console.warn('Autopilot worker:', why); aiShow();
+}
+// the ground as built, and how packed it is: a worker's must be this tab's
+const aiGroundHash = () => { let h = 2166136261; for (const a of [B, AI.freshC || C, M]) { const u = new Uint32Array(a.buffer, a.byteOffset, a.byteLength >> 2); for (let i = 0; i < u.length; i += 7) h = Math.imul(h ^ u[i], 16777619); } return h >>> 0; };
+// (in a worker) its jobs: the network's shape and the car's settings, then drives, whole
+function aiWorkerServe(m) {
+  if (m.t === 'setup') { AI.h = m.ai.h; aiConfig(m.ai.inputs, m.ai.hb); Object.assign(AI, { kp: m.ai.kp, ks: m.ai.ks, nb: m.ai.nb }); Object.assign(car, m.car); AI.training = true; return { t: 'setup' }; }
+  if (m.t !== 'run') return { t: 'error', error: 'what is ' + m.t };
+  const c = m.ctx, j = m.job, n0 = AI.nAct, s0 = AI.nSim;
+  Object.assign(AI_CFG, c.cfg); Object.assign(AI_PEN, c.pen); Object.assign(AI, { rvPool: c.pool, best: c.best, w: c.w, ep: null });
+  aiParBegin(j);
+  for (;;) { const f = aiStep(); if (f == null) continue; const r = aiParEnd(j, f); if (r) return { t: 'done', r: { ...r, nAct: AI.nAct - n0, nSim: AI.nSim - s0 } }; }
+}
+// a worker's own script (its source goes in a blob: nothing from outside it): the stand-ins for a page, then the engine
+async function aiWorkerMain() {
+  const stub = new Proxy(function () { }, {
+    get: (t, k) => k === Symbol.toPrimitive ? (h => h === 'number' ? 0 : '') : k === Symbol.iterator ? function* () { } : k === Symbol.hasInstance ? () => false : k === 'then' ? undefined : k === 'length' ? 0 : stub,
+    apply: () => stub, construct: () => stub, set: () => true, deleteProperty: () => true });
+  const mem = new Map(), store = { getItem: k => mem.has(k) ? mem.get(k) : null, setItem: (k, v) => { mem.set(k, String(v)); }, removeItem: k => { mem.delete(k); }, clear: () => mem.clear(), key: i => [...mem.keys()][i] ?? null, get length() { return mem.size; } };
+  Object.assign(self, { __aiWorker: true, window: self, document: stub, localStorage: store, sessionStorage: store, innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1, requestAnimationFrame: () => 0, cancelAnimationFrame: () => { } });
+  for (const k of ['history', 'screen', 'visualViewport', 'parent', 'top', 'opener', 'alert', 'confirm', 'prompt', 'getComputedStyle', 'matchMedia', 'AudioContext', 'webkitAudioContext', 'AudioWorkletNode', 'Audio', 'Image', 'HTMLElement', 'HTMLCanvasElement', 'HTMLImageElement', 'HTMLVideoElement', 'Element', 'Node', 'ResizeObserver', 'MutationObserver', 'IntersectionObserver', 'CSS', 'scrollTo', 'requestIdleCallback', 'speechSynthesis', 'SpeechSynthesisUtterance', 'DOMParser', 'XMLSerializer', 'getSelection', 'focus', 'blur', 'print', 'PointerEvent', 'KeyboardEvent', 'MouseEvent', 'TouchEvent'])
+    if (!(k in self)) self[k] = stub;
+  self.onmessage = async e => {
+    const m = e.data; if (!m || m.t !== 'boot') return;
+    self.onmessage = null;
+    const port = m.port, fail = err => port.postMessage({ t: 'error', error: String(err && (err.stack || err.message) || err) });
+    self.addEventListener('error', ev => fail(ev.error || ev.message));
+    self.addEventListener('unhandledrejection', ev => console.warn('autopilot worker:', ev.reason));
+    try {
+      for (const [k, v] of m.store) mem.set(k, v);
+      const THREE = await import(m.three), make = function () { return stub; };   // (constructible)
+      self.__aiwAddons = { OrbitControls: make, GLTFLoader: make, RoundedBoxGeometry: class extends THREE.BoxGeometry { constructor(w, h, d) { super(w, h, d); } }, mergeGeometries: () => new THREE.BufferGeometry() };
+      self.__aiwStub = make;
+      await import(m.engine);
+      for (let k = 0; k < 1200 && !self.__aiwServe; k++) await new Promise(r => setTimeout(r, 50));
+      if (!self.__aiwServe) throw new Error('the sim did not start');
+      port.onmessage = ev => { try { port.postMessage(self.__aiwServe(ev.data)); } catch (err) { fail(err); } };
+      port.postMessage({ t: 'ready', hash: self.__aiwHash() });
+    } catch (err) { fail(err); }
+  };
+}
+// a training step failed: the rival's car put back if it was in ours, the training stopped, the error kept (AI.lastError)
+function aiTrainFail(e) {
+  AI.lastError = String(e && (e.stack || e.message) || e).slice(0, 2000); console.error('Autopilot training stopped:', e);
+  try { if (car.isRival && AI.rv) aiRvSwap(AI.rv); } catch (e2) { }
+  try { aiTrain(false); } catch (e2) { AI.training = false; }
+  flash(`Training stopped: an error (${String(e && e.message || e).slice(0, 80)})`, '#ff8a7a', 5);
+}
 function aiTrainFrame(dt) {
   if (aiKey() !== AI.key) { aiTrain(false); return; }                 // another course or car
+  const tick = AI.par ? aiTickPar : aiTick;                            // (on several cores, or this tab's alone)
   if (AI.watch) {                                                      // at 1x: as much driving as time went by, with the sound
     audio = AI.mute;
-    AI.wacc = Math.min((AI.wacc || 0) + dt, 4 * AI_DT);
-    while (AI.wacc >= AI_DT) { AI.wacc -= AI_DT; aiTick(); }
+    AI.wacc = Math.min((AI.wacc || 0) + dt * AI_CFG.speed, 4 * AI_DT * AI_CFG.speed);   // (at 2x or 4x: twice or four times that)
+    while (AI.wacc >= AI_DT) { AI.wacc -= AI_DT; tick(); }
   } else {
-    const t0 = performance.now();
-    while (performance.now() - t0 < AI_BUDGET && aiTick()) { }
+    const t0 = performance.now(), budget = AI_CFG.draw ? AI_BUDGET : AI_BUDGET_BLIND;   // (not drawing the world: more of the frame)
+    while (performance.now() - t0 < budget && tick()) { }
   }
-  refreshChunks(car.pos.x, car.pos.z, 6);
+  if (AI_CFG.draw || AI.watch) refreshChunks(car.pos.x, car.pos.z, 6);
   if (AI.autoStop) {                                                   // its generations done, or no better lap for a while
     AI.autoStopWhy = AI.autoStop; AI.autoStop = false; aiTrain(false);
     flash(`Training stopped: ${AI.autoStopWhy}`, '#9fd4ff', 3);
@@ -6403,12 +6665,16 @@ function aiTrain(on) {
     AI.drive = false;
     if (aiKey() !== AI.key) aiLoad();
     AI.snapH = H.slice(); AI.snapC = C.slice(); AI.ep = null; AI.cands = null; AI.exam = false; AI.examSolo = null;
+    AI.par = AI_CFG.cores > 1 && !AI.sync; AI.job = null;                          // several cores: the workers, and the books kept afresh
+    Object.assign(AI_POOL, { epoch: AI_POOL.epoch + 1, jobs: [], seq: 0, next: 0, gen: null }); AI_POOL.exams.clear();
     if (AI.rv) AI.rv.ck = null;                                        // (the rival car's training looked up again)
     AI.training = true; AI.mute = audio; audio = null;                   // the tries are silent (no engine, no crashes)
     if (AI.mute) AI.mute.node.port.postMessage({ on: 0 });
     if (AI.examKind !== aiExamKind()) aiReexam();
+    if (AI.par) aiPoolStart();
   } else {
     AI.training = false; AI.ep = null; AI.cands = null; AI.exam = false; AI.ctl = null; AI.examSolo = null; if (AI.rv) AI.rv.on = false;
+    Object.assign(AI_POOL, { epoch: AI_POOL.epoch + 1, jobs: [], gen: null }); AI_POOL.exams.clear(); AI.job = null;   // (what the workers still drive is dropped)
     if (AI.snapH) { H.set(AI.snapH); C.set(AI.snapC); AI.snapH = AI.snapC = null; for (const ch of chunks.values()) ch.update(); updateFar(); }
     if (AI.mute) { audio = AI.mute; AI.mute = null; }
     AI.watch = false;
@@ -6583,7 +6849,7 @@ function aiCtlDraw(dt, live) {
   };
   // the foot: over the gas, over the brake, or resting between, eased so it moves as a foot would
   const want = gas > 0.01 ? 1 : brk > 0.01 ? -1 : 0; aiCtlFoot += (want - aiCtlFoot) * Math.min(1, (dt + 1 / 30) * 6);
-  const ped = aiPedalsDraw(brk, gas, aiCtlFoot);
+  const ped = AI_CFG.ped3d ? aiPedalsDraw(brk, gas, aiCtlFoot) : null;
   if (ped) {                                                           // in 3D: the pedals, the foot; under them how far each is pressed
     g.drawImage(ped, 250, 4, 300, 190);
     for (const [x, v, col, label] of [[272, brk, '#e0352b', 'BRAKE'], [432, gas, '#2fbf4a', 'GAS']]) {
@@ -6607,7 +6873,7 @@ function aiCtlDraw(dt, live) {
   if (AI.big && AI.ctlBig) { const bg = AI.ctlBig.getContext('2d'); bg.clearRect(0, 0, W, Hc); bg.drawImage(aiCtlCv, 0, 0); }   // the full-screen view's copy
 }
 function aiViz(dt) {
-  const live = (AI.training || AI.drive) && !!AI.viewW;
+  const live = (AI.training ? !AI.par || AI.watch : AI.drive) && !!AI.viewW;   // (training on several cores: no live pedals or network, unless watching)
   aiCtlDraw(dt, live);
   // decisions a second (the network runs on the main thread, in readInput: once every AI_DT of simulated time, driving
   // or training, as many as fit in AI_BUDGET ms a frame)
@@ -6616,9 +6882,10 @@ function aiViz(dt) {
   else if (el >= 1) {
     const n = AI.nAct / el, x = AI.nSim / el;
     const f = v => v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString('en');
-    AI.rate = !live ? '' : AI.training ? `${f(n)} decisions/s on the main thread · ${AI.watch ? 'at real speed (watching)' : `driving at ${f(x)}× real time`}`
+    AI.rate = !live ? '' : AI.training ? `${f(n)} decisions/s ${AI.par ? `on ${aiPoolOk() + 1} cores` : 'on the main thread'} · ${AI.watch ? 'at real speed (watching)' : `driving at ${f(x)}× real time`}`
       : `${f(n)} decisions/s on the main thread (as trained: one every ${Math.round(AI_DT * 1000)} ms)`;
     AI.nAct = 0; AI.nSim = 0; AI.rateT = now;
+    aiLoadTick();
     if (AI.open) AI.el.querySelector('#aiRate').textContent = AI.rate;
   }
   for (let k = 0; k < 3; k++) {
@@ -6742,7 +7009,7 @@ function aiNetDraw(live) {
     g.textAlign = 'left'; g.fillStyle = '#fff'; g.font = big1; g.fillText(AI_OUTS[k].name + (keyed ? ' ⌨' : ''), xo + nr + 8, yo(k) - (x ? fb * 0.6 : 0));
     if (x) { g.font = small; g.fillStyle = 'rgba(255,255,255,.75)'; g.fillText(AI_OUTS[k].fmt(applied ? AI.applied[k] : v), xo + nr + 8, yo(k) + fsm * 0.75); }
   }
-  if (!x && !hov) { g.textAlign = 'center'; g.textBaseline = 'bottom'; g.font = small; g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText(big ? 'its weights (orange +, blue −): Train or Drive it to see it think, live' : 'its weights: Train or Drive it to see it think', W / 2, Hc - 1); }
+  if (!x && !hov) { g.textAlign = 'center'; g.textBaseline = 'bottom'; g.font = small; g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText(AI.training && AI.par ? 'its weights: live only on 1 core (or Watch)' : big ? 'its weights (orange +, blue −): Train or Drive it to see it think, live' : 'its weights: Train or Drive it to see it think', W / 2, Hc - 1); }
   if (!hov) return;
   // what the dot is: its explanation, its value, and its pulls on the outputs now
   const [kind, k] = hov, tb = `600 ${big ? 13 : 10}px system-ui, sans-serif`, tn = `${big ? 12 : 9.5}px system-ui, sans-serif`, rows = [];
@@ -6787,21 +7054,21 @@ function aiTrainSync(gens = 1, cfg) {
     if (cfg.inputs || cfg.hb != null || cfg.kp != null || cfg.ks != null || cfg.nb != null) { aiSetInputs(cfg.inputs || AI.inputs, cfg.hb ?? AI.hb, true, cfg.kp ?? AI.kp, cfg.ks ?? AI.ks, cfg.nb ?? AI.nb); AI.key = ''; }
     Object.assign(AI_CFG, cfg);
   }
-  aiTrain(true);
+  AI.sync = true; aiTrain(true);                                      // (this tab's alone: no workers)
   const g = AI.gen + gens;
   while (AI.gen < g) aiTick();
-  aiTrain(false);
+  aiTrain(false); AI.sync = false;
   return { gen: AI.gen, bestFit: AI.bestFit, bestLap: AI.bestLap, len: botPath().len, hist: AI.hist.slice(-gens) };
 }
 // one try with these weights (the best so far), as training drives it: how it ended
 function aiTry(w, log = 0, race = false) {
-  aiTrain(true);
+  AI.sync = true; aiTrain(true);
   w = w || AI.best || AI.w;                                           // (after aiTrain: a change of exam re-examines the best first)
   if (race && aiRival()) aiStartEpisode(w, 0, AI_T, 0, 1, aiRaceScen()); else aiExamStart(w);   // race: the exam's race with the rival
   const trace = []; let fit = null, n = 0;
   while ((fit = aiStep()) == null) if (log && ++n % log === 0) trace.push([+AI.ep.t.toFixed(1), Math.round(AI.ep.st.dist), +AI.ep.st.lat.toFixed(1), +car.vel.length().toFixed(1), +car.steer.toFixed(2), +AI.ctl.throttle.toFixed(2), +AI.ctl.brake.toFixed(2), AI.ctl.handbrake ? 1 : 0]);
   const r = { ...AI.last, fit, trace };
-  aiTrain(false);
+  aiTrain(false); AI.sync = false;
   return r;
 }
 
@@ -6991,6 +7258,9 @@ function aiRvKeep() {
   if (AI_CFG.rival === 'off' || !AI.best || !aiRival() || AI.rv.brain) return;   // (another car: its own driver, not ours)
   if (AI.rvPool.length && AI.gen % AI_CFG.rivalEvery) return;
   AI.rvPool.push(Float32Array.from(AI.best)); if (AI.rvPool.length > 4) AI.rvPool.shift();
+  if (AI.par && aiPoolOk()) {                                          // on several cores: a worker races it (here it froze the page for a second)
+    AI_POOL.jobs.unshift({ kind: AI.bestSolo == null ? 'exam' : 'race', keep: true, w: Float32Array.from(AI.best), epoch: AI_POOL.epoch }); aiPoolPump(); return;
+  }
   const keep = AI.last, kr = AI.lastRace;
   if (AI.bestSolo == null) { const x = aiExamRun(AI.best); AI.bestFit = x.fit; AI.bestSolo = x.solo; }
   else { aiStartEpisode(AI.best, 0, AI_T, 0, 1, aiRaceScen()); while (aiStep() == null) { } AI.ep = null; AI.bestFit = AI.bestSolo - aiRaceCost(AI.last); }
@@ -7038,6 +7308,17 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel #aiTrain{background:#ff5a0099} #aiPanel #aiTrain:hover,#aiPanel #aiTrain.on{background:#ff5a00}
   #aiPanel button.ic{padding:2px 8px;font-size:15px;line-height:1.3;background:#ffffff1a}
   #aiPanel .grp{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px} #aiPanel .gh{display:none}
+  #aiPanel #aiLoad{margin:6px 0;padding:6px 8px;border-radius:6px;background:#ffffff0d;font-size:11px}
+  #aiPanel .gh2{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;opacity:.6;margin-bottom:3px}
+  #aiPanel .ld{display:grid;grid-template-columns:62px 1fr 34px 44px;align-items:center;gap:6px;margin:2px 0}
+  #aiPanel .ld i{height:6px;background:#ffffff18;border-radius:3px;overflow:hidden} #aiPanel .ld i b{display:block;height:100%;border-radius:3px}
+  #aiPanel .ld em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums} #aiPanel .ld small{margin:0;opacity:.6;font-size:10px;white-space:nowrap;overflow:hidden}
+  #aiPanel .lx{opacity:.75;margin-top:4px;line-height:1.35}
+  #aiPanel.big #aiLoad{font-size:12.5px;padding:10px 12px;border-radius:10px} #aiPanel.big .ld{grid-template-columns:76px 1fr 40px 56px} #aiPanel.big .ld i{height:8px} #aiPanel.big .ld small{font-size:11.5px}
+  #aiPanel #aiLaps table{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px} #aiPanel #aiLaps th{text-align:left;font-weight:600;opacity:.6;padding:2px 4px}
+  #aiPanel #aiLaps td{padding:3px 4px;border-top:1px solid #ffffff14;font-variant-numeric:tabular-nums} #aiPanel #aiLaps tr.cur td{background:#ff5a0026}
+  #aiPanel.big #aiLapsBox{margin-top:10px;background:#ffffff09;border:1px solid #ffffff14;border-radius:10px;padding:8px 10px} #aiPanel.big #aiLaps table{font-size:12px}
+  #aiPanel label.qc{margin:0 2px 0 0;padding:0 6px;border-radius:6px;background:#ffffff14;font-size:12px;font-weight:700;gap:4px} #aiPanel label.qc select{font-weight:700}
   #aiPanel .aiKpi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:6px 0}
   #aiPanel .aiKpi>div{background:#ffffff12;border-radius:6px;padding:3px 6px;min-width:0}
   #aiPanel .aiKpi .k{font-size:9px;letter-spacing:.6px;text-transform:uppercase;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -7097,12 +7378,14 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">AUTOPILOT</div><div cl
   <section class="aiLeft">
     <div class="aiKpi" id="aiKpi"></div>
     <div class="st" id="aiStat"></div><div class="sub" id="aiRate"></div><div class="sub" id="aiRaceInfo"></div>
-    <div class="grp"><div class="gh">Training</div><button id="aiTrain">Train</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><button id="aiBack" title="Carry on training from the best weights so far (the exam's best lap), not from where training wandered to">Back to the best</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button><button id="aiReset">Start over</button></div>
+    <div id="aiLoad" style="display:none"></div>
+    <div class="grp"><div class="gh">Training</div><label class="qc" title="How many of this computer's cores train at once (the rest of these settings: This computer, under Inputs, outputs and penalties)">cores <select id="aiCoresQ">${Array.from({ length: aiCoresMax() }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select></label><label class="qc" title="Train at most this many generations, then stop (empty or 0: until you pause it, or it stops improving). The same as Tries, exams and when to stop's">max gens <input type="number" id="aiGensQ" min="0" max="100000" step="10" placeholder="∞" style="width:52px"></label><button id="aiTrain">Train</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><label class="qc" title="How fast Watch plays the training, and Drive it and Race it drive: 1× real time, 2× or 4× (the same physics, more of it a frame)">speed <select id="aiSpeed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="aiBack" title="Carry on training from the best weights so far (the exam's best lap), not from where training wandered to">Back to the best</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button><button id="aiReset">Start over</button></div>
     <div class="grp"><div class="gh">Its best, at the wheel</div><button id="aiDrive">Drive it</button><button id="aiRace" title="Drive it against a rival: another of this car alongside on the grid, driven by the best network too (as Train's rival below: a replay of its own laps, or a car that reacts; a car if none is set)">Race it</button></div>
     <div class="grp"><div class="gh">Keep it</div><button id="aiSaveF" title="Download this training (the weights, the generations, the chart) as a file">Save to file</button><button id="aiLoadF" title="Load a training saved to a file">Load file</button><button id="aiSaveS" title="Save this training on the server, under a name: you, or anyone, can load it there">Save to server</button><button id="aiLoadS" title="The autopilots saved on the server: load one (yours or anyone's), delete yours">From server</button></div>
     <div id="aiServer" style="display:none"></div>
     <input type="file" id="aiFile" accept=".json,application/json" style="display:none">
     <div class="aiCtlBox"><canvas id="aiCtlBig" width="560" height="250"></canvas></div>
+    <details id="aiLapsBox"><summary>Best laps on this course</summary><div id="aiLaps"></div></details>
   </section>
   <section class="aiMid">
     <div class="aiBox aiNetBox"><div class="h2">What it sees → what it does <span><i style="background:#ff8a3d"></i>pushes + (left, gas)</span><span><i style="background:#4aa8ff"></i>pushes − (right, brake)</span><span>thicker: stronger · hover a dot</span></div>
@@ -7144,9 +7427,13 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">AUTOPILOT</div><div cl
       <label style="justify-content:space-between" title="A try ends (and loses the 100 m for ending badly) this far from the racing line. Wider gives it room for its own line, and to go astray">end a try this far from the line, m <input type="number" id="aiOff" min="3" max="30" step="1"></label>
       <label style="justify-content:space-between" title="Each Train (or Train more) runs this many generations, then stops (0: until you pause it)">train this many generations at a time <input type="number" id="aiGens" min="0" max="10000" step="10"></label>
       <label style="justify-content:space-between" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop)">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label></div>
+    <div class="card"><div class="h3">This computer: cores and drawing</div>
+      <label style="justify-content:space-between" title="Train on more of this computer's cores at once: this tab drives some of each generation's tries (the ones you see), and copies of the sim in the background (Web Workers, one a core) drive the others and the exams, at full speed each. The same physics and the same world (checked as each starts), so the same training, only faster. Each copy takes some memory (about 70 MB). Watch at 1× watches this tab's tries; the others go on at full speed">cores to train on <select id="aiCores">${Array.from({ length: aiCoresMax() }, (_, k) => `<option value="${k + 1}">${k + 1}${k ? '' : ' (this tab only)'}${k + 1 === aiCoresMax() ? ' (all)' : ''}</option>`).join('')}</select></label>
+      <label title="Unticked: while it trains, the 3D world isn't drawn (the picture stops; the panel goes on), and the training gets that time: more tries a second in this tab. Watch at 1× always draws it"><input type="checkbox" id="aiDraw"> draw the 3D world while it trains</label>
+      <label title="The pedals and the foot on them (top right, while it drives or trains) in 3D, with a renderer of their own; unticked, a flat drawing"><input type="checkbox" id="aiPed3d"> pedals and foot in 3D</label></div>
     <small>Each set of inputs and outputs is a network, and a training, of its own (the others are kept). Penalties apply from the next try.</small>
   </details>
-  <small class="aiHelp">Watch at 1× runs the training at real speed (with sound) to follow each try. The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
+  <small class="aiHelp">Watch runs the training at real speed, or 2× or 4× (speed), with sound, to follow each try; Drive it and Race it go at that speed too. The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
   an output, orange + (left, throttle), blue − (right, brake), thicker stronger; hover a dot for what it is. On the track, the 3 points it looks at.
   Learns on this course with this car, ${AI_CFG.pop} tries a generation, and remembers it in this browser. Charts: each generation's exam score
   (orange) and its tries' average (blue), dashed a lap; once it laps, its lap times (faster higher), dashed the best. Hover them for the values.
@@ -7161,6 +7448,10 @@ AI.el.addEventListener('keydown', e => { if (e.target.matches('input')) e.stopPr
 AI.el.querySelector('#aiIns').innerHTML = AI_INPUTS.map(d => `<label class="io" title="${d.tip}"><input type="checkbox" data-in="${d.id}"> <span class="nm">${d.names.length > 2 ? `${d.id === 'rays' ? 'edge rays' : d.id} (${d.names.length})` : d.names.join(', ')}</span><span class="v" data-v="${d.id}"></span><span class="hint">${AI_ABOUT[d.id] || ''}</span></label>`).join('');
 // the full-screen view shows what each setting does (its tip), under it
 AI.el.querySelectorAll('#aiCfg label[title]').forEach(l => { if (!l.querySelector('.hint')) l.insertAdjacentHTML('beforeend', `<span class="hint">${l.title}</span>`); });
+AI.el.querySelector('#aiLapsBox').addEventListener('toggle', e => { if (e.target.open) aiLapsShow(true); });
+AI.el.querySelector('#aiGensQ').addEventListener('change', e => { const f = AI.el.querySelector('#aiGens'); f.value = e.target.value === '' ? 0 : e.target.value; f.dispatchEvent(new Event('change', { bubbles: true })); aiShow(); });
+AI.el.querySelector('#aiSpeed').addEventListener('change', e => { const v = +e.target.value; if ([1, 2, 4].includes(v)) { AI_CFG.speed = v; aiKeepConfig(); } e.target.blur(); aiShow(); });
+AI.el.querySelector('#aiCoresQ').addEventListener('change', e => { const f = AI.el.querySelector('#aiCores'); f.value = e.target.value; f.dispatchEvent(new Event('change', { bubbles: true })); e.target.blur(); });   // (the same as This computer's)
 AI.el.querySelector('#aiBig').addEventListener('click', e => { e.currentTarget.blur(); aiBig(); });
 addEventListener('keydown', e => { if (e.code === 'Escape' && AI.big) { e.stopImmediatePropagation(); e.preventDefault(); aiBig(false); } }, true);
 addEventListener('resize', () => { if (AI.big) aiShow(); });
@@ -7198,6 +7489,13 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
     else if (AI.rv.brain) flash(`The ${ROAD_CARS[AI.rv.key].name}: its own autopilot${AI.rv.brain.lap != null ? `, a lap in ${fmt(AI.rv.brain.lap)}` : ''}`, '#9fd4ff', 2.5);
   } else if (t.id === 'aiRivalShare') {
     const v = +t.value; if (Number.isFinite(v) && v >= 0 && v <= 1) { AI_CFG.rivalShare = v; aiKeepConfig(); }
+  } else if (t.id === 'aiCores') {
+    const v = Math.round(+t.value); if (v >= 1 && v <= aiCoresMax()) { AI_CFG.cores = v; aiKeepConfig(); if (v === 1) aiPoolStop(); if (AI.training) { aiTrain(false); aiTrain(true); } }
+  } else if (t.id === 'aiDraw') {
+    AI_CFG.draw = t.checked; aiKeepConfig();
+  } else if (t.id === 'aiPed3d') {
+    AI_CFG.ped3d = t.checked; aiKeepConfig();
+    if (!t.checked && aiPed) { aiPed.r.dispose(); aiPed.r.forceContextLoss(); aiPed = null; }   // (its WebGL context let go)
   } else if (t.id === 'aiRoll') {
     AI_CFG.rolling = t.checked; aiKeepConfig();
   } else if (t.id === 'aiFly') {
@@ -7385,11 +7683,13 @@ function aiShow() {
   for (const k in AI_PEN) { const f = AI.el.querySelector('#aiPen_' + k); if (document.activeElement !== f) f.value = AI_PEN[k]; }
   { const f = AI.el.querySelector('#aiStopAfter'); if (document.activeElement !== f) f.value = AI.stopAfter; }
   { const f = AI.el.querySelector('#aiGens'); if (document.activeElement !== f) f.value = AI.gens; }
+  { const f = AI.el.querySelector('#aiGensQ'); if (document.activeElement !== f) f.value = AI.gens || ''; }
   { const f = AI.el.querySelector('#aiOff'); if (document.activeElement !== f) f.value = AI_CFG.off; }
   { const f = AI.el.querySelector('#aiExamLaps'); if (document.activeElement !== f) f.value = AI_CFG.examLaps; }
   { const f = AI.el.querySelector('#aiPace'); if (document.activeElement !== f) f.value = AI_CFG.pace; }
   { const f = AI.el.querySelector('#aiRivalShare'); if (document.activeElement !== f) f.value = AI_CFG.rivalShare; }
   AI.el.querySelector('#aiRival').value = AI_CFG.rival; AI.el.querySelector('#aiRivalCar').value = AI_CFG.rivalCar;
+  AI.el.querySelector('#aiCores').value = AI.el.querySelector('#aiCoresQ').value = Math.min(AI_CFG.cores, aiCoresMax()); AI.el.querySelector('#aiDraw').checked = AI_CFG.draw; AI.el.querySelector('#aiPed3d').checked = AI_CFG.ped3d;
   AI.el.querySelector('#aiRL').checked = AI_CFG.racingLine; AI.el.querySelector('#aiLT').checked = AI_CFG.lookTime; AI.el.querySelector('#aiRoll').checked = AI_CFG.rolling; AI.el.querySelector('#aiFly').checked = AI_CFG.flying;
   for (const [id, k] of [['#aiGc', 'gCorner'], ['#aiGb', 'gBrake'], ['#aiGa', 'gAccel'], ['#aiLW', 'lineW']]) { const f = AI.el.querySelector(id); if (document.activeElement !== f) f.value = AI_CFG[k]; }
   const L = AI.lastExam;
@@ -7400,20 +7700,21 @@ function aiShow() {
     kpi('Generation', AI.gen, AI.training ? (AI.gens ? `training, to ${AI.genEnd}` : 'training') : AI.gen ? 'paused' : 'not trained', `${AI_CFG.pop} tries a generation, then an exam: a lap from the start`)
     + kpi('Best', AI.bestFit < 0 ? '—' : AI.bestLap != null ? sec(AI.bestLap) : `${pct(AI.bestFit)}<span class="u">%</span>`, AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? 'a full lap' : `${Math.round(AI.bestFit)} of ${Math.round(len)} m`, 'The best exam so far: its lap time, or how far round it got')
     + kpi('Last exam', !L ? '—' : L.why === 'lap' && L.lap != null ? sec(L.lap) : `${L.at}<span class="u">m</span>`, AI.bestLap != null && AI.sinceBest ? `${AI.sinceBest} since the best` : L ? (L.why === 'lap' ? 'a lap' : 'stopped there') : '', 'The latest generation\'s exam, and how long since the best got better');
-  AI.el.querySelector('#aiStat').innerHTML = `${AI.training ? `<b>${AI.exam ? `Exam: a ${AI_CFG.flying ? 'flying ' : ''}lap from the start` : `Try ${AI.ci + 1} of ${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}${AI.cands && AI.scen ? ` · rival ${AI_RV_KINDS[AI.scen.kind]}` : ''}`}${AI.examSolo ? ' · the race with the rival' : ''}</b>` : AI.drive ? `<b>${AI.race ? 'Racing' : 'Driving'} its best</b>` : best === 'nothing yet' ? 'Train it: it starts knowing nothing' : AI.big ? `Best: ${AI.bestLap != null ? fmt(AI.bestLap) : best}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; training stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `Best: ${best}`}${L ? `<br><span style="opacity:.75">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.hb ? ` · handbrake ${L.hb} s` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}${aiRaceLine(AI.lastExamRace)}</span>` : ''}`;
+  AI.el.querySelector('#aiStat').innerHTML = `${AI.training ? `<b>${AI.exam ? `Exam: a ${AI_CFG.flying ? 'flying ' : ''}lap from the start` : AI.par ? `Tries ${AI_POOL.gen ? AI_CFG.pop - AI_POOL.gen.left : 0} of ${AI_CFG.pop}${AI.from != null ? ` from ${Math.round(AI.from)} m` : ''} · ${aiPoolOk() + 1} of ${Math.min(AI_CFG.cores, aiCoresMax())} cores${AI_POOL.exams.size ? ` · ${AI_POOL.exams.size} exam${AI_POOL.exams.size > 1 ? 's' : ''} under way` : ''}${AI_POOL.err ? ` · a core was dropped: ${AI_POOL.err}` : ''}` : `Try ${AI.ci + 1} of ${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}${AI.cands && AI.scen ? ` · rival ${AI_RV_KINDS[AI.scen.kind]}` : ''}`}${AI.examSolo ? ' · the race with the rival' : ''}</b>` : AI.drive ? `<b>${AI.race ? 'Racing' : 'Driving'} its best</b>` : best === 'nothing yet' ? 'Train it: it starts knowing nothing' : AI.big ? `Best: ${AI.bestLap != null ? fmt(AI.bestLap) : best}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; training stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `Best: ${best}`}${L ? `<br><span style="opacity:.75">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.hb ? ` · handbrake ${L.hb} s` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}${aiRaceLine(AI.lastExamRace)}</span>` : ''}`;
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
   AI.el.querySelector('#aiTrain').classList.toggle('on', AI.training);
   AI.el.querySelector('#aiDrive').textContent = AI.drive && !AI.race ? 'Stop driving' : 'Drive it';
   AI.el.querySelector('#aiRace').textContent = AI.drive && AI.race ? 'Stop the race' : 'Race it';
   AI.el.querySelector('#aiRace').classList.toggle('on', !!(AI.drive && AI.race));
   AI.el.querySelector('#aiRace').disabled = AI.bestFit < 0;
-  AI.el.querySelector('#aiWatch').textContent = AI.watch ? 'Full speed' : 'Watch at 1×';
+  AI.el.querySelector('#aiWatch').textContent = AI.watch ? 'Full speed' : `Watch at ${AI_CFG.speed}×`; AI.el.querySelector('#aiSpeed').value = AI_CFG.speed;
   AI.el.querySelector('#aiWatch').classList.toggle('on', !!AI.watch);
   AI.el.querySelector('#aiDrive').classList.toggle('on', AI.drive && !AI.race);
   AI.el.querySelector('#aiDrive').disabled = AI.bestFit < 0;
   AI.el.querySelector('#aiBack').disabled = !AI.best;
   AI.el.querySelector('#aiSaveF').disabled = AI.el.querySelector('#aiSaveS').disabled = !AI.gen;
   aiChartsDraw();
+  if (AI.el.querySelector('#aiLapsBox').open) aiLapsShow();
 }
 // the charts, over the generations: a line each, the value under the pointer
 const AI_C1 = '#d9621a', AI_C2 = '#3d97ee';                           // (both read on the dark panel, and apart for colour-blind eyes)
@@ -7508,7 +7809,8 @@ setTimeout(() => {
   Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
   Object.assign(window.__sim, { renderer });                                      // for the Claude bridge's screenshots (bridge.js)
-  Object.assign(window.__sim, { aiDemo, aiSaveServer, aiForget });
+  Object.assign(window.__sim, { aiDemo, aiSaveServer, aiForget, aiPool: AI_POOL });
+  if (AI_WK) Object.assign(self, { __aiwServe: aiWorkerServe, __aiwHash: aiGroundHash });   // (a worker's engine: ready for its jobs)
   if (BOTS.n) setBots(BOTS.n);
   requestAnimationFrame(t => { last = t; frame(t); });
   mpPost({ t: 'ready' });

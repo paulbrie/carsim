@@ -73,6 +73,11 @@ See README.md for the layout. Notes:
   `car`'s own fields, `VEH`, `VIS`, `ENG`, `PRESSURES`, `CAR_HW/ZF/ZR`, `input`, `up/fwd/down`, `hitCooldown`, the room
   hooks): per-car state the physics or damage code keeps anywhere else must be added there, or the two cars share it.
   `car.isRival` marks it swapped in (no wreck screen, its own controls in `readInput`).
+  Training on several cores runs this same `engine.js` in Web Workers over a stub DOM (`aiWorkerMain`, `AI_WK`): code
+  at the top level of the engine must not depend on a real page (a value read from the DOM is a stub: `''` or 0), and
+  anything a try depends on must reach the workers: the course, ground and car come from the localStorage copy they
+  boot with (`aiPoolSpawn`), the network's shape and the car's settings from `aiPoolSetup`, the rest of `AI_CFG` /
+  `AI_PEN` and the rivals with each job (`aiPoolPump`). A worker is used only when its ground hashes as the tab's.
 - Claude bridge (README): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and
   `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
   (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.

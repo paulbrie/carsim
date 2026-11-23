@@ -172,6 +172,9 @@ function hook(r) {
 }
 
 // ---------------------------------------------------------------- the panel
+// the page's errors, in the log (and so in events): what went wrong where Claude can't see the console
+addEventListener('error', e => { if (st.pageId) note(`✕ error: ${e.message}${e.filename ? ` (${String(e.filename).split('/').pop()}:${e.lineno})` : ''}`); });
+addEventListener('unhandledrejection', e => { if (st.pageId) note(`✕ unhandled: ${String(e.reason && (e.reason.message || e.reason)).slice(0, 200)}`); });
 function note(s) { st.log.push(`${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} ${s}`); if (st.log.length > 40) st.log.shift(); show(); }
 function show(extra) {
   if (!st.el) return;
@@ -181,6 +184,7 @@ function show(extra) {
   q('#brStat').textContent = !on ? 'Not connected.' : st.agent ? `${st.agent} is connected and can work in this page.${extra ? ' (' + extra + ')' : ''}`
     : `Give Claude this code (valid ${Math.max(0, Math.ceil((st.codeUntil - Date.now()) / 60000))} min)${extra ? ' · ' + extra : ''}:`;
   q('#brCode').textContent = on && !st.agent && st.code ? st.code.replace(/(\d{3})(\d{3})/, '$1 $2') : '';
+  q('#brCodeRow').style.display = on && !st.agent && st.code ? '' : 'none';
   q('#brConnect').style.display = on ? 'none' : '';
   q('#brClose').style.display = on ? '' : 'none';
   q('#brMsgRow').style.display = st.agent ? '' : 'none';
@@ -194,18 +198,29 @@ function ui() {
     #brPanel{display:none;position:fixed;width:300px;max-height:calc(100vh - 24px);overflow:auto;pointer-events:auto;z-index:5;background:rgba(20,14,6,.88)}
     #brPanel .lt{font-size:12px;letter-spacing:2px;opacity:.85} #brPanel button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:6px 10px;margin:6px 4px 0 0;cursor:pointer;color:#fff;background:#ffffff26}
     #brPanel button:hover{background:#ffffff40} #brCode{font-size:30px;font-weight:800;letter-spacing:4px;font-variant-numeric:tabular-nums;margin:4px 0}
+    #brCodeRow{display:flex;align-items:center;gap:10px} #brPanel #brCopy{margin:0;padding:6px 12px} #brPanel #brCopy.ok{background:#2f9e55}
     #brLog{white-space:pre-wrap;font:11px/1.35 ui-monospace,monospace;opacity:.8;max-height:180px;overflow:auto;margin-top:6px}
     #brMsg{width:100%;box-sizing:border-box;font:inherit;font-size:12px;background:#ffffff1f;color:#fff;border:1px solid #ffffff40;border-radius:4px;padding:4px;margin-top:6px}
   </style>`);
   const b = st.btn = document.createElement('button'); b.id = 'brBtn'; b.textContent = '🤝 Claude'; b.title = 'Let a Claude session work in this page (you see what it does)';
   const p = st.el = document.createElement('div'); p.id = 'brPanel'; p.className = 'panel';
-  p.innerHTML = `<div class="lt">CLAUDE BRIDGE</div><div id="brStat"></div><div id="brCode"></div>
+  p.innerHTML = `<div class="lt">CLAUDE BRIDGE</div><div id="brStat"></div><div id="brCodeRow"><div id="brCode"></div><button id="brCopy" title="Copy the code, to paste it to Claude">Copy</button></div>
     <button id="brConnect">Connect</button><button id="brClose">Disconnect</button>
     <div id="brMsgRow"><input id="brMsg" placeholder="Write to Claude, Enter to send"></div><div id="brLog"></div>`;
   document.body.append(b, p);
   b.addEventListener('click', e => { e.currentTarget.blur(); p.style.display = p.style.display === 'block' ? 'none' : 'block'; place(); show(); });
   p.querySelector('#brConnect').addEventListener('click', e => { e.currentTarget.blur(); connect(); });
   p.querySelector('#brClose').addEventListener('click', e => { e.currentTarget.blur(); disconnect(); });
+  p.querySelector('#brCopy').addEventListener('click', async e => {
+    const bt = e.currentTarget; bt.blur(); if (!st.code) return;
+    let ok = false;
+    try { await navigator.clipboard.writeText(st.code); ok = true; } catch (err) {   // (in a room's iframe the clipboard may be refused: the old way)
+      const t = document.createElement('textarea'); t.value = st.code; t.style.cssText = 'position:fixed;opacity:0'; document.body.append(t); t.select();
+      try { ok = document.execCommand('copy'); } catch (err2) { } t.remove();
+    }
+    bt.textContent = ok ? 'Copied ✓' : 'Copy failed'; bt.classList.toggle('ok', ok);
+    setTimeout(() => { bt.textContent = 'Copy'; bt.classList.remove('ok'); }, 1500);
+  });
   p.addEventListener('keydown', e => { e.stopPropagation(); });           // typing here isn't driving
   p.querySelector('#brMsg').addEventListener('keydown', async e => {
     if (e.key !== 'Enter' || !e.target.value.trim()) return;

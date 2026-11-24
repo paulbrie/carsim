@@ -221,17 +221,32 @@ function mpApplyBest() {
   MP.carRecs = R.list.filter(e => e.vehicle === VEH.key);
 }
 const mpEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+// the best laps' lists fold away (a click on their title): the timer's ('cars') and the one beside it ('room'), kept in
+// this browser; their titles take the pointer (the panels let it through to the drive)
+const MP_FOLD = (() => { try { return JSON.parse(localStorage.getItem('sandbuggy.foldBest') || '{}') || {}; } catch (e) { return {}; } })();
+const mpFoldHead = (k, tag, cls) => `<${tag} class="${cls} fold" data-fold="${k}" title="${MP_FOLD[k] ? 'Show' : 'Hide'} the best laps">${MP_FOLD[k] ? '▸' : '▾'} BEST LAPS</${tag}>`;
+function mpFoldClick(e) {
+  const f = e.target.closest('[data-fold]'); if (!f) return;
+  e.preventDefault(); e.stopPropagation();
+  MP_FOLD[f.dataset.fold] = !MP_FOLD[f.dataset.fold]; mpBestT = 1;
+  try { localStorage.setItem('sandbuggy.foldBest', JSON.stringify(MP_FOLD)); } catch (err) { }
+}
+document.head.insertAdjacentHTML('beforeend', `<style>
+  #timer .fold,#bestLaps .fold{pointer-events:auto;cursor:pointer;user-select:none} #timer th.fold{text-align:left} #timer .fold:hover,#bestLaps .fold:hover{opacity:1;text-decoration:underline}
+</style>`);
+timerEl.addEventListener('pointerdown', mpFoldClick);
 // in the timer, all the time: the best lap with each car (at most MP_REC_ROWS, ours always), the driver's name
 const MP_REC_ROWS = 6;
 function mpRecRow() {
   if (!MP.on || !MP.records) return '';
+  if (MP_FOLD.cars) return `<table class="seg"><tr>${mpFoldHead('cars', 'th', '')}</tr></table>`;
   const all = MP.recs || [], ours = all.findIndex(e => e.vehicle === VEH.key);
   const rows = all.slice(0, MP_REC_ROWS).map(e => [e, e.vehicle === VEH.key]);
   if (ours >= MP_REC_ROWS) rows.push([all[ours], true]);
   if (ours < 0) rows.push([null, true]);
   const row = ([e, our]) => `<tr style="${our ? 'color:#ffd27d;font-weight:700' : ''}"><td>${mpEsc(e ? (ROAD_CARS[e.vehicle] || BUGGY).short : VEH.short)}</td>`
     + `<td>${e ? fmt(e.time) : '–'}</td><td style="text-align:left;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e ? mpEsc(e.name) : 'no lap yet'}</td></tr>`;
-  return `<table class="seg"><tr><th style="text-align:left">BEST LAPS</th><th></th><th></th></tr>${rows.map(row).join('')}</table>`;
+  return `<table class="seg"><tr>${mpFoldHead('cars', 'th', '')}<th></th><th></th></tr>${rows.map(row).join('')}</table>`;
 }
 
 /* ---------- the ghost car (#310): a best lap's path, driven by a see-through car that sets off with our lap ---------- */
@@ -340,6 +355,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #bestLaps .none{font-size:12px;opacity:.75;text-align:center;max-width:200px;white-space:normal}
 </style>`);
 document.body.appendChild(mpBestEl);
+mpBestEl.addEventListener('pointerdown', mpFoldClick);
 let mpBestT = 0, mpBestHtml = '';
 function mpBestFrame(dt) {
   if ((mpBestT += dt) < 0.1) return; mpBestT = 0;
@@ -363,7 +379,7 @@ function mpBestFrame(dt) {
   const lead = all[0]?.time, old = e => e.mv != null && e.mv !== MP.records.v;
   const row = ([e, i]) => `<tr class="${e.id === MP.myId ? 'me' : ''}"><td class="p">${i + 1}</td><td class="n">${mpEsc(e.name)}${e.id === MP.myId ? ' (you)' : ''}${old(e) ? ' *' : ''}</td>`
     + `<td>${fmt(e.time)}</td><td class="g">${i ? '+' + (e.time - lead).toFixed(3) : ''}</td></tr>`;
-  const html = `<div class="lt">BEST LAPS</div><div class="sub">${mpEsc(VEH.short)} · ${mpEsc(groundName())}</div>`
+  const html = MP_FOLD.room ? mpFoldHead('room', 'div', 'lt') : `${mpFoldHead('room', 'div', 'lt')}<div class="sub">${mpEsc(VEH.short)} · ${mpEsc(groundName())}</div>`
     + (!here ? '<div class="none">Loading…</div>' : !all.length ? `<div class="none">No lap yet with the ${mpEsc(VEH.short)} here. A lap counts when it passes every gate.</div>`
       : `<table>${rows.map(row).join('')}</table>${rows.some(([e]) => old(e)) ? '<div class="sub" style="margin:4px 0 0">* on an earlier layout of the map</div>' : ''}`);
   if (html !== mpBestHtml) { mpBestHtml = html; mpBestEl.innerHTML = html; }

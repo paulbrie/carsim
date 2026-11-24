@@ -10,13 +10,14 @@ See README.md for the layout. Notes:
   camera `cameras.py`, the maps (a room's course, the `?edit=1` map editor) `maps.py`, car damage
   (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py`, looking
   around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`,
-  the cars made from downloaded models (XJR, SL 63, 911 Turbo, Cayenne Turbo S, GT500, X5 M, GLE 63: specs, sounds, menus) `cars.py`
+  the cars made from downloaded models (XJR, SL 63, 911 Turbo, Cayenne Turbo S, GT500, X5 M, GLE 63: specs, sounds, menus; and all-wheel drive's front/rear torque split, `split`, 4 to change it) `cars.py`
   skid marks (ours and, in a race, the others' from their `sk`) `skids.py` and the grounds' landscapes (dunes for
   sand, countryside for earth and road; the road's width) `grounds.py`, the autopilot (a tiny network trained in
-  the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, the Claude bridge's loader
+  the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, pausing (P; tire pressure on Shift+P)
+  `pause.py`, the Claude bridge's loader
   (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, bridge, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, bridge, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -65,6 +66,10 @@ See README.md for the layout. Notes:
   or `repair` goes out, and `mpLap` posts none of the autopilot's laps.
   Every try starts on the ground as built (`B`, and `AI.freshC` from `aiFreshGround` at the end of `generateTerrain`),
   not the worn one: anything else that builds how packed the ground is (`C`) must save it again there.
+  Only the 16 m chunks `markDirty` noted since are copied back (`aiGroundBack`, `aiGT`): code that writes `H` or `C`
+  must call `markDirty` for what it changed, and anything that sets them wholesale (`H.set`) must set `aiGT.all = true`.
+  `aiDemoNow` looks at `courseKey()` again only when `TRACK` or the car changes (or a second on): whatever changes a
+  demo line must clear `AI.demoCk`.
   The exam (`aiExamStart`) is what picks the best: keep it what a real lap is (the flying one: two laps, the second
   timed, nothing put back between), and a change of exam a change of `aiExamKind` (the best is examined again).
   Tests: `__sim.aiTrainSync(gens)`, `__sim.aiTry(weights)` (how a drive ends; `aiTry(w, 0, true)`: the exam's race

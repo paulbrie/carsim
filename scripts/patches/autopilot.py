@@ -43,7 +43,7 @@ BLOCK = r"""
 const AI_SIZES = [0, 8];
 const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_BUDGET_BLIND = 15, AI_LAP_BONUS = 5;
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
-const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '', cores: 1, draw: true, ped3d: true, speed: 1 };
+const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '', cores: 1, draw: true, ped3d: true, speed: 1, onRoad: false, hbTurn: false, hbNoBrake: false, hbLock: 0.3 };
 // the rival (#311): another of this car on the course, near enough to matter within AI_RV_NEAR m along the line
 const AI_RV_NEAR = 30, AI_RV_MODES = ['off', 'replay', 'car'];
 const AI_LOOK_T = [0.3, 0.7, 1.4];                                     // the look-ahead in seconds, if by time (at least AI_LOOK_MIN m)
@@ -115,10 +115,12 @@ try {
   if (typeof c?.rivalCar === 'string' && (!c.rivalCar || ROAD_CARS[c.rivalCar])) AI_CFG.rivalCar = c.rivalCar;
   if (Number.isInteger(c?.cores) && c.cores >= 1 && c.cores <= 16) AI_CFG.cores = c.cores;
   if ([1, 2, 4].includes(c?.speed)) AI_CFG.speed = c.speed;
+  AI_CFG.onRoad = !!c?.onRoad; AI_CFG.hbTurn = !!c?.hbTurn; AI_CFG.hbNoBrake = !!c?.hbNoBrake;
+  if (Number.isFinite(c?.hbLock) && c.hbLock >= 0.05 && c.hbLock <= 1) AI_CFG.hbLock = c.hbLock;
   if (c?.draw === false) AI_CFG.draw = false; if (c?.ped3d === false) AI_CFG.ped3d = false;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, cores: AI_CFG.cores, speed: AI_CFG.speed, draw: AI_CFG.draw, ped3d: AI_CFG.ped3d, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, cores: AI_CFG.cores, speed: AI_CFG.speed, onRoad: AI_CFG.onRoad, hbTurn: AI_CFG.hbTurn, hbNoBrake: AI_CFG.hbNoBrake, hbLock: AI_CFG.hbLock, draw: AI_CFG.draw, ped3d: AI_CFG.ped3d, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's, or no brake): another training (this one stays, under its own key);
 // one not trained yet starts from this one's weights, the new inputs' (and outputs') at nothing: it drives as this one did
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks, nb = AI.nb) {
@@ -214,7 +216,7 @@ function aiPace() {
 // in this browser; aiDemo(null) drops it). Learning from a demonstration: the network still has to learn to drive it.
 function aiDemo(trace) {
   const key = `sandbuggy.ai.demo.${courseKey()}.${VEH.key}`;
-  AI.demoKey = null; AI.lineFor = AI.paceFor = null;
+  AI.demoKey = AI.demoCk = null; AI.lineFor = AI.paceFor = null;
   if (trace === null) { try { localStorage.removeItem(key); } catch (e) { } return { demo: false }; }
   let b; try { const s = atob(String(trace)); b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); } catch (e) { throw new Error('Not a trace'); }
   const dv = new DataView(b.buffer), m = Math.floor(b.length / (GH_F * 2));
@@ -234,12 +236,17 @@ function aiDemo(trace) {
   try { localStorage.setItem(key, JSON.stringify(d)); } catch (err) { }
   return { demo: true, samples: m, seconds: +((m - 1) * GH_DT).toFixed(1), points: n, maxOffset: +Math.max(...d.e.map(Math.abs)).toFixed(1) };
 }
+// (asked at every decision, by the pace notes and the racing line: courseKey hashes the whole course, so it is looked at
+// again only when the track or the car changes, or a second on; a third of a try's time went on it)
 function aiDemoNow() {
+  const now = performance.now(), ck = AI.demoCk;
+  if (ck && ck.T === TRACK && ck.v === VEH.key && now - ck.t < 1000) return AI.demo;
   const key = `sandbuggy.ai.demo.${courseKey()}.${VEH.key}`;
   if (AI.demoKey !== key) {
     AI.demoKey = key; AI.demo = null; AI.lineFor = AI.paceFor = null;
     try { const d = JSON.parse(localStorage.getItem(key) || 'null'); if (d?.e) AI.demo = { e: Float32Array.from(d.e), v: Float32Array.from(d.v), m: d.m }; } catch (e) { }
   }
+  AI.demoCk = { T: TRACK, v: VEH.key, t: now };
   return AI.demo;
 }
 // A racing line (AI_CFG.racingLine), instead of the course's centre: the smoothest path within the road, kept 1.6 m
@@ -250,9 +257,10 @@ function aiDemoNow() {
 function aiLine() {
   const D = aiDemoNow();
   if (!AI_CFG.racingLine && !D) return null;
-  const Pt = botPath(), W = AI_CFG.lineW > 0 ? AI_CFG.lineW : Math.max(0.5, aiHalfW() - 1.6), key = D ? `demo${D.m}` : `${W}`;   // (or as much room as set)
+  const Pt = botPath(), W = AI_CFG.lineW > 0 ? AI_CFG.lineW : Math.max(0.5, aiHalfW() - 1.6), key = (D ? `demo${D.m}` : `${W}`) + (AI_CFG.onRoad ? 'road' : '');   // (or as much room as set)
   if (AI.lineFor === Pt && AI.lineKey === key) return AI.line;
   const P = Pt.P, n = Pt.n, e = D ? Float32Array.from(D.e) : new Float32Array(n), x = new Float32Array(n), z = new Float32Array(n);
+  if (AI_CFG.onRoad) { const m = Math.max(0, aiHalfW() - CAR_HW - 0.3); for (let i = 0; i < n; i++) e[i] = clamp(e[i], -m, m); }   // (staying on the road: a demo's corners cut back inside it)
   const at = i => { x[i] = P[i].x + P[i].tz * e[i]; z[i] = P[i].z - P[i].tx * e[i]; };
   for (let i = 0; i < n; i++) at(i);
   if (!D) for (const span of [24, 16, 10, 6, 3]) for (let it = 0; it < 250; it++) for (let i = 0; i < n; i++) {
@@ -339,10 +347,23 @@ function aiObserve(st, dt = AI_DT) {
 // like the keyboard (an option for each): only full, nothing or full the other way, past a third either side
 const aiKey3 = v => v > 1 / 3 ? 1 : v < -1 / 3 ? -1 : 0;
 // without the brake (AI.nb): the pedal is gas or nothing (its − half: off); it slows by lifting off, or with the handbrake
-function aiAct(w, st, dt) {
+function aiAct(w, st, dt, rules = true) {
   aiObserve(st, dt); aiNet(w, aiX, aiY); AI.viewW = w; AI.nAct++;
   const steer = AI.applied[0] = AI.ks ? aiKey3(aiY[0]) : aiY[0], pedal = AI.applied[1] = Math.max(AI.nb ? 0 : -1, AI.kp ? aiKey3(aiY[1]) : aiY[1]);
-  return AI.lastCtl = { throttle: Math.max(0, pedal), brake: Math.max(0, -pedal), steer, handbrake: AI.nOut > 2 && aiY[2] > 0 };
+  const want = AI.nOut > 2 && aiY[2] > 0, hb = want && (!rules || aiHbOk(pedal));
+  AI.hbHeld = want && !hb;                                            // (asked for, held back by the rules)
+  return AI.lastCtl = { throttle: Math.max(0, pedal), brake: Math.max(0, -pedal), steer, handbrake: hb };
+}
+// the handbrake's rules (AI_CFG): only with the wheels turned (hbTurn: at least hbLock of the lock the car has at this
+// speed, the wheels' angle, not the steering output: they turn at their own rate), never with the brake (hbNoBrake). In
+// every try, exam and drive, so it learns where the handbrake still pays within them; the rival (its own brain) is free
+function aiHbOk(pedal) {
+  if (AI_CFG.hbNoBrake && pedal < 0) return false;
+  if (AI_CFG.hbTurn) {
+    const max = lerp(VEH.steerLock, VEH.steerLock * 0.33, clamp(Math.abs(car.vel.dot(fwd)) / 24, 0, 1));   // (readInput's)
+    if (Math.abs(car.steer) < AI_CFG.hbLock * max) return false;
+  }
+  return true;
 }
 // readInput's controls while training or driving (null: the player's)
 function aiInput(dt) {
@@ -353,7 +374,7 @@ function aiInput(dt) {
   }
   // as it was trained and examined: a decision every AI_DT, held between (one a frame, at 120 Hz or more, drives otherwise)
   AI.dAcc = (AI.dAcc || 0) + dt;
-  if (!AI.dCtl || AI.dAcc >= AI_DT) { AI.dAcc = Math.min(AI.dAcc - AI_DT, AI_DT); AI.dCtl = aiAct(AI.best || AI.w, AI.dst, AI_DT); }
+  if (!AI.dCtl || AI.dAcc >= AI_DT) { AI.dAcc = Math.min(AI.dAcc - AI_DT, AI_DT); AI.dCtl = aiAct(AI.best || AI.w, AI.dst, AI_DT); aiMapRec(); }
   return AI.dCtl;
 }
 
@@ -414,7 +435,7 @@ function aiStartEpisode(w, d, limit, lead = 0, laps = 1, sc = null) {
     if (R.mode === 'replay' && !sc.tape) sc.tape = aiRvRecord(R, (d || -8) + sc.gap, sc.lat, !!d && AI_CFG.rolling, limit, lead + laps * botPath().len + 40);   // (before the ground is put back)
     R.tape = sc.tape;
   }
-  if (AI.freshC) { H.set(B); C.set(AI.freshC); } else { H.set(AI.snapH); C.set(AI.snapC); }
+  aiGroundBack();
   repairAll(); AI.acc = 0;
   aiPlaceCar(d, sc ? sc.myLat : 0, !d && !sc, true, !!d && AI_CFG.rolling);
   if (R) {
@@ -422,7 +443,7 @@ function aiStartEpisode(w, d, limit, lead = 0, laps = 1, sc = null) {
     aiRvReady(R);
   }
   if (AI.rv) AI.rv.on = !!R;
-  AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0, swing: 0, pc: null, driven: 0, lead, laps, t0: lead ? null : 0, mark: 0, times: [], hb: 0,
+  AI.ep = { w, st: { i: -1, dist: 0, lat: 0 }, t: 0, max: 0, chk: 0, chkDist: 0, limit, offM: 0, swing: 0, pc: null, driven: 0, lead, laps, t0: lead ? null : 0, mark: 0, times: [], hb: 0, hbHeld: 0,
     rv: !!R, sc, contact: 0, touches: 0, touching: false, k: 0 };
 }
 // the car in `car` (ours, or the rival swapped in) d m along the line (0: behind the start line), lat m to the left of it;
@@ -450,7 +471,7 @@ function aiPlaceCar(d, lat, gate, mine, roll) {
 function aiStep() {
   const E = AI.ep, len = botPath().len, R = E.rv ? AI.rv : null;
   AI.other = R ? { st: R.st, vel: R.c.vel } : null;                   // what ours sees of the rival
-  AI.ctl = aiAct(E.w, E.st, AI_DT);
+  AI.ctl = aiAct(E.w, E.st, AI_DT); if (AI.hbHeld) E.hbHeld += AI_DT;   // (how long the rules held the handbrake back)
   if (E.pc) E.swing += Math.abs(AI.applied[0] - E.pc[0]) + Math.abs(AI.applied[1] - E.pc[1]);   // how much the controls moved
   E.pc = [AI.applied[0], AI.applied[1]];
   if (AI.ctl.handbrake) E.hb += AI_DT;                                   // how long it pulls the handbrake
@@ -463,10 +484,11 @@ function aiStep() {
   if (R) aiRvLate(R, ++E.k, AI_DT);
   E.t += AI_DT; E.max = Math.max(E.max, E.st.dist); AI.nSim += AI_DT;
   const sp = Math.hypot(car.vel.x, car.vel.z) * AI_DT; E.driven += sp;
-  if (Math.abs(E.st.lat) > aiHalfW()) E.offM += sp;                    // off the road
+  const offNow = Math.abs(E.st.lat) + (AI_CFG.onRoad ? CAR_HW : 0) > aiHalfW();   // off the road (staying on it: any of the car)
+  if (offNow) E.offM += sp;
   if (E.t0 == null && E.st.dist >= E.lead) E.t0 = E.mark = E.t;        // a flying lap: the clock starts at the line, a lap on
   if (E.t0 != null && E.st.dist >= E.lead + (E.times.length + 1) * len) { E.times.push(E.t - E.mark); E.mark = E.t; }   // a timed lap done
-  const why = E.times.length >= E.laps ? 'lap' : Math.abs(E.st.lat) > AI_CFG.off ? 'off' : E.st.dist < E.max - 15 ? 'back' : car.wrecked ? 'wreck' : up.y < 0.3 ? 'over'
+  const why = E.times.length >= E.laps ? 'lap' : Math.abs(E.st.lat) > AI_CFG.off || (AI_CFG.onRoad && E.exam && offNow) ? 'off' : E.st.dist < E.max - 15 ? 'back' : car.wrecked ? 'wreck' : up.y < 0.3 ? 'over'
     : E.t >= E.limit ? 'time' : E.t >= E.chk + 4 && E.st.dist - E.chkDist < 4 ? 'stuck' : null;
   if (E.t >= E.chk + 4) { E.chk = E.t; E.chkDist = E.st.dist; }
   if (!why) return null;
@@ -476,21 +498,36 @@ function aiStep() {
   const gain = R ? E.st.dist - R.st.dist : 0, cpen = R ? AI_PEN.contact * E.contact - AI_PEN.gain * gain : 0;   // the rival: its impacts, the metres gained on it
   const pen = AI_PEN.offRoad * E.offM + AI_PEN.damage * dmg + (car.wrecked ? AI_PEN.wreck : 0) + AI_PEN.smooth * E.swing + AI_PEN.path * extra - AI_PEN.speed * kmh + cpen;
   const fit = (why === 'lap' ? len + AI_LAP_BONUS * Math.max(0, AI_T - run) : prog / E.laps) - pen;   // (not all the laps: below any that did them)
-  AI.last = { why, at: Math.round(prog), t: +E.t.toFixed(1), lap: why === 'lap' ? +run.toFixed(2) : null, laps: E.times.map(x => +x.toFixed(2)), hb: +E.hb.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1), extra: Math.round(extra),
+  AI.last = { why, at: Math.round(prog), t: +E.t.toFixed(1), lap: why === 'lap' ? +run.toFixed(2) : null, laps: E.times.map(x => +x.toFixed(2)), hb: +E.hb.toFixed(1), hbHeld: +E.hbHeld.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1), extra: Math.round(extra),
     rival: R ? { kind: E.sc.kind, contact: +E.contact.toFixed(1), touches: E.touches, gain: Math.round(gain), cpen: Math.round(cpen), dmgF: dmg } : null };
   return fit;
 }
 // The ground as the world was built (the heights are B's, the editor's strokes in both; how packed it is, C, is kept
 // here): tries and exams start on it, not on whatever the driving before them wore into it (ruts, loosened sand, a
 // lap's worth of an exam at 31.48 s ran 31.68 after a few laps of Drive it)
-function aiFreshGround() { AI.freshC = C.slice(); }
+function aiFreshGround() { AI.freshC = C.slice(); aiGT.all = true; }
+// the ground put back as built (or as it was when training began, AI.snapH/snapC) for a try or an exam: only the 16 m
+// chunks driving changed since the last time (markDirty notes them in aiGT), not both 10 MB grids, a sixth of a
+// training's time; all of it when anything else may have changed the ground (aiGT.all: a new ground, training
+// starting or stopping, a worker set up, Race it's tape)
+function aiGroundBack() {
+  const h = AI.freshC ? B : AI.snapH, c = AI.freshC || AI.snapC;
+  if (aiGT.all || aiGT.src !== c) { H.set(h); C.set(c); aiGT.all = false; aiGT.src = c; aiGT.set.clear(); return; }
+  for (const id of aiGT.set) {
+    const a = id % NCH, b = (id - a) / NCH, i0 = a * CH, i1 = Math.min(N, i0 + CH), j1 = Math.min(N, b * CH + CH);
+    for (let j = b * CH; j <= j1; j++) { const k0 = j * V + i0, k1 = j * V + i1 + 1; H.set(h.subarray(k0, k1), k0); C.set(c.subarray(k0, k1), k0); }
+  }
+  aiGT.set.clear();
+}
 // the exam: a lap from the start line; a flying one (AI_CFG.flying), the second of two in a row, as Drive it's after the
 // first (on the ground the first has worn and with its knocks: nothing put back between them)
 // what an exam's score depends on besides the weights (the exam, what the network is shown, what it's scored on): when
 // it changes, the best's score is another exam's
 function aiExamKind() {
   return [AI_CFG.flying ? (AI_CFG.examLaps > 1 ? 'flying2x' + AI_CFG.examLaps : 'flying2') : 'line', AI_CFG.pace, AI_CFG.gCorner, AI_CFG.gBrake, AI_CFG.gAccel, AI_CFG.racingLine ? AI_CFG.lineW : '-',
-    AI_CFG.lookTime ? 't' : 'm', AI_CFG.off, aiDemoNow() ? 'demo' : '', JSON.stringify(AI_PEN), ...(aiRaceExam() ? ['race:' + AI_CFG.rival + (aiRivalKey() !== VEH.key ? ':' + aiRivalKey() + ':' + (AI.rv?.brain?.lap ?? '') : '')] : [])].join(' ');
+    AI_CFG.lookTime ? 't' : 'm', AI_CFG.off + (AI_CFG.onRoad ? 'road' : ''), aiDemoNow() ? 'demo' : '', JSON.stringify(AI_PEN), ...(aiRaceExam() ? ['race:' + AI_CFG.rival + (aiRivalKey() !== VEH.key ? ':' + aiRivalKey() + ':' + (AI.rv?.brain?.lap ?? '') : '')] : []),
+    ...(car.awd && car.split !== 0.5 ? ['split' + car.split] : []),
+    ...(AI.nOut > 2 && (AI_CFG.hbTurn || AI_CFG.hbNoBrake) ? ['hb' + (AI_CFG.hbTurn ? 'turn' + AI_CFG.hbLock : '') + (AI_CFG.hbNoBrake ? 'nobrake' : '')] : [])].join(' ');   // (the handbrake's rules)   // (all-wheel drive split unevenly: another car to drive)
 }
 // with a rival (AI_CFG.rival), each exam is also a race: a lap from the grid alongside it (the latest of the rivals, at its
 // best), whose impacts, damage and not finishing cost (aiRaceCost)
@@ -506,7 +543,7 @@ function aiExamRun(w) {
   AI.ep = null; AI.lastRace = AI.last; AI.last = solo;
   return { fit: fit - aiRaceCost(AI.lastRace), solo: fit };
 }
-const aiExamStart = w => AI_CFG.flying ? aiStartEpisode(w, 0, AI_T * (1 + AI_CFG.examLaps) / 2, botPath().len, AI_CFG.examLaps) : aiStartEpisode(w, 0, AI_T);
+const aiExamStart = w => { AI_CFG.flying ? aiStartEpisode(w, 0, AI_T * (1 + AI_CFG.examLaps) / 2, botPath().len, AI_CFG.examLaps) : aiStartEpisode(w, 0, AI_T); AI.ep.exam = true; };   // (an exam: staying on the road is a must)
 // the racing line's point d metres on from the start line (botPath's start, s0, is elsewhere)
 function aiLineAt(d) {
   const Pt = botPath();
@@ -599,8 +636,8 @@ function aiLoadShow() {
   el.innerHTML = `<div class="gh2">Cores, busy over the last second</div>`
     + bar('this tab', V.tab, AI.ep ? (AI.job ? AI.job.kind : 'try') : AI.training ? 'waiting' : '', 'This tab\'s main thread: its frames (the training\'s share of each, the physics, drawing), out of the time that went by')
     + V.ws.map((w, k) => bar(`worker ${k + 1}`, w.load, !w.ok ? 'starting' : w.job || 'idle', 'A copy of the sim in the background: the time it spent on its jobs (a try, an exam, a race)')).join('')
-    + `<div class="lx">Longest frame <b style="color:${V.maxGap > 100 ? '#ff8a7a' : 'inherit'}">${V.maxGap} ms</b> · ${V.fps} frames/s${AI_LOAD.pressure ? ` · CPU pressure: <b>${AI_LOAD.pressure}</b>` : ''}</div>`
-    + `<div class="lx">Memory: this tab's JavaScript ${V.heap ? `<b>${mb(V.heap.used)}</b> (it may use ${mb(V.heap.limit)})` : '(not reported by this browser)'}${V.ws.length ? ` · workers about 70 MB each (not reported to the page; measured once)` : ''}</div>`;
+    + `<div class="lx" title="The longest time between two frames in the last second (above 100 ms the page stutters), the frames a second, and the CPU's pressure as Chrome reports it (nominal, fair, serious, critical)">Longest frame <b style="color:${V.maxGap > 100 ? '#ff8a7a' : 'inherit'}">${V.maxGap} ms</b> · ${V.fps} fps${AI_LOAD.pressure ? ` · CPU <b>${AI_LOAD.pressure}</b>` : ''}</div>`
+    + `<div class="lx" title="This tab's JavaScript heap, and the most it may use (performance.memory). A worker's memory isn't reported to the page: about 70 MB each, measured once">Memory: tab ${V.heap ? `<b>${mb(V.heap.used)}</b> of ${mb(V.heap.limit)}` : '(not reported)'}${V.ws.length ? ` · workers ≈70 MB each` : ''}</div>`;
 }
 // ---------- training on several cores (AI_CFG.cores): the sim again, in Web Workers ----------
 // Each worker runs this whole engine without a screen (AI_WK: its DOM a stub that takes anything, no frames, no render
@@ -693,7 +730,9 @@ function aiTickPar() {
   return true;
 }
 // what the workers are told: as training starts (the network's shape, the car's settings), and with every job (the rest)
-const aiPoolSetup = () => ({ t: 'setup', ai: { h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb }, car: { pIdx: car.pIdx, awd: car.awd, aids: car.aids } });
+// (this tab's localStorage as it is now: the demo, the other cars' trainings for a rival; the course is the worker's own)
+const aiPoolStore = () => { const o = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('sandbuggy.ai.')) o.push([k, localStorage.getItem(k)]); } return o; };
+const aiPoolSetup = () => ({ t: 'setup', store: aiPoolStore(), ai: { h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb }, car: { pIdx: car.pIdx, awd: car.awd, aids: car.aids, split: car.split } });
 function aiPoolPump() {
   const P = AI_POOL;
   for (const x of P.ws) {
@@ -754,7 +793,13 @@ function aiPoolDrop(x, why) {
 const aiGroundHash = () => { let h = 2166136261; for (const a of [B, AI.freshC || C, M]) { const u = new Uint32Array(a.buffer, a.byteOffset, a.byteLength >> 2); for (let i = 0; i < u.length; i += 7) h = Math.imul(h ^ u[i], 16777619); } return h >>> 0; };
 // (in a worker) its jobs: the network's shape and the car's settings, then drives, whole
 function aiWorkerServe(m) {
-  if (m.t === 'setup') { AI.h = m.ai.h; aiConfig(m.ai.inputs, m.ai.hb); Object.assign(AI, { kp: m.ai.kp, ks: m.ai.ks, nb: m.ai.nb }); Object.assign(car, m.car); AI.training = true; return { t: 'setup' }; }
+  if (m.t === 'setup') {
+    if (m.store) {                                                     // the autopilot's own storage, as the tab's now (a demo set or dropped since...)
+      for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith('sandbuggy.ai.')) localStorage.removeItem(k); }
+      for (const [k, v] of m.store) localStorage.setItem(k, v);
+      AI.demoKey = AI.demoCk = null; AI.lineFor = AI.paceFor = null; if (AI.rv) AI.rv.ck = null;
+    }
+    AI.h = m.ai.h; aiConfig(m.ai.inputs, m.ai.hb); Object.assign(AI, { kp: m.ai.kp, ks: m.ai.ks, nb: m.ai.nb }); Object.assign(car, m.car); AI.training = true; aiGT.all = true; return { t: 'setup' }; }
   if (m.t !== 'run') return { t: 'error', error: 'what is ' + m.t };
   const c = m.ctx, j = m.job, n0 = AI.nAct, s0 = AI.nSim;
   Object.assign(AI_CFG, c.cfg); Object.assign(AI_PEN, c.pen); Object.assign(AI, { rvPool: c.pool, best: c.best, w: c.w, ep: null });
@@ -824,7 +869,7 @@ function aiTrain(on) {
     if (ed.on) toggleEditor(false);
     AI.drive = false;
     if (aiKey() !== AI.key) aiLoad();
-    AI.snapH = H.slice(); AI.snapC = C.slice(); AI.ep = null; AI.cands = null; AI.exam = false; AI.examSolo = null;
+    AI.snapH = H.slice(); AI.snapC = C.slice(); aiGT.all = true; AI.ep = null; AI.cands = null; AI.exam = false; AI.examSolo = null;
     AI.par = AI_CFG.cores > 1 && !AI.sync; AI.job = null;                          // several cores: the workers, and the books kept afresh
     Object.assign(AI_POOL, { epoch: AI_POOL.epoch + 1, jobs: [], seq: 0, next: 0, gen: null }); AI_POOL.exams.clear();
     if (AI.rv) AI.rv.ck = null;                                        // (the rival car's training looked up again)
@@ -836,6 +881,7 @@ function aiTrain(on) {
     AI.training = false; AI.ep = null; AI.cands = null; AI.exam = false; AI.ctl = null; AI.examSolo = null; if (AI.rv) AI.rv.on = false;
     Object.assign(AI_POOL, { epoch: AI_POOL.epoch + 1, jobs: [], gen: null }); AI_POOL.exams.clear(); AI.job = null;   // (what the workers still drive is dropped)
     if (AI.snapH) { H.set(AI.snapH); C.set(AI.snapC); AI.snapH = AI.snapC = null; for (const ch of chunks.values()) ch.update(); updateFar(); }
+    aiGT.all = true;
     if (AI.mute) { audio = AI.mute; AI.mute = null; }
     AI.watch = false;
     restartRun();
@@ -865,7 +911,7 @@ function aiDrive(on, race = false) {
   if (AI.training) aiTrain(false);
   AI.drive = on; AI.race = null; AI.other = null; if (AI.rv) AI.rv.on = false;
   if (on) {
-    restartRun(); AI.dst = { i: -1, dist: 0, lat: 0 }; AI.dCtl = null; AI.dAcc = 0;
+    restartRun(); AI.dst = { i: -1, dist: 0, lat: 0 }; AI.dCtl = null; AI.dAcc = 0; AI.map = null;
     if (race) aiRaceStart();
     flash(race ? 'Autopilot against the rival (any driving key takes over)' : 'Autopilot: hands off (any driving key takes over)', '#9fd4ff', 2.5);
   }
@@ -877,7 +923,7 @@ const aiRivalWhyNot = () => !ROAD_CARS[aiRivalKey()] ? 'A rival needs a road car
 function aiRaceStart() {
   const R = aiRival(), sc = aiRaceScen(); sc.w = AI.best || AI.w;
   R.mode = AI_CFG.rival === 'replay' ? 'replay' : 'car'; R.w = R.brain ? R.brain.w : sc.w; R.skill = 1; R.tape = null;
-  if (R.mode === 'replay') { const h = H.slice(), c = C.slice(); R.tape = aiRvRecord(R, -8, sc.lat, false, (AI.bestLap || 60) * 4 + 20, 3 * botPath().len + 40); H.set(h); C.set(c); }
+  if (R.mode === 'replay') { const h = H.slice(), c = C.slice(); R.tape = aiRvRecord(R, -8, sc.lat, false, (AI.bestLap || 60) * 4 + 20, 3 * botPath().len + 40); H.set(h); C.set(c); aiGT.all = true; }
   aiPlaceCar(0, sc.myLat, false, true, false);
   aiRvSwap(R); repairCar(); aiPlaceCar(0, sc.lat, false, false, false); aiRvSwap(R);
   aiRvReady(R); R.on = true;
@@ -1060,7 +1106,9 @@ function aiViz(dt) {
     a.needsUpdate = true;
   }
   if (!AI.open || (aiVizT += dt) < 0.1) return; aiVizT = 0;
-  aiNetDraw(live); aiIoLive(live);
+  const netLive = live && (!AI.training || !AI.par || AI_CFG.speed === 1);   // (the network: on several cores, only watching at 1x)
+  aiNetDraw(netLive); aiIoLive(netLive);
+  if (AI.drive) aiMapShow();
 }
 // what each input and output is for, in a line (the panel's full-screen view; the inputs' tips say more)
 const AI_ABOUT = {
@@ -1169,7 +1217,7 @@ function aiNetDraw(live) {
     g.textAlign = 'left'; g.fillStyle = '#fff'; g.font = big1; g.fillText(AI_OUTS[k].name + (keyed ? ' ⌨' : ''), xo + nr + 8, yo(k) - (x ? fb * 0.6 : 0));
     if (x) { g.font = small; g.fillStyle = 'rgba(255,255,255,.75)'; g.fillText(AI_OUTS[k].fmt(applied ? AI.applied[k] : v), xo + nr + 8, yo(k) + fsm * 0.75); }
   }
-  if (!x && !hov) { g.textAlign = 'center'; g.textBaseline = 'bottom'; g.font = small; g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText(AI.training && AI.par ? 'its weights: live only on 1 core (or Watch)' : big ? 'its weights (orange +, blue −): Train or Drive it to see it think, live' : 'its weights: Train or Drive it to see it think', W / 2, Hc - 1); }
+  if (!x && !hov) { g.textAlign = 'center'; g.textBaseline = 'bottom'; g.font = small; g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText(AI.training && AI.par ? 'its weights: live only on 1 core, or watching at 1×' : big ? 'its weights (orange +, blue −): Train or Drive it to see it think, live' : 'its weights: Train or Drive it to see it think', W / 2, Hc - 1); }
   if (!hov) return;
   // what the dot is: its explanation, its value, and its pulls on the outputs now
   const [kind, k] = hov, tb = `600 ${big ? 13 : 10}px system-ui, sans-serif`, tn = `${big ? 12 : 9.5}px system-ui, sans-serif`, rows = [];
@@ -1251,7 +1299,7 @@ function aiRival() {
   if (AI.rv) { if (AI.rv.in) aiRvSwap(AI.rv); scene.remove(AI.rv.V.vis); }
   const V = makeRoadVehicle(key); V.mpPaint = 0x1f6fff;            // blue: told apart from ours (and kept when its model loads)
   setPaint(V, V.mpPaint, false); if (MODELS[V.key]) loadModel(V); V.vis.visible = false;
-  const c = { mass: V.mass, I: V.I.clone(), pos: new THREE.Vector3(), vel: new THREE.Vector3(), q: new THREE.Quaternion(), w: new THREE.Vector3(), steer: 0, throttle: 0, awd: V.awd, pIdx: V.pIdx, aids: car.aids,
+  const c = { mass: V.mass, I: V.I.clone(), pos: new THREE.Vector3(), vel: new THREE.Vector3(), q: new THREE.Quaternion(), w: new THREE.Vector3(), steer: 0, throttle: 0, awd: V.awd, pIdx: V.pIdx, aids: car.aids, split: carSplit(V),
     R: V.R, REST: V.REST, K: V.K, CB: V.CB, CR: V.CR, Iw: V.Iw, wheels: V.wheels, hull: V.hull, eng: { rpm: V.eng.idle, gear: 1, shiftT: 0, load: 0, cut: false, reverse: false, liftT: 9, lastPower: 0, popT: 0, tc: 1, sinceShift: 0 },
     dmg: { front: 0, rear: 0, left: 0, right: 0, roof: 0, under: 0 }, hullC: new Uint8Array(V.hull.length), grace: 0, wrecked: false, isRival: true, rivalCtl: { throttle: 0, brake: 0, steer: 0, handbrake: false } };
   return AI.rv = { key, ck, brain, V, c, keys: [...new Set([...Object.keys(car), ...Object.keys(c)])], VIS: V.vis, ENG: V.eng, P: V.pressures, box: V.box.slice(),
@@ -1311,7 +1359,7 @@ function aiRvReady(R) {
 function aiRvAct(R, st) {
   const kx = aiX.slice(), ky = aiY.slice(), kh = aiHid.slice(), ka = AI.applied.slice(), kl = AI.lastCtl, kw = AI.viewW, kn = AI.nAct, kk = AI.look.slice(), kr = AI.rayEnds.slice();
   if (R.brain) aiBrainSwap(R.brain);
-  const c = aiAct(R.w, st, AI_DT);
+  const c = aiAct(R.w, st, AI_DT, false);
   if (R.brain) aiBrainSwap(R.brain);
   aiX.set(kx); aiY.set(ky); aiHid.set(kh); AI.applied[0] = ka[0]; AI.applied[1] = ka[1]; AI.lastCtl = kl; AI.viewW = kw; AI.nAct = kn; AI.look = kk; AI.rayEnds = kr;
   return { throttle: c.throttle * R.skill, brake: c.brake, steer: c.steer, handbrake: c.handbrake };   // (skill < 1: a slower one)
@@ -1344,7 +1392,7 @@ function aiGap(di) { const Pt = botPath(), L = Pt.len, g = di * Pt.ds; return ((
 // the tape of a replay rival: its own drive, alone (it sees no other), from d m along the line, lat m to the left; a pose
 // (position, rotation, velocity) every AI_DT for limit s, or until it has gone upto m
 function aiRvRecord(R, d, lat, roll, limit, upto = Infinity) {
-  if (AI.freshC) { H.set(B); C.set(AI.freshC); } else if (AI.snapH) { H.set(AI.snapH); C.set(AI.snapC); }
+  if (AI.freshC || AI.snapH) aiGroundBack();
   const keep = AI.other, n = Math.ceil(limit / AI_DT) + 1, T = new Float32Array(n * 10), st = { i: -1, dist: 0, lat: 0 };
   AI.other = null; aiRvSwap(R); repairCar(); aiPlaceCar(d, lat, false, false, roll);
   let acc = 0, k = 0;
@@ -1463,6 +1511,8 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel .sub{font-size:11px;opacity:.7;margin-bottom:6px}
   #aiPanel .st{font-variant-numeric:tabular-nums;margin:4px 0;font-size:12px}
   #aiPanel canvas{display:block;width:100%;height:64px;margin:4px 0}
+  #aiPanel label.hbr{padding-left:14px} #aiPanel label.hbr input[type=number]{width:44px}
+  #aiPanel .aiMapBox{display:none} #aiPanel .aiMapBox.on{display:block} #aiPanel #aiMap{cursor:crosshair} #aiPanel:not(.big) #aiMap{height:auto;aspect-ratio:1/1}
   #aiPanel button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:6px 10px;margin:0;cursor:pointer;color:#fff;background:#ffffff26}
   #aiPanel button:hover{background:#ffffff40} #aiPanel button.on{background:#ff5a00} #aiPanel button:disabled{opacity:.4;cursor:default;background:#ffffff1a}
   #aiPanel #aiTrain{background:#ff5a0099} #aiPanel #aiTrain:hover,#aiPanel #aiTrain.on{background:#ff5a00}
@@ -1473,7 +1523,20 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel .ld{display:grid;grid-template-columns:62px 1fr 34px 44px;align-items:center;gap:6px;margin:2px 0}
   #aiPanel .ld i{height:6px;background:#ffffff18;border-radius:3px;overflow:hidden} #aiPanel .ld i b{display:block;height:100%;border-radius:3px}
   #aiPanel .ld em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums} #aiPanel .ld small{margin:0;opacity:.6;font-size:10px;white-space:nowrap;overflow:hidden}
-  #aiPanel .lx{opacity:.75;margin-top:4px;line-height:1.35}
+  #aiPanel .lx{opacity:.75;margin-top:4px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* text that changes as it trains: a line each, cut short, so nothing under it moves */
+  #aiPanel .st .ln,#aiPanel #aiRate,#aiPanel #aiRaceInfo{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} #aiPanel .st .dim{opacity:.75}
+  #aiPanel .st{min-height:4.35em} #aiPanel #aiRate{min-height:1.45em}
+  #aiPanel #aiTrain{min-width:7.4em} #aiPanel #aiWatch{min-width:7.8em} #aiPanel #aiDrive{min-width:7.6em} #aiPanel #aiRace{min-width:7.8em} #aiPanel #aiH{min-width:7.2em}
+  /* scrollbars: thin, a light thumb on a see-through track, their room kept whether they show or not */
+  #aiPanel,#aiPanel .aiLeft,#aiPanel #aiCfg,#aiPanel #aiServer{--sb-thumb:rgba(255,255,255,.4);--sb-track:transparent;scrollbar-width:thin;scrollbar-color:var(--sb-thumb) var(--sb-track);scrollbar-gutter:stable}
+  @media (prefers-contrast: more){#aiPanel,#aiPanel .aiLeft,#aiPanel #aiCfg,#aiPanel #aiServer{--sb-thumb:#fff}}
+  @supports not (scrollbar-color: auto){
+    #aiPanel,#aiPanel .aiLeft,#aiPanel #aiCfg,#aiPanel #aiServer{scrollbar-width:auto}
+    #aiPanel::-webkit-scrollbar,#aiPanel .aiLeft::-webkit-scrollbar,#aiPanel #aiCfg::-webkit-scrollbar,#aiPanel #aiServer::-webkit-scrollbar{width:8px;height:8px}
+    #aiPanel ::-webkit-scrollbar-thumb,#aiPanel::-webkit-scrollbar-thumb{background:var(--sb-thumb);border-radius:4px}
+    #aiPanel ::-webkit-scrollbar-track,#aiPanel::-webkit-scrollbar-track{background:var(--sb-track)}
+  }
   #aiPanel.big #aiLoad{font-size:12.5px;padding:10px 12px;border-radius:10px} #aiPanel.big .ld{grid-template-columns:76px 1fr 40px 56px} #aiPanel.big .ld i{height:8px} #aiPanel.big .ld small{font-size:11.5px}
   #aiPanel #aiLaps table{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px} #aiPanel #aiLaps th{text-align:left;font-weight:600;opacity:.6;padding:2px 4px}
   #aiPanel #aiLaps td{padding:3px 4px;border-top:1px solid #ffffff14;font-variant-numeric:tabular-nums} #aiPanel #aiLaps tr.cur td{background:#ff5a0026}
@@ -1505,10 +1568,12 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel.big button.ic{font-size:13px;padding:7px 12px}
   #aiPanel.big .aiBody{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,340px) minmax(0,1fr) minmax(330px,410px);gap:14px}
   #aiPanel.big .aiLeft,#aiPanel.big #aiCfg{min-height:0;overflow:auto;margin:0;padding-right:4px}
-  #aiPanel.big #aiCfg>summary{display:none}
+  #aiPanel.big #aiCfg>summary{display:none} #aiPanel.big{scrollbar-gutter:auto}
   #aiPanel.big .aiMid{min-height:0;display:grid;grid-template-rows:minmax(0,1.6fr) minmax(0,1fr);gap:14px}
   #aiPanel.big .aiBox{background:#ffffff09;border:1px solid #ffffff14;border-radius:10px;padding:10px 12px;min-height:0;display:flex;flex-direction:column}
   #aiPanel.big .aiChartBox{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  #aiPanel.big .aiMid.map{grid-template-columns:minmax(0,2fr) minmax(0,1fr)} #aiPanel.big .aiMid.map .aiNetBox{grid-column:1 / span 2}
+  #aiPanel.big .aiMid.map .aiChartBox{grid-column:1;grid-row:2} #aiPanel.big .aiMid.map .aiMapBox.on{display:flex;grid-column:2;grid-row:2}
   #aiPanel.big .aiCv{position:relative;flex:1;min-height:0} #aiPanel.big .aiCv canvas{position:absolute;inset:0;width:100%;height:100%;margin:0}
   #aiPanel.big .aiBigOnly{display:block} #aiPanel.big .h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;font-weight:700;font-size:13px;margin-bottom:6px}
   #aiPanel.big .h2 span{font-weight:400;font-size:12px;opacity:.7} #aiPanel.big .h2 i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
@@ -1551,11 +1616,14 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">AUTOPILOT</div><div cl
     <div class="aiBox aiNetBox"><div class="h2">What it sees → what it does <span><i style="background:#ff8a3d"></i>pushes + (left, gas)</span><span><i style="background:#4aa8ff"></i>pushes − (right, brake)</span><span>thicker: stronger · hover a dot</span></div>
       <div class="aiCv"><canvas id="aiNet" title="Each line: an input's pull on an output right now (its value × its weight). Orange pushes + (steer left, throttle), blue − (steer right, brake); thicker, stronger. Hover a dot for what it is"></canvas></div></div>
     <div class="aiBox aiChartBox"><div class="aiCv"><canvas id="aiChart"></canvas></div><div class="aiCv aiBigOnly"><canvas id="aiChart2"></canvas></div></div>
+    <div class="aiBox aiMapBox"><div class="aiCv"><canvas id="aiMap" title="Drive it: where it accelerates, coasts and brakes around the course, and where it pulls the handbrake (the latest pass at each point). Hover for the values"></canvas></div></div>
   </section>
   <details id="aiCfg"><summary>Inputs, outputs and penalties</summary>
     <div class="card"><div class="h3">Inputs: what it sees</div><div id="aiIns"></div></div>
     <div class="card"><div class="h3">Outputs: what it does</div><div id="aiOuts">${AI_OUTS.map(o => `<div class="orow"><span class="nm">${o.name}</span><span class="bar"><i></i></span><span class="v"></span><span class="hint">${o.about}</span></div>`).join('')}</div>
     <label title="A third output: on above 0 (it starts off, and learns when, if ever)"><input type="checkbox" id="aiHb"> handbrake (a 3rd output)</label>
+    <label class="hbr" title="The handbrake only when the front wheels are really turned (their angle, not the steering output): at least this much of the lock the car has at its speed (less at speed). Asked for otherwise, it is held back (the last exam says how long)"><input type="checkbox" id="aiHbTurn"> ↳ only with the wheels turned, at least <input type="number" id="aiHbLock" min="5" max="100" step="5"> % of the lock</label>
+    <label class="hbr" title="Never the handbrake while the pedal output is braking: with the gas or coasting only"><input type="checkbox" id="aiHbNoBrake"> ↳ never with the brake</label>
     <label title="Unticked: the pedal output is gas or nothing (below 0, off). No brake pedal: it slows by lifting off, or with the handbrake if it has one (a training of its own, starting from this one)"><input type="checkbox" id="aiBrk"> brake (unticked: gas or nothing)</label>
     <label title="The pedal output snapped to what W and S give: full throttle above +⅓, nothing between, full brake below −⅓"><input type="checkbox" id="aiKp"> pedals like the keyboard: full gas, off or full brake</label>
     <label title="The steering output snapped to what A and D give: full left above +⅓, straight between, full right below −⅓"><input type="checkbox" id="aiKs"> steering like the keyboard: full left, straight or full right</label></div>
@@ -1581,6 +1649,7 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">AUTOPILOT</div><div cl
       <label style="justify-content:space-between" title="The grip the pace notes count on braking for a bend, on tarmac (the bots': 0.76 g)">pace notes: braking g <input type="number" id="aiGb" min="0.2" max="2" step="0.02"></label>
       <label style="justify-content:space-between" title="The pace note's speeds (the bots': 0.84 g of cornering grip on tarmac, 0.39 on sand) times this: a grippier car can take the line faster. Bends go with the square root of grip: ×1.15 for 1.1 g">pace note × <input type="number" id="aiPace" min="0.5" max="2" step="0.05"></label></div>
     <div class="card"><div class="h3">Tries, exams and when to stop</div>
+      <label title="The whole car (its middle and half its width) stays within the road's edges (on sand and earth, the gate posts'): an exam that leaves the road ends there (no lap), and in the tries every metre any of the car is off it costs the off-road penalty"><input type="checkbox" id="aiOnRoad"> the car stays on the road (an exam that leaves it is no lap)</label>
       <label title="Tries away from the start line begin at 85% of the pace note's speed there, not from a standstill: more practice at speed"><input type="checkbox" id="aiRoll"> tries start rolling</label>
       <label title="Each generation's exam (the lap that picks the best) is a flying lap: two laps in a row from the start line, the second timed, as Drive it's laps after the first (and a driver's best lap) are: at speed across the line, on the ground the first lap wore, with its knocks. Not one lap from a standstill"><input type="checkbox" id="aiFly"> exams are flying laps</label>
       <label style="justify-content:space-between" title="Flying exams: so many timed laps in a row after the first, the slowest counting (and the knocks of each carried into the next): a network that is quick for a lap and then loses it scores its bad lap">flying laps an exam times <input type="number" id="aiExamLaps" min="1" max="5" step="1"></label>
@@ -1617,6 +1686,9 @@ addEventListener('keydown', e => { if (e.code === 'Escape' && AI.big) { e.stopIm
 addEventListener('resize', () => { if (AI.big) aiShow(); });
 AI.ctlBig = AI.el.querySelector('#aiCtlBig'); AI.ctlBox = AI.el.querySelector('.aiCtlBox');
 // hovering the diagram and the charts: the dot or generation under the pointer
+{ const cv = AI.el.querySelector('#aiMap');
+  cv.addEventListener('mousemove', e => { cv._hx = e.offsetX; cv._hy = e.offsetY; aiMapDraw(); });
+  cv.addEventListener('mouseleave', () => { cv._hx = cv._hy = null; aiMapDraw(); }); }
 for (const id of ['#aiNet', '#aiChart', '#aiChart2']) {
   const cv = AI.el.querySelector(id), chart = id !== '#aiNet';
   cv.addEventListener('mousemove', e => { cv._hx = e.offsetX; cv._hy = e.offsetY; if (chart) aiChartsDraw(); });
@@ -1627,7 +1699,7 @@ function aiBig(on = !AI.big) {
   if (on && !AI.open) aiToggle();
   if (on === !!AI.big) return;
   AI.big = on; AI.el.classList.toggle('big', on);
-  for (const id of ['#aiNet', '#aiChart', '#aiChart2']) { const cv = AI.el.querySelector(id); cv._hx = cv._hy = null; }   // (the pointer was over the other layout)
+  for (const id of ['#aiNet', '#aiChart', '#aiChart2', '#aiMap']) { const cv = AI.el.querySelector(id); cv._hx = cv._hy = null; }   // (the pointer was over the other layout)
   const d = AI.el.querySelector('#aiCfg');
   if (on) { AI.cfgWas = d.open; d.open = true; } else d.open = !!AI.cfgWas;
   const b = AI.el.querySelector('#aiBig'); b.textContent = on ? '⤡ Back to the column' : '⤢'; b.title = on ? 'Back to the column on the left (Esc)' : 'Full screen: the network, the charts and every setting, explained (Esc: back)';
@@ -1656,6 +1728,12 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
   } else if (t.id === 'aiPed3d') {
     AI_CFG.ped3d = t.checked; aiKeepConfig();
     if (!t.checked && aiPed) { aiPed.r.dispose(); aiPed.r.forceContextLoss(); aiPed = null; }   // (its WebGL context let go)
+  } else if (t.id === 'aiOnRoad') {
+    AI_CFG.onRoad = t.checked; aiKeepConfig();
+  } else if (t.id === 'aiHbTurn' || t.id === 'aiHbNoBrake') {
+    AI_CFG[t.id === 'aiHbTurn' ? 'hbTurn' : 'hbNoBrake'] = t.checked; aiKeepConfig(); aiShow();
+  } else if (t.id === 'aiHbLock') {
+    const v = +t.value; if (Number.isFinite(v) && v >= 5 && v <= 100) { AI_CFG.hbLock = Math.round(v) / 100; aiKeepConfig(); }
   } else if (t.id === 'aiRoll') {
     AI_CFG.rolling = t.checked; aiKeepConfig();
   } else if (t.id === 'aiFly') {
@@ -1850,6 +1928,10 @@ function aiShow() {
   { const f = AI.el.querySelector('#aiRivalShare'); if (document.activeElement !== f) f.value = AI_CFG.rivalShare; }
   AI.el.querySelector('#aiRival').value = AI_CFG.rival; AI.el.querySelector('#aiRivalCar').value = AI_CFG.rivalCar;
   AI.el.querySelector('#aiCores').value = AI.el.querySelector('#aiCoresQ').value = Math.min(AI_CFG.cores, aiCoresMax()); AI.el.querySelector('#aiDraw').checked = AI_CFG.draw; AI.el.querySelector('#aiPed3d').checked = AI_CFG.ped3d;
+  AI.el.querySelector('#aiOnRoad').checked = AI_CFG.onRoad;
+  AI.el.querySelector('#aiHbTurn').checked = AI_CFG.hbTurn; AI.el.querySelector('#aiHbNoBrake').checked = AI_CFG.hbNoBrake;
+  for (const id of ['#aiHbTurn', '#aiHbNoBrake', '#aiHbLock']) AI.el.querySelector(id).disabled = !AI.hb;   // (no handbrake output: nothing to rule)
+  { const f = AI.el.querySelector('#aiHbLock'); if (document.activeElement !== f) f.value = Math.round(AI_CFG.hbLock * 100); }
   AI.el.querySelector('#aiRL').checked = AI_CFG.racingLine; AI.el.querySelector('#aiLT').checked = AI_CFG.lookTime; AI.el.querySelector('#aiRoll').checked = AI_CFG.rolling; AI.el.querySelector('#aiFly').checked = AI_CFG.flying;
   for (const [id, k] of [['#aiGc', 'gCorner'], ['#aiGb', 'gBrake'], ['#aiGa', 'gAccel'], ['#aiLW', 'lineW']]) { const f = AI.el.querySelector(id); if (document.activeElement !== f) f.value = AI_CFG[k]; }
   const L = AI.lastExam;
@@ -1860,7 +1942,8 @@ function aiShow() {
     kpi('Generation', AI.gen, AI.training ? (AI.gens ? `training, to ${AI.genEnd}` : 'training') : AI.gen ? 'paused' : 'not trained', `${AI_CFG.pop} tries a generation, then an exam: a lap from the start`)
     + kpi('Best', AI.bestFit < 0 ? '—' : AI.bestLap != null ? sec(AI.bestLap) : `${pct(AI.bestFit)}<span class="u">%</span>`, AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? 'a full lap' : `${Math.round(AI.bestFit)} of ${Math.round(len)} m`, 'The best exam so far: its lap time, or how far round it got')
     + kpi('Last exam', !L ? '—' : L.why === 'lap' && L.lap != null ? sec(L.lap) : `${L.at}<span class="u">m</span>`, AI.bestLap != null && AI.sinceBest ? `${AI.sinceBest} since the best` : L ? (L.why === 'lap' ? 'a lap' : 'stopped there') : '', 'The latest generation\'s exam, and how long since the best got better');
-  AI.el.querySelector('#aiStat').innerHTML = `${AI.training ? `<b>${AI.exam ? `Exam: a ${AI_CFG.flying ? 'flying ' : ''}lap from the start` : AI.par ? `Tries ${AI_POOL.gen ? AI_CFG.pop - AI_POOL.gen.left : 0} of ${AI_CFG.pop}${AI.from != null ? ` from ${Math.round(AI.from)} m` : ''} · ${aiPoolOk() + 1} of ${Math.min(AI_CFG.cores, aiCoresMax())} cores${AI_POOL.exams.size ? ` · ${AI_POOL.exams.size} exam${AI_POOL.exams.size > 1 ? 's' : ''} under way` : ''}${AI_POOL.err ? ` · a core was dropped: ${AI_POOL.err}` : ''}` : `Try ${AI.ci + 1} of ${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}${AI.cands && AI.scen ? ` · rival ${AI_RV_KINDS[AI.scen.kind]}` : ''}`}${AI.examSolo ? ' · the race with the rival' : ''}</b>` : AI.drive ? `<b>${AI.race ? 'Racing' : 'Driving'} its best</b>` : best === 'nothing yet' ? 'Train it: it starts knowing nothing' : AI.big ? `Best: ${AI.bestLap != null ? fmt(AI.bestLap) : best}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; training stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `Best: ${best}`}${L ? `<br><span style="opacity:.75">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.hb ? ` · handbrake ${L.hb} s` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}${aiRaceLine(AI.lastExamRace)}</span>` : ''}`;
+  AI.el.querySelector('#aiStat').innerHTML = `<div class="ln">${AI.training ? `<b>${AI.exam ? `Exam: a ${AI_CFG.flying ? 'flying ' : ''}lap from the start` : AI.par ? `Tries ${AI_POOL.gen ? AI_CFG.pop - AI_POOL.gen.left : 0} of ${AI_CFG.pop}${AI.from != null ? ` from ${Math.round(AI.from)} m` : ''} · ${aiPoolOk() + 1} of ${Math.min(AI_CFG.cores, aiCoresMax())} cores${AI_POOL.exams.size ? ` · ${AI_POOL.exams.size} exam${AI_POOL.exams.size > 1 ? 's' : ''} under way` : ''}${AI_POOL.err ? ` · a core was dropped: ${AI_POOL.err}` : ''}` : `Try ${AI.ci + 1} of ${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}${AI.cands && AI.scen ? ` · rival ${AI_RV_KINDS[AI.scen.kind]}` : ''}`}${AI.examSolo ? ' · the race with the rival' : ''}</b>` : AI.drive ? `<b>${AI.race ? 'Racing' : 'Driving'} its best</b>` : best === 'nothing yet' ? 'Train it: it starts knowing nothing' : AI.big ? `Best: ${AI.bestLap != null ? fmt(AI.bestLap) : best}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; training stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `Best: ${best}`}</div>${L ? `<div class="ln dim">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.hb ? ` · handbrake ${L.hb} s` : ''}${L.hbHeld ? ` · handbrake held back ${L.hbHeld} s` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</div>${AI.lastExamRace ? `<div class="ln dim">${aiRaceLine(AI.lastExamRace).slice(4)}</div>` : ''}` : ''}`;
+  AI.el.querySelectorAll('#aiStat .ln').forEach(n => { n.title = n.textContent; });   // (each a line, cut short: all of it on hover)
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
   AI.el.querySelector('#aiTrain').classList.toggle('on', AI.training);
   AI.el.querySelector('#aiDrive').textContent = AI.drive && !AI.race ? 'Stop driving' : 'Drive it';
@@ -1873,8 +1956,8 @@ function aiShow() {
   AI.el.querySelector('#aiDrive').disabled = AI.bestFit < 0;
   AI.el.querySelector('#aiBack').disabled = !AI.best;
   AI.el.querySelector('#aiSaveF').disabled = AI.el.querySelector('#aiSaveS').disabled = !AI.gen;
-  aiChartsDraw();
-  if (AI.el.querySelector('#aiLapsBox').open) aiLapsShow();
+  aiChartsDraw(); aiMapShow();
+  { const lb = AI.el.querySelector('#aiLapsBox'); lb.style.display = AI.training ? 'none' : ''; if (!AI.training && lb.open) aiLapsShow(); }   // (not while it trains)
 }
 // the charts, over the generations: a line each, the value under the pointer
 const AI_C1 = '#d9621a', AI_C2 = '#3d97ee';                           // (both read on the dark panel, and apart for colour-blind eyes)
@@ -1892,7 +1975,8 @@ function aiPlot(cv, o) {
   const all = o.series.flatMap(s => s.vals).filter(v => v != null && Number.isFinite(v));
   if (!n || !all.length) { g.textAlign = 'center'; g.font = f(400); g.fillStyle = 'rgba(255,255,255,.5)'; g.fillText(o.empty, W / 2, T + ph / 2); return; }
   // the scale: round steps, a little room above and below
-  let lo = Math.min(...all, o.ref ? o.ref.v : Infinity), hi = Math.max(...all, o.ref ? o.ref.v : -Infinity);
+  const refs = [o.ref, ...(o.refs || [])].filter(Boolean);
+  let lo = Math.min(...all, ...refs.map(r => r.v)), hi = Math.max(...all, ...refs.map(r => r.v));
   if (hi - lo < o.minSpan) { const m = (hi + lo) / 2; lo = m - o.minSpan / 2; hi = m + o.minSpan / 2; }
   const raw = (hi - lo) / (big ? 4 : 2), p10 = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(m => m * p10).find(m => m >= raw);
   lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
@@ -1907,9 +1991,10 @@ function aiPlot(cv, o) {
   const gx = [0, n - 1]; if (big && n > 8) gx.splice(1, 0, Math.round((n - 1) / 3), Math.round((n - 1) * 2 / 3));
   [...new Set(gx)].forEach((i, k, a) => { g.textAlign = n === 1 ? 'center' : k === 0 ? 'left' : k === a.length - 1 ? 'right' : 'center'; g.fillText((big && k === 0 ? 'gen. ' : '') + o.xs[i], xs(i), H - Bm + 4); });
   g.textBaseline = 'middle';
-  if (o.ref) {                                                         // the dashed line: a lap, the best
-    g.strokeStyle = 'rgba(255,255,255,.4)'; g.setLineDash([5, 5]); g.beginPath(); g.moveTo(L, y(o.ref.v)); g.lineTo(W - R, y(o.ref.v)); g.stroke(); g.setLineDash([]);
-    g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText(o.ref.label, L + 4, y(o.ref.v) + (y(o.ref.v) - T < fs + 2 ? fs * 0.8 : -fs * 0.8));
+  for (const r of refs) {                                              // the dashed lines: a lap, the best, a driver's best
+    g.strokeStyle = r.col || 'rgba(255,255,255,.4)'; g.lineWidth = r.col ? 1.5 : 1; g.setLineDash([5, 5]); g.beginPath(); g.moveTo(L, y(r.v)); g.lineTo(W - R, y(r.v)); g.stroke(); g.setLineDash([]); g.lineWidth = 1;
+    g.textAlign = r.right ? 'right' : 'left'; g.fillStyle = r.col || 'rgba(255,255,255,.6)';
+    g.fillText(r.label, r.right ? W - R - 4 : L + 4, y(r.v) + (y(r.v) - T < fs + 2 ? fs * 0.8 : -fs * 0.8));
   }
   for (const s of o.series) {
     g.strokeStyle = s.col; g.fillStyle = s.col; g.lineWidth = big ? 2 : 1.5; g.setLineDash(s.dash || []); g.beginPath(); let on = false, py = 0;
@@ -1929,6 +2014,99 @@ function aiPlot(cv, o) {
   const tb = f(600), tn = f(400);
   aiTipBox(g, x, cv._hy ?? T, W, H, [[`Generation ${o.xs[i]}`, tb], ...o.series.map(s => [`${s.name}: ${s.vals[i] == null ? '—' : o.fmt(s.vals[i])}`, tn]), ...(o.more ? [[o.more(i), tn]] : [])].filter(r => r[0]), fs);
 }
+// the best lap a driver has done with this car on this course and ground (a race room's records: the autopilot's laps
+// are never posted there); null outside a room, or none yet
+function aiHumanBest() {
+  const e = MP.on && Array.isArray(MP.carRecs) ? MP.carRecs[0] : null;
+  return e && Number.isFinite(e.time) ? { t: e.time, name: e.name || 'a driver' } : null;
+}
+// ---------- Drive it on the map: the pedals and the handbrake where it used them ----------
+// at each point of the course's line, the latest pass's place, pedals and speed (a decision at a time: ~1 m apart at
+// 200 km/h, as the line's points): AI.map, from Drive it's start until the next
+function aiMapRec() {
+  const Pt = botPath(), i = AI.dst.i, c = AI.dCtl; if (i < 0 || !c) return;
+  let M = AI.map;
+  if (!M || M.Pt !== Pt) M = AI.map = { Pt, n: Pt.n, x: new Float32Array(Pt.n), z: new Float32Array(Pt.n), gas: new Float32Array(Pt.n), brk: new Float32Array(Pt.n),
+    hb: new Uint8Array(Pt.n), kmh: new Float32Array(Pt.n), set: new Uint8Array(Pt.n), cnt: 0 };
+  if (!M.set[i]) { M.set[i] = 1; M.cnt++; }
+  M.x[i] = car.pos.x; M.z[i] = car.pos.z; M.gas[i] = c.throttle; M.brk[i] = c.brake; M.hb[i] = c.handbrake ? 1 : 0; M.kmh[i] = car.vel.length() * 3.6;
+}
+// pedal colours: the panel's (orange: gas, blue: brake, as on the network's lines) from a neutral grey (coasting); 5 steps a side
+const AI_MAP_GREY = [128, 126, 120], AI_MAP_GAS = [217, 98, 26], AI_MAP_BRK = [61, 151, 238];
+const aiMapCol = q => { const t = Math.abs(q) / 5, e = q > 0 ? AI_MAP_GAS : AI_MAP_BRK; return `rgb(${AI_MAP_GREY.map((g, k) => Math.round(g + (e[k] - g) * t)).join(',')})`; };
+const aiMapStep = (gas, brk) => Math.round(clamp(gas - brk, -1, 1) * 5);
+// shown while it drives, and after (until a training or the next drive); in full screen, a column of its own
+function aiMapShow() {
+  const on = !!AI.map?.cnt && !AI.training, box = AI.el.querySelector('.aiMapBox');
+  box.classList.toggle('on', on); AI.el.querySelector('.aiMid').classList.toggle('map', on);
+  if (on) aiMapDraw();
+}
+function aiMapDraw() {
+  const M = AI.map, cv = AI.el.querySelector('#aiMap'); if (!M?.cnt || !AI.open) return;
+  const P = M.Pt.P, n = M.n, big = AI.big, half = aiHalfW();
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;      // the course's extent, and wherever the car went off it
+  for (const q of P) { x0 = Math.min(x0, q.x - half); x1 = Math.max(x1, q.x + half); z0 = Math.min(z0, q.z - half); z1 = Math.max(z1, q.z + half); }
+  for (let i = 0; i < n; i++) if (M.set[i]) { x0 = Math.min(x0, M.x[i] - 2); x1 = Math.max(x1, M.x[i] + 2); z0 = Math.min(z0, M.z[i] - 2); z1 = Math.max(z1, M.z[i] + 2); }
+  const B = { x0, x1, z0, z1 }, ar = clamp((B.x1 - B.x0) / Math.max(B.z1 - B.z0, 1), 0.8, 1.8);
+  if (!big && cv.style.aspectRatio !== String(+ar.toFixed(2))) cv.style.aspectRatio = String(+ar.toFixed(2));
+  else if (big && cv.style.aspectRatio) cv.style.aspectRatio = '';
+  const c = aiCanvas(cv); if (!c) return;
+  const { g, W, H } = c, fs = big ? 12 : 9.5, f = wt => `${wt} ${fs}px system-ui, sans-serif`, T = big ? 26 : 16, pad = big ? 14 : 8;
+  // the title, and under it the legend (in rows, as wide as there is room)
+  g.textBaseline = 'middle'; g.textAlign = 'left'; g.font = f(600); g.fillStyle = 'rgba(255,255,255,.88)';
+  let title = big ? 'Pedals around the course (its latest pass)' : 'pedals around the course';
+  for (const t of big ? ['Pedals around the course', 'Pedals'] : ['pedals']) if (g.measureText(title).width > W) title = t;
+  g.fillText(title, 0, T / 2 - 2);
+  g.font = f(400); let lx = 0, ly = T + fs * 0.4;
+  for (const [t, col] of [['gas', aiMapCol(5)], ['coasting', aiMapCol(0)], ['brake', aiMapCol(-5)], ['handbrake', null]]) {
+    const w = 16 + g.measureText(t).width + 12;
+    if (lx && lx + w > W) { lx = 0; ly += fs * 1.5; }
+    if (col) { g.strokeStyle = col; g.lineWidth = 3; g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx + 11, ly); g.stroke(); }
+    else { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.arc(lx + 5, ly, 3.5, 0, 7); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,.7)'; g.fillText(t, lx + 16, ly); lx += w;
+  }
+  const lh = ly - T + fs * 0.6;
+  // the course, as the HUD's map draws it (world +x to the left, +z up: the chase view's heading +z)
+  const top = T + lh + (big ? 4 : 2), aw = W - 2 * pad, ah = H - top - pad;
+  const s = Math.min(aw / (B.x1 - B.x0), ah / (B.z1 - B.z0)), ox = pad + (aw - (B.x1 - B.x0) * s) / 2, oz = top + (ah - (B.z1 - B.z0) * s) / 2;
+  const X = x => W - (ox + (x - B.x0) * s), Y = z => oz + (B.z1 - z) * s;
+  g.lineJoin = g.lineCap = 'round';
+  g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = Math.max(4, 2 * half * s); g.beginPath();
+  P.forEach((q, i) => i ? g.lineTo(X(q.x), Y(q.z)) : g.moveTo(X(q.x), Y(q.z))); g.closePath(); g.stroke();
+  // the start line
+  { const q = P[AI.s0 ?? 0], hx = q.tz * half, hz = -q.tx * half; g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 2; g.lineCap = 'butt';
+    g.beginPath(); g.moveTo(X(q.x + hx), Y(q.z + hz)); g.lineTo(X(q.x - hx), Y(q.z - hz)); g.stroke(); g.lineCap = 'round'; }
+  // where it drove, a colour a step of the pedals (a run of the same step: one path); points apart by up to 3 m are joined
+  g.lineWidth = big ? 3.5 : 2.5;
+  let run = null, prev = -1;
+  const flush = () => { if (run) { g.strokeStyle = aiMapCol(run.q); g.stroke(); run = null; } };
+  for (let k = 0; k <= n; k++) {
+    const i = k % n; if (!M.set[i]) continue;
+    if (prev >= 0 && (i - prev + n) % n <= 3 && Math.hypot(M.x[i] - M.x[prev], M.z[i] - M.z[prev]) < 8) {
+      const q = aiMapStep(M.gas[prev], M.brk[prev]);
+      if (!run || run.q !== q) { flush(); run = { q }; g.beginPath(); g.moveTo(X(M.x[prev]), Y(M.z[prev])); }
+      g.lineTo(X(M.x[i]), Y(M.z[i]));
+    } else flush();
+    prev = i;
+  }
+  flush();
+  // the handbrake: rings where it pulled it (one every 5 m)
+  g.strokeStyle = '#fff'; g.lineWidth = 1.5;
+  for (let i = 0, lastHb = -9; i < n; i++) if (M.set[i] && M.hb[i] && i - lastHb >= 5) { lastHb = i; g.beginPath(); g.arc(X(M.x[i]), Y(M.z[i]), big ? 4.5 : 3.5, 0, 7); g.stroke(); }
+  // the car, while it drives
+  if (AI.drive) { g.fillStyle = '#fff'; g.strokeStyle = 'rgba(14,11,8,1)'; g.lineWidth = 2; g.beginPath(); g.arc(X(car.pos.x), Y(car.pos.z), big ? 5.5 : 4.5, 0, 7); g.fill(); g.stroke(); }
+  // the point under the pointer: its values
+  if (cv._hx == null) return;
+  const hx = cv._hx, hy = cv._hy;
+  let bi = -1, bd = (big ? 14 : 10) ** 2;
+  for (let i = 0; i < n; i++) if (M.set[i]) { const d = (X(M.x[i]) - hx) ** 2 + (Y(M.z[i]) - hy) ** 2; if (d < bd) { bd = d; bi = i; } }
+  if (bi < 0) return;
+  const px = X(M.x[bi]), py = Y(M.z[bi]), from = ((bi - (AI.s0 ?? 0)) % n + n) % n * M.Pt.ds;
+  g.fillStyle = aiMapCol(aiMapStep(M.gas[bi], M.brk[bi])); g.strokeStyle = 'rgba(14,11,8,1)'; g.lineWidth = 2; g.beginPath(); g.arc(px, py, big ? 5 : 4, 0, 7); g.fill(); g.stroke();
+  const pc = v => Math.round(v * 100) + ' %';
+  aiTipBox(g, px, py, W, H, [[`${Math.round(from)} m from the start line`, f(600)], [`${Math.round(M.kmh[bi])} km/h`, f(400)],
+    [`gas ${pc(M.gas[bi])} · brake ${pc(M.brk[bi])}`, f(400)], [`handbrake ${M.hb[bi] ? 'on' : 'off'}`, f(400)]], fs);
+}
 function aiChartsDraw() {
   if (!AI.open) return;
   const len = botPath().len, Hs = AI.big ? AI.hist : AI.hist.slice(-120), g0 = AI.gen - Hs.length + 1, xs = Hs.map((h, i) => g0 + i);
@@ -1939,7 +2117,9 @@ function aiChartsDraw() {
   let best = Infinity; const bestSo = laps.map(t => t == null ? (best < Infinity ? best : null) : (best = Math.min(best, t)));
   const lapc = { xs, title: AI.big ? 'Exam lap time' : `lap times · best ${fmt(AI.bestLap)}`, series: [{ name: 'exam lap', col: AI_C1, vals: laps, dots: true }, { name: 'best so far', col: AI_C2, vals: bestSo, step: true }],
     invert: true, tick: t => t >= 60 ? fmt(t).slice(0, -2) : t.toFixed(t < 10 ? 2 : 1) + ' s', fmt, minSpan: 2, empty: 'No full lap yet: its lap times show here once it laps',
-    ref: AI.bestLap != null && !AI.big ? { v: AI.bestLap, label: `best ${fmt(AI.bestLap)}` } : null };   // (full screen: the best so far is a line)
+    ref: AI.bestLap != null && !AI.big ? { v: AI.bestLap, label: `best ${fmt(AI.bestLap)}` } : null };
+  const hb = aiHumanBest();
+  if (hb) lapc.refs = [{ v: hb.t, label: `${AI.big ? 'best by a driver: ' : ''}${fmt(hb.t)} ${hb.name.slice(0, 18)}`, col: '#f2c14e', right: true }];   // (gold: the lap to beat)   // (full screen: the best so far is a line)
   if (!AI.big) { const lapping = AI.bestLap != null && laps.some(t => t != null); if (lapping) lapc.series = lapc.series.slice(0, 1); aiPlot(AI.el.querySelector('#aiChart'), lapping ? lapc : score); return; }
   aiPlot(AI.el.querySelector('#aiChart'), score); aiPlot(AI.el.querySelector('#aiChart2'), lapc);
 }
@@ -1991,6 +2171,17 @@ rep("""function simulate(dt) {
   updateBots(dt);""")
 rep("""  syncVisual(); syncBots(); mpFrame(dt);""", """  aiRvSync(); syncVisual(); syncBots(); mpFrame(dt);""")
 # the frame: training instead of the player's driving
+rep("""const dirty = new Set();
+function markDirty(i0, j0, i1, j1) {
+  const a0 = Math.max(0, Math.floor((i0 - 2) / CH)), a1 = Math.min(NCH - 1, Math.floor((i1 + 2) / CH));
+  const b0 = Math.max(0, Math.floor((j0 - 2) / CH)), b1 = Math.min(NCH - 1, Math.floor((j1 + 2) / CH));
+  for (let b = b0; b <= b1; b++) for (let a = a0; a <= a1; a++) dirty.add(b * NCH + a);
+}""", """const dirty = new Set(), aiGT = { all: true, set: new Set(), src: null };   // (aiGT: the chunks driving changed since the autopilot put the ground back)
+function markDirty(i0, j0, i1, j1) {
+  const a0 = Math.max(0, Math.floor((i0 - 2) / CH)), a1 = Math.min(NCH - 1, Math.floor((i1 + 2) / CH));
+  const b0 = Math.max(0, Math.floor((j0 - 2) / CH)), b1 = Math.min(NCH - 1, Math.floor((j1 + 2) / CH));
+  for (let b = b0; b <= b1; b++) for (let a = a0; a <= a1; a++) { dirty.add(b * NCH + a); aiGT.set.add(b * NCH + a); }
+}""")
 rep("""  else if (!window.__sim.paused) simulate(dt);""", """  else if (AI.training) { try { aiTrainFrame(dt); } catch (e) { aiTrainFail(e); } }   // (a failure stops the training, not the sim)
   else if (!window.__sim.paused) { simulate(dt); if (AI.drive) for (let k = 1; k < AI_CFG.speed; k++) simulate(dt); }   // (Drive it at 2x, 4x: more steps a frame)""")
 rep("""  if (e.code === 'KeyY') { rp.on ? stopReplay() : startReplay(); return; }""",
@@ -2033,7 +2224,7 @@ rep("""  updateLapHud(dt);
   if (!AI.training || AI_CFG.draw || AI.watch) renderer.render(scene, camera);   // (training, maybe not drawn: more time for it)
   AI_LOAD.busy += performance.now() - aiF0;""")
 rep("""  if (BOTS.n) setBots(BOTS.n);""", """  Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
-  Object.assign(window.__sim, { aiDemo, aiSaveServer, aiForget, aiPool: AI_POOL });
+  Object.assign(window.__sim, { aiDemo, aiSaveServer, aiForget, aiPool: AI_POOL, aiGT, aiGroundBack });   // (aiGT, aiGroundBack: tests)
   if (AI_WK) Object.assign(self, { __aiwServe: aiWorkerServe, __aiwHash: aiGroundHash });   // (a worker's engine: ready for its jobs)
   if (BOTS.n) setBots(BOTS.n);""")
 open(ep, 'w').write(s)

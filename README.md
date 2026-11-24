@@ -147,6 +147,28 @@ earth keep their ruts instead. The last ~12,000 pieces stay (the oldest go first
 ground changes. In a race the other players' cars leave them too: each car's state carries its four
 wheels' marks (`sk`, 4 bits a wheel), relayed by the server.
 
+## Pause
+
+**P**, or **⏸ Pause** left of Replay (in a room, left of the Autopilot button), stops the physics: the car, the lap's
+clock and the engine's sound stand still while the camera, looking around (Shift/right-drag) and the panels go on;
+**P** or **▶ Resume** drives on (`scripts/patches/pause.py`, `__sim.paused`). Not in a race (the countdown and the race:
+the room's clock doesn't stop; a race starting ends a pause), in the editor or a replay, nor while the autopilot trains
+(Stop is its pause). Tire pressure, P before, is **Shift+P**.
+
+In a room, the timer's best laps with each car and the best laps with ours beside it fold away: click their
+**BEST LAPS** title (kept in this browser, `sandbuggy.foldBest`; the title takes the click, the rest of the panels let
+it through to the drive).
+
+## All-wheel drive's torque split
+
+A car with permanent all-wheel drive shares the engine's drive between its axles as a centre differential
+would (`scripts/patches/cars.py`): each axle gets its share, and the engine turns at the axles' speeds
+weighted by those shares. A car's own split is `split` in its spec (the front's share; 0.5, evenly, when it
+has none): the X7 sends 40/60 to the rear, so it can be pushed into a slide. **4** cycles it through 50/50,
+40/60, 30/70 and 20/80 (the HUD shows it when it isn't even), kept per car in this browser
+(`sandbuggy.split`). The autopilot's workers get the tab's split, and an uneven one is part of its exam
+(`aiExamKind`): a training made at another split is examined again.
+
 ## Grounds
 
 Each ground has its own landscape (`scripts/patches/grounds.py`). **Sand**: the dunes, slip faces and
@@ -164,7 +186,11 @@ off already did.
 or after your finish, not on the grid or in a race: a race starting stops it; while it trains there the others
 see none of it, and its laps are never your best laps); **Train** has a neural network learn to drive a lap of this course with this
 car, in the browser, on the sim's own physics (`scripts/patches/autopilot.py`); **Drive it** hands the car to
-the best one so far (any driving key takes it back). What it learnt is kept per course, car and size in the
+the best one so far (any driving key takes it back). While it drives, **pedals around the course** draws the course
+as the minimap does, with where it went coloured by its pedals (orange gas, grey coasting, blue brake, five steps a
+side) and white rings where it pulled the handbrake: at each metre of the line the latest pass (`aiMapRec`, a
+decision at a time), hover for the speed and pedals there; it stays after the drive, until a training or the next
+drive (in full screen, right of the charts). What it learnt is kept per course, car and size in the
 browser; **Save to file** downloads it (weights, generations, chart, as JSON) and **Load file** brings it back,
 here or in another browser (made with another car or course, it asks first, and its record doesn't count).
 **Save to server** keeps it on the server under a name, and **From server** lists everyone's (this car and
@@ -188,6 +214,12 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
 - **Brake** (ticked by default): unticked, the pedal output is gas or nothing (below 0: off, `AI.nb`), so it slows
   by lifting off or, with the handbrake output, by pulling the handbrake. A training of its own (`+nobrake` in its
   key), started from the one with the brake; saved files and the server keep it (`noBrake`).
+- **The handbrake's rules** (under the handbrake output, `aiHbOk`): **only with the wheels turned** (the front wheels'
+  angle, not the steering output, at least a share of the lock the car has at its speed: 30 % by default) and **never
+  with the brake** (the pedal output braking). Rules, not penalties: the output still asks, `aiAct` lets it through only
+  within them, in every try, exam (on every core) and Drive it, so it learns where the handbrake pays within them; the
+  last exam says how long it was held back. They are part of the exam (`aiExamKind`): a best made without them is
+  examined again. The rival (its own brain) keeps its handbrake free.
 - **A rival** (two networks racing, without colliding): another of the same road car on the course, driven by an
   earlier best of the same network. **A replay** drives its own lap as if alone (a tape recorded before each try,
   `aiRvRecord`) and doesn't react: ours learns to keep off it, follow and pass. **A car** is a second car with physics
@@ -359,7 +391,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Seven of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
@@ -454,6 +486,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `auth.ts` | Auth.js: Google, guest |
 | `public/sim/` | the engine |
 | `scripts/patches/autopilot.py` | the autopilot: a tiny network trained in the browser to drive a lap (I) |
+| `scripts/patches/pause.py` | pausing the drive (P, the Pause button); tire pressure on Shift+P |
 | `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |
 
 ## Not yet

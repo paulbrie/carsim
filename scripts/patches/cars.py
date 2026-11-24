@@ -304,5 +304,52 @@ rep("""  const parts = {}; root.traverse(o => { if (/^(spin|stat)[LR][FB]/.test(
 rep("""      if (!glassy) { m.transparent = false; m.opacity = 1; m.alphaTest = 0; m.depthWrite = true; m.side = THREE.DoubleSide; }""",
     """      if (!glassy) { m.transparent = false; m.opacity = 1; m.alphaTest = /^decal_/.test(n) && m.map ? 0.5 : 0; m.depthWrite = true; m.side = THREE.DoubleSide; }""")
 
+# all-wheel drive's torque split (#311): the front axle's share of the drive, the car's own (`split` in its spec, 0.5 when
+# it has none; the X7's xDrive sends most to the rear) unless this browser chose another for that car (4 cycles it on a
+# car with permanent all-wheel drive). As a centre differential's: each axle its share, the engine turning at the axles'
+# speeds weighted by their shares. An even split is computed as before (the same numbers, bit for bit).
+rep("""    name: 'BMW X7 M60i', short: 'X7', blurb: '4.4 twin-turbo V8 · 390 kW · 750 Nm · AWD · 2,600 kg',
+""", """    name: 'BMW X7 M60i', short: 'X7', blurb: '4.4 twin-turbo V8 · 390 kW · 750 Nm · AWD · 2,600 kg',
+    split: 0.4,                                                         // the front's share of the drive (40/60)
+""")
+rep("""awd: S.awd, awdFixed: S.awdFixed,""", """awd: S.awd, awdFixed: S.awdFixed, split: S.split ?? 0.5,""")
+rep("""  steer: 0, throttle: 0, awd: false, pIdx: 1, aids: true,""", """  steer: 0, throttle: 0, awd: false, pIdx: 1, aids: true, split: 0.5,""")
+rep("""function switchVehicle(key) {""", """// all-wheel drive's split (the front's share) for a vehicle: this browser's choice for it (4), else its own
+const SPLITS = [0.5, 0.4, 0.3, 0.2];
+function carSplit(V) {
+  try { const v = JSON.parse(localStorage.getItem('sandbuggy.split') || '{}')[V.key]; if (SPLITS.includes(v)) return v; } catch (e) { }
+  return V.split ?? 0.5;
+}
+function switchVehicle(key) {""")
+rep("""ENG = V.eng; PRESSURES = V.pressures; car.pIdx = V.pIdx; car.awd = V.awd;""", """ENG = V.eng; PRESSURES = V.pressures; car.pIdx = V.pIdx; car.awd = V.awd; car.split = carSplit(V);""")
+rep("""  const driven = car.wheels.filter(w => car.awd || !w.front);
+  const wAvg = driven.reduce((s, w) => s + w.omega, 0) / driven.length;""",
+"""  const driven = car.wheels.filter(w => car.awd || !w.front);
+  // all-wheel drive split other than evenly (car.split: the front's share), as a centre differential's
+  const nF = driven.filter(w => w.front).length, nR = driven.length - nF, fs = car.awd && car.split !== 0.5 && nF && nR ? car.split : null;
+  const wAvg = fs == null ? driven.reduce((s, w) => s + w.omega, 0) / driven.length
+    : fs * driven.reduce((s, w) => s + (w.front ? w.omega : 0), 0) / nF + (1 - fs) * driven.reduce((s, w) => s + (w.front ? 0 : w.omega), 0) / nR;""")
+rep("""    let Td = (car.awd || !W.front) ? driveT / driven.length : 0;""",
+    """    let Td = (car.awd || !W.front) ? (fs == null ? driveT / driven.length : driveT * (W.front ? fs / nF : (1 - fs) / nR)) : 0;""")
+rep("""  if (e.code === 'Digit4') { if (VEH.awdFixed) flash(car.awd ? 'Permanent all-wheel drive' : 'Rear-wheel drive only', '#fff', 1.5); else car.awd = !car.awd; }""",
+"""  if (e.code === 'Digit4') {
+    if (VEH.awdFixed && car.awd) {                                      // permanent all-wheel drive: the next split
+      car.split = SPLITS[(SPLITS.indexOf(car.split) + 1) % SPLITS.length];
+      try { const m = JSON.parse(localStorage.getItem('sandbuggy.split') || '{}'); if (car.split === (VEH.split ?? 0.5)) delete m[VEH.key]; else m[VEH.key] = car.split; localStorage.setItem('sandbuggy.split', JSON.stringify(m)); } catch (err) { }
+      flash(`All-wheel drive: ${Math.round(car.split * 100)}/${Math.round((1 - car.split) * 100)} front/rear${car.split === (VEH.split ?? 0.5) ? ' (its own)' : ''} · 4 changes it`, '#fff', 1.8);
+    } else if (VEH.awdFixed) flash('Rear-wheel drive only', '#fff', 1.5); else car.awd = !car.awd;
+  }""")
+rep("""${car.awd ? (VEH === BUGGY ? '4WD' : 'AWD') : (VEH === BUGGY ? '2WD rear' : 'RWD')}""",
+    """${car.awd ? (VEH === BUGGY ? '4WD' : 'AWD' + (car.split !== 0.5 ? ` ${Math.round(car.split * 100)}/${Math.round((1 - car.split) * 100)}` : '')) : (VEH === BUGGY ? '2WD rear' : 'RWD')}""")
+rep("""<b>4</b> 2WD/4WD""", """<b>4</b> 2WD/4WD (AWD cars: front/rear split)""")
+
 open(ep, 'w').write(s)
+
+# the single player's help line (index.html): 4 and the split
+hp = os.path.join(sys.argv[1], 'index.html')
+if os.path.exists(hp):
+    h = open(hp).read()
+    a = '<b>4</b> 2WD/4WD &nbsp; '
+    assert h.count(a) == 1
+    open(hp, 'w').write(h.replace(a, '<b>4</b> 2WD/4WD (AWD cars: front/rear split) &nbsp; '))
 print('cars patched')

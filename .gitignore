@@ -14,7 +14,7 @@ public/sim/vendor/
 .prod.log
 # Google OAuth client files downloaded from the Cloud console (their keys go in .env.local)
 client_secret_*.json
-# maps saved by the super admin (lib/maps/store.mjs), DATA_DIR
+# the files of before the database (maps, best laps, autopilots; read in once, lib/db/import-files.mjs), DATA_DIR
 /data/
 
 # downloaded car models (scripts/models/cars.mjs builds public/sim/models from them) and what it unpacks

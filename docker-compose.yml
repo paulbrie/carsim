@@ -1,0 +1,40 @@
+# Postgres for development: the maps, the best laps and their ghosts, the saved autopilots (lib/db).
+# The host port is 5554, clear of the other projects' databases on this box.
+#   docker compose up -d                      Postgres only
+#   docker compose --profile tools up -d      + pgAdmin (http://localhost:5555)
+# .env.local: DATABASE_URL=postgres://carsim:carsim@127.0.0.1:5554/carsim
+# The name is fixed so the same database answers from any checkout of the repo.
+name: carsim
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: carsim
+      POSTGRES_PASSWORD: carsim            # local only: the port is bound to 127.0.0.1
+      POSTGRES_DB: carsim
+    ports:
+      - "127.0.0.1:5554:5432"
+    volumes:
+      - carsim-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carsim -d carsim"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    profiles: ["tools"]
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "127.0.0.1:5555:80"
+    depends_on:
+      - postgres
+
+volumes:
+  carsim-pg:

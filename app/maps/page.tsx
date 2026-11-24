@@ -11,5 +11,5 @@ export default async function MapsPage() {
   const session = await auth();
   if (!session?.user) redirect(`/?next=${encodeURIComponent('/maps')}`);
   if (!session.user.admin) redirect('/lobby');
-  return <MapsAdmin initial={mapStore().list()} user={{ name: session.user.name ?? 'Driver', image: session.user.image ?? null, admin: true }} />;
+  return <MapsAdmin initial={await mapStore().list()} user={{ name: session.user.name ?? 'Driver', image: session.user.image ?? null, admin: true }} />;
 }

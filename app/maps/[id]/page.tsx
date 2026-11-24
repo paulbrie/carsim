@@ -12,7 +12,7 @@ export default async function MapEditorPage({ params }: { params: Promise<{ id: 
   const session = await auth();
   if (!session?.user) redirect(`/?next=${encodeURIComponent(`/maps/${id}`)}`);
   if (!session.user.admin) redirect('/lobby');
-  const map = mapStore().get(id);
+  const map = await mapStore().get(id);
   if (!map) notFound();
   // the course (up to a few MB) is fetched by the page, not sent along with it
   return <MapEditor id={map.id} name={map.name} builtin={map.builtin} />;

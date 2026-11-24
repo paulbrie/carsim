@@ -14,9 +14,10 @@ map the super admin made.
 
 ```bash
 npm install                  # also copies three.js into public/sim/vendor (postinstall)
-cp .env.example .env.local   # set AUTH_SECRET (openssl rand -base64 32), and Google if you have it
-npm run dev                  # http://localhost:7001
-npm test                     # race server and ticket tests (node:test)
+docker compose up -d         # Postgres 17 on 127.0.0.1:5554 (the maps, the best laps, the saved autopilots)
+cp .env.example .env.local   # set AUTH_SECRET (openssl rand -base64 32), DATABASE_URL, and Google if you have it
+npm run dev                  # http://localhost:7001 (brings the database up to migrations/ first)
+npm test                     # race server, stores and ticket tests (node:test; the stores' need the Postgres above)
 npm run typecheck
 ```
 
@@ -214,8 +215,8 @@ drive (in full screen, right of the charts). What it learnt is kept per course, 
 browser; **Save to file** downloads it (weights, generations, chart, as JSON) and **Load file** brings it back,
 here or in another browser (made with another car or course, it asks first, and its record doesn't count).
 **Save to server** keeps it on the server under a name, and **From server** lists everyone's (this car and
-course's first): load any, delete yours. `/api/autopilots` (signed in; `lib/autopilots/store.mjs`, one JSON file
-each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it, or the super admin, deletes it).
+course's first): load any, delete yours. `/api/autopilots` (signed in; `lib/autopilots/store.mjs`, one row each in
+the database's `autopilots`, at most 50 a driver; only the one who saved it, or the super admin, deletes it).
 
 - **The network:** 7 inputs straight to 2 outputs (steering, and a pedal: + throttle, − brake), each the tanh
   of a weighted sum: 16 weights. **hidden** (in Training) puts a hidden layer of tanh units between: 2 to 64 of
@@ -331,7 +332,7 @@ each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it,
   can take more), **pace note ×**, **follow a racing line** (the smoothest path within the road, **room either
   side** set, instead of the centre), **look ahead by time** (0.3 / 0.7 / 1.4 s instead of 6 / 15 / 30 m: one
   steering for every speed), **tries start rolling** (at 85 % of the notes' speed, not from a standstill), and a
-  **recorded lap to follow** (`__sim.aiDemo(trace)`, a ghost's trace, e.g. your best lap's from `data/ghosts`): its
+  **recorded lap to follow** (`__sim.aiDemo(trace)`, a ghost's trace, e.g. your best lap's: the `trace` of its row in the database's `records`): its
   line and speeds take the place of the racing line and the notes. **Exams are flying laps** (two laps in a row from the
   start line, the second timed, as Drive it's laps after the first and a driver's best are: at speed over the line, on
   the ground the first lap wore, with its knocks; from a standstill a lap is ~1.5 s slower, and one lap alone hides a
@@ -385,7 +386,7 @@ guests never are). Only the super admin can create, edit and delete maps; anyone
   driving) tries it on each ground a race can be on, a banked course rebuilt for that ground's
   cornering speed. The ground isn't something to save: in a race the host picks it (the map keeps
   the last one tried, for the editor to open on).
-- **Saved** as `<DATA_DIR>/maps/<id>.json` (`lib/maps/store.mjs`, default `./data`, not in git), through
+- **Saved** in the database (table `maps`, `lib/maps/store.mjs`), through
   `/api/maps` (GET for anyone signed in; POST, PUT, DELETE for the super admin, 403 for others).
 - **Maps in git**: `scripts/maps/*.json`, courses as the editor's *Export course* writes them, added to
   a server's maps with `node scripts/maps/add.mjs scripts/maps/<map>.json` (named after the file, or
@@ -445,8 +446,8 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   grid, held) → racing → results → back to the grid. Late joiners watch and race the next one; a
   dropped connection keeps its seat for 20 s; a second tab takes over the seat.
 - **Best laps:** every valid lap (all gates, in order), raced or driven around the room, goes to the
-  server, which keeps each driver's fastest per map, ground and car in `<DATA_DIR>/records.json`
-  (`lib/race/records.mjs`; a lap can't be longer than the server's clock says since the last one).
+  server, which keeps each driver's fastest per map, ground and car in the database (table `records`,
+  `lib/race/records.mjs`; a lap can't be longer than the server's clock says since the last one).
   The room hears its map and ground's (`records`): the panel lists them (your car / all cars), and
   the sim's timer shows your BEST with that car, the checkpoint deltas against it and, all the
   time, the best lap with each car and its driver. Right of the timer, BEST LAPS lists every driver's best
@@ -456,7 +457,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
 - **Ghost car** (the room panel's Ghost car: Off / Track record / Car record / My best, kept in the
   browser, `lib/client/ghost.ts`): a lap better than the driver's best brings its path (`trace`: 10
   samples a second of position, orientation and steering, from the replay tape), kept in
-  `<DATA_DIR>/ghosts/`. `SimFrame` asks for the chosen record's (`ghost`) and hands it to the sim,
+  its record's row (`trace`). `SimFrame` asks for the chosen record's (`ghost`) and hands it to the sim,
   which drives a see-through copy of that car along it, on the start line until our lap starts and
   then in step with it. Only laps on the map as it is now have one.
 - **Damage:** the sim posts `hit {h}` / `repair`; `server.mjs` relays them (`lib/race/hub.mjs`,
@@ -464,6 +465,31 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   log for a sim that loads later, and `SimFrame` hands it over.
 - **Sign-in to socket:** `/api/ws-ticket` (behind Auth.js) signs a one-minute ticket with
   `AUTH_SECRET`; `server.mjs` checks it, and the page's origin, on the upgrade.
+
+## The database
+
+Everything the server keeps is in **Postgres** (ticket #318): the maps (`maps`), the best laps with their ghost paths
+(`records`) and the saved autopilots (`autopilots`). `DATABASE_URL` says where; the server won't start without it.
+Rooms and races, and the Claude bridge's pairings, are live state in the process's memory; what the sim keeps for
+itself (single-player best laps, your own circuits, paint, weather…) stays in the browser.
+
+- **Development:** `docker compose up -d` starts Postgres 17 on `127.0.0.1:5554` (`--profile tools` adds pgAdmin on
+  5555); `.env.local` has `DATABASE_URL=postgres://carsim:carsim@127.0.0.1:5554/carsim`.
+- **Tables and migrations:** the tables are `lib/db/schema.mjs` (Drizzle). After changing it, `npm run db:generate`
+  writes the next numbered SQL file in `migrations/` (commit it; never edit `migrations/meta` by hand). The server
+  applies what is pending when it starts, under an advisory lock (`lib/db/migrate.mjs`); `npm run db:migrate` does
+  it by hand.
+- **Who reads what:** Next's routes and pages ask the database each time (`lib/maps/store.mjs`,
+  `lib/autopilots/store.mjs`). The race server answers its rooms from memory: it reads the best laps once at start
+  and writes each new best through at once (a write only ever replaces a slower time), and it keeps a list of the
+  maps that the database itself keeps current (the store's `NOTIFY` on every save, `lib/maps/live.mjs`). So a best
+  lap changed by hand in the database shows after a restart; a map changed by hand, within a minute.
+- **The files of before:** until #318 these were files under `DATA_DIR` (default `./data`). The first start with a
+  database reads them in once and notes it (`app_meta`: `files_imported`); nothing already in the database is
+  overwritten, and the files are left alone (keep them as a backup, or delete them). `npm run db:import` does it by
+  hand (`-- --force` to read them again).
+- **Tests:** the stores' tests run against that Postgres, each file in a schema of its own (`test_…`), dropped at
+  the end (`test/db.mjs`; `TEST_DATABASE_URL` to point them elsewhere).
 
 ## On the Genie box
 
@@ -481,8 +507,11 @@ a domain's root (Railway). Google's redirect URI there:
    process's memory, so more replicas would split them.
 2. Variables: `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (and `AUTH_GUEST=1` only if
    guests should be allowed). `PORT` is Railway's. Node 24 (`engines`).
-   The maps, the best laps and the saved autopilots are files: add a **volume** (e.g. mounted at `/data`) and
-   set `DATA_DIR=/data`, or every deploy starts again from the figure-8 alone, with no times.
+   The maps, the best laps and the saved autopilots are in Postgres: add a **Postgres** service to the project and
+   set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on the app (the private one: no TLS needed). The server applies
+   the migrations when it starts and won't start without the database. Coming from a deploy that kept them as
+   files on a volume: leave the volume and `DATA_DIR` for the first start with the database, which reads the
+   files in once (see The database, below); then both can go.
 3. Generate a domain, then in Google Cloud → APIs & Services → Credentials → the OAuth client
    (Web application): authorised redirect URI `https://<domain>/api/auth/callback/google`.
 
@@ -497,9 +526,11 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `lib/race/hub.mjs` | rooms and races (transport-free, tested in `test/hub.test.mjs`) |
 | `lib/race/shared.mjs` | cars, paints, grounds, limits shared by server, UI and sim |
 | `lib/race/ticket.mjs` | WebSocket tickets (HMAC) |
-| `lib/race/records.mjs` | the best laps on disk (tested in `test/hub.test.mjs`) |
+| `lib/race/records.mjs` | the best laps and their ghosts, in the database and in the race server's memory (tested in `test/records.test.mjs`, `test/hub.test.mjs`) |
+| `lib/db/`, `migrations/`, `drizzle.config.mjs`, `docker-compose.yml` | the database: the pool, the tables (`schema.mjs`), the migrations and their runner, the one-time import of the old files |
+| `lib/maps/live.mjs` | the race server's list of the maps, kept current by the database's NOTIFY |
 | `lib/admin.ts` | the super admin (`SUPER_ADMIN_EMAIL`) |
-| `lib/maps/store.mjs` | the maps on disk, course checks (tested in `test/maps.test.mjs`) |
+| `lib/maps/store.mjs` | the maps in the database, course checks (tested in `test/maps.test.mjs`) |
 | `lib/autopilots/store.mjs`, `app/api/autopilots/` | the trained autopilots saved on the server (tested in `test/autopilots.test.mjs`) |
 | `app/api/maps/` | the maps API |
 | `app/maps/`, `components/maps-admin.tsx`, `components/map-editor.tsx` | the admin's map list and editor |

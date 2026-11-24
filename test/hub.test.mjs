@@ -259,22 +259,19 @@ test('best laps: valid ones, per map, ground, car and driver, checked against th
   assert.equal(b.last('records').list.length, 3);
 });
 
-test('best laps: kept in a file, read back, an earlier layout\'s without splits', async () => {
-  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+test('best laps: an earlier layout\'s time shows without its splits', async () => {
+  // (the records in memory here; kept in the database: test/records.test.mjs)
   const { RecordStore } = await import('../lib/race/records.mjs');
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'records-')), 'records.json');
-  const s1 = new RecordStore(file, { now: () => 5 });
+  const s = new RecordStore(null, { now: () => 5 });
   const lap = { map: 'm', mv: 2, ground: 'sand', vehicle: 'x7', user: { id: 'u', name: 'U' }, time: 40.1234, splits: [null, 20] };
-  assert.equal(s1.submit({ ...lap, time: 3 }), null);                    // too short to be a lap
-  assert.equal(s1.submit(lap).time, 40.123);
-  assert.equal(s1.submit({ ...lap, time: 41 }), null);
-  s1.flush();
-  const s2 = new RecordStore(file);
-  assert.deepEqual(s2.list('m', 'sand').map(r => [r.id, r.vehicle, r.time, r.mv]), [['u', 'x7', 40.123, 2]]);
-  assert.deepEqual(s2.list('m', 'road'), []);
+  assert.equal(s.submit({ ...lap, time: 3 }), null);                     // too short to be a lap
+  assert.equal(s.submit(lap).time, 40.123);
+  assert.equal(s.submit({ ...lap, time: 41 }), null);
+  assert.deepEqual(s.list('m', 'sand').map(r => [r.id, r.vehicle, r.time, r.mv]), [['u', 'x7', 40.123, 2]]);
+  assert.deepEqual(s.list('m', 'road'), []);
   // in a room on version 3 of the map: the time, not its splits
   const { RaceHub } = await import('../lib/race/hub.mjs');
-  const hub = new RaceHub({ records: s2, maps: { info: id => id === 'm' || id === 'figure-8' ? { id, name: id, v: id === 'm' ? 3 : 0 } : null } });
+  const hub = new RaceHub({ records: s, maps: { info: id => id === 'm' || id === 'figure-8' ? { id, name: id, v: id === 'm' ? 3 : 0 } : null } });
   const inbox = []; const c = hub.connect({ id: 'u', name: 'U' }, m => inbox.push(m));
   c.message({ t: 'create', map: 'm' });
   const r = inbox.filter(m => m.t === 'records').at(-1);
@@ -282,38 +279,38 @@ test('best laps: kept in a file, read back, an earlier layout\'s without splits'
 });
 
 test('ghosts: a best lap\'s path kept with it, checked, given to who asks, only on the map as it is now', async () => {
-  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
   const { RecordStore, GHOST } = await import('../lib/race/records.mjs');
   const { RaceHub } = await import('../lib/race/hub.mjs');
   const trace = time => Buffer.alloc((Math.floor(time / GHOST.dt + 1e-6) + 1) * GHOST.fields * 2, 7).toString('base64');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghosts-')), file = path.join(dir, 'records.json');
   let t = 1_000_000, v = 1;
   const maps = { info: id => id === 'figure-8' ? { id, name: 'Figure-8', v } : null };
-  const hub = new RaceHub({ now: () => t, records: new RecordStore(file, { now: () => t }), maps });
+  const hub = new RaceHub({ now: () => t, records: new RecordStore(null, { now: () => t }), maps });
   const inbox = []; const c = hub.connect({ id: 'a', name: 'Ann' }, m => inbox.push(m));
   const last = type => inbox.filter(m => m.t === type).at(-1);
+  // the path comes from the records' store: the answer follows the question
+  const ghost = async vehicle => { const n = inbox.length; c.message({ t: 'ghost', id: 'a', vehicle }); await new Promise(r => setImmediate(r)); assert.equal(inbox.length, n + 1); return last('ghost'); };
   c.message({ t: 'create' });
   t += 31_000; c.message({ t: 'lap', lap: 1, time: 30, valid: true, trace: trace(30) });
   assert.equal(last('records').list[0].ghost, true);
-  c.message({ t: 'ghost', id: 'a', vehicle: last('records').list[0].vehicle });
-  assert.equal(last('ghost').trace, trace(30)); assert.equal(last('ghost').name, 'Ann'); assert.equal(last('ghost').time, 30);
-  assert.equal(fs.readdirSync(path.join(dir, 'ghosts')).length, 1);
-  // read back by another store (a restarted server)
   const vehicle = last('records').list[0].vehicle;
-  assert.equal(new RecordStore(file, { now: () => t }).ghost('figure-8', 'sand', vehicle, 'a'), null);   // records.json not written yet (debounced)
-  hub.records.flush();
-  assert.equal(new RecordStore(file).ghost('figure-8', 'sand', vehicle, 'a'), trace(30));
+  let g = await ghost(vehicle);
+  assert.equal(g.trace, trace(30)); assert.equal(g.name, 'Ann'); assert.equal(g.time, 30);
   // a path that doesn't cover the lap: the record, no ghost (and the old one goes)
   t += 30_000; c.message({ t: 'lap', lap: 2, time: 29, valid: true, trace: trace(20) });
   assert.deepEqual([last('records').list[0].time, last('records').list[0].ghost], [29, false]);
-  assert.equal(fs.readdirSync(path.join(dir, 'ghosts')).length, 0);
-  c.message({ t: 'ghost', id: 'a', vehicle }); assert.equal(last('ghost').trace, null);
+  assert.equal((await ghost(vehicle)).trace, null);
   t += 30_000; c.message({ t: 'lap', lap: 3, time: 28, valid: true, trace: 'not base64!' });
   assert.equal(last('records').list[0].ghost, false);
   t += 30_000; c.message({ t: 'lap', lap: 4, time: 27.5, valid: true, trace: trace(27.5) });
   assert.equal(last('records').list[0].ghost, true);
+  assert.equal((await ghost('no-such-car')).trace, null);
   // the map edited: its old path doesn't fit any more
   v = 2; c.message({ t: 'start' }); t += LIMITS.countdownMs + 1000; hub.tick();
   assert.equal(last('records').v, 2); assert.equal(last('records').list[0].ghost, false);
-  c.message({ t: 'ghost', id: 'a', vehicle }); assert.equal(last('ghost').trace, null);
+  assert.equal((await ghost(vehicle)).trace, null);
+  // a store that fails: no path, the room goes on
+  hub.records.ghost = async () => { throw new Error('down'); };
+  v = 1; c.message({ t: 'again' }); c.message({ t: 'start' });
+  const warn = console.warn; console.warn = () => { };
+  try { assert.equal((await ghost(vehicle)).trace, null); } finally { console.warn = warn; }
 });

@@ -11,7 +11,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const session = await auth();
   if (!session?.user) return notSignedIn();
   const { id } = await params;
-  const map = mapStore().get(id);
+  const map = await mapStore().get(id);
   if (!map) return json({ error: 'No such map.' }, 404);
   const v = new URL(req.url).searchParams.get('v');
   const cache: Record<string, string> = v != null && v === String(map.updatedAt) ? { 'cache-control': 'private, max-age=31536000, immutable' } : {};
@@ -26,7 +26,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   const { id } = await params;
   try {
     const b = await readBody(req);
-    const map = mapStore().update(id, { name: b.name, course: b.course, by: session.user.email ?? session.user.id });
+    const map = await mapStore().update(id, { name: b.name, course: b.course, by: session.user.email ?? session.user.id });
     return json({ map: { id: map.id, name: map.name, updatedAt: map.updatedAt } });
   } catch (e) { return errorResponse(e); }
 }
@@ -37,6 +37,6 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (!session?.user) return notSignedIn();
   if (!session.user.admin) return notAdmin();
   const { id } = await params;
-  try { mapStore().delete(id); return json({ ok: true }); }
+  try { await mapStore().delete(id); return json({ ok: true }); }
   catch (e) { return errorResponse(e); }
 }

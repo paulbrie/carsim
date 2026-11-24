@@ -7,10 +7,10 @@ export interface AutopilotSummary {
 }
 export function cleanTraining(t: unknown): Record<string, unknown>;
 export class AutopilotStore {
-  constructor(dir: string, opts?: { now?: () => number });
-  get(id: unknown): (AutopilotSummary & Record<string, unknown>) | null;
-  list(): AutopilotSummary[];
-  create(o: { name: unknown; training: unknown; owner: string; ownerName?: string | null }): AutopilotSummary;
-  delete(id: string, o: { owner: string; admin?: boolean }): void;
+  constructor(db: unknown, opts?: { now?: () => number });
+  get(id: unknown): Promise<(AutopilotSummary & Record<string, unknown>) | null>;
+  list(): Promise<AutopilotSummary[]>;
+  create(o: { name: unknown; training: unknown; owner: string; ownerName?: string | null }): Promise<AutopilotSummary>;
+  delete(id: string, o: { owner: string; admin?: boolean }): Promise<void>;
 }
 export function autopilotStore(): AutopilotStore;

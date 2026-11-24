@@ -13,13 +13,14 @@ export function cleanName(name: unknown): string;
 export function cleanCourse(c: unknown): Course;
 
 export class MapStore {
-  constructor(dir: string, opts?: { now?: () => number });
-  dir: string;
-  get(id: string): RaceMap | null;
-  info(id: unknown): MapInfo | null;
-  list(): MapSummary[];
-  create(o: { name: unknown; from?: string | null; course?: unknown; by?: string | null }): RaceMap;
-  update(id: string, o: { name?: unknown; course?: unknown; by?: string | null }): RaceMap;
-  delete(id: string): void;
+  constructor(db: unknown, opts?: { now?: () => number });
+  get(id: string): Promise<RaceMap | null>;
+  info(id: unknown): Promise<MapInfo | null>;
+  infos(): Promise<MapInfo[]>;
+  list(): Promise<MapSummary[]>;
+  create(o: { name: unknown; from?: string | null; course?: unknown; by?: string | null }): Promise<RaceMap>;
+  update(id: string, o: { name?: unknown; course?: unknown; by?: string | null }): Promise<RaceMap>;
+  delete(id: string): Promise<void>;
 }
+export const MAPS_CHANNEL: string;
 export function mapStore(): MapStore;

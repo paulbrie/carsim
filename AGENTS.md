@@ -104,6 +104,13 @@ See README.md for the layout. Notes:
 - shadcn components import `cn` from `@/lib/utils` (the CLI wrote `from "cn"`, an unrelated npm
   package: rewrite it if you add components).
 - Dev server: `npm run dev` on port 7001 (3000 is the admin).
+- The database (#318, README: The database): Postgres, `DATABASE_URL` in `.env.local`, the container from
+  `docker compose up -d` (port 5554). Tables in `lib/db/schema.mjs`: change it, then `npm run db:generate` and commit
+  the new file in `migrations/` (the server applies it at its next start). The stores are async (`await
+  mapStore().get(id)`); the hub is not: it reads maps from `lib/maps/live.mjs` (kept current by the store's NOTIFY:
+  any other way of writing a map must announce it too, `MAPS_CHANNEL`) and best laps from memory (`RecordStore`:
+  `load()` at start, each new best written through). New server-side data goes in a table, not in a file. Tests
+  that need it take a schema of their own from `test/db.mjs` (never the app's tables).
 - Maps: only the super admin (`lib/admin.ts`) may write them; every write path (`app/api/maps`) checks
   `session.user.admin` on the server. To test as the admin locally, sign a session cookie with
   `AUTH_SECRET` (`@auth/core/jwt` `encode`, salt `authjs.session-token`, claims `provider: 'google'`,

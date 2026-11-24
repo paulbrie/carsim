@@ -10,7 +10,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const session = await auth();
   if (!session?.user) return notSignedIn();
   const { id } = await params;
-  const a = autopilotStore().get(id);
+  const a = await autopilotStore().get(id);
   if (!a) return json({ error: 'No such autopilot.' }, 404);
   return json({ autopilot: { ...a, mine: a.owner === session.user.id, owner: undefined } });
 }
@@ -20,6 +20,6 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const session = await auth();
   if (!session?.user) return notSignedIn();
   const { id } = await params;
-  try { autopilotStore().delete(id, { owner: session.user.id, admin: !!session.user.admin }); return json({ ok: true }); }
+  try { await autopilotStore().delete(id, { owner: session.user.id, admin: !!session.user.admin }); return json({ ok: true }); }
   catch (e) { return errorResponse(e); }
 }

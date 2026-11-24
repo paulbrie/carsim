@@ -10,7 +10,7 @@ export async function GET() {
   const session = await auth();
   if (!session?.user) return notSignedIn();
   const me = session.user.id;
-  return json({ autopilots: autopilotStore().list().map(a => ({ ...a, mine: a.owner === me, owner: undefined })) });
+  return json({ autopilots: (await autopilotStore().list()).map(a => ({ ...a, mine: a.owner === me, owner: undefined })) });
 }
 
 // POST { name, training }: save one (training: what the sim's Save to file writes).
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   if (!session?.user) return notSignedIn();
   try {
     const b = await readBody(req);
-    const a = autopilotStore().create({ name: b.name, training: b.training, owner: session.user.id, ownerName: session.user.name ?? null });
+    const a = await autopilotStore().create({ name: b.name, training: b.training, owner: session.user.id, ownerName: session.user.name ?? null });
     return json({ autopilot: { ...a, mine: true, owner: undefined } }, 201);
   } catch (e) { return errorResponse(e); }
 }

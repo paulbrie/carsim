@@ -81,6 +81,7 @@ body.ui-rail #pauseBtn, body.ui-rail #aiBtn, body.ui-rail #brBtn { position: fix
 #uiRail button .v { font: 500 11.5px/1 var(--ui-mono); color: var(--ui-mut); }
 #uiRail button kbd { font: 500 10.5px/1 var(--ui-mono); color: var(--ui-mut); border: 1px solid var(--ui-line); border-radius: 5px; padding: 3px 5px; min-width: 9px; text-align: center; }
 #uiRail button.on { background: rgba(255, 122, 51, .18); color: #ffd9c4; }
+#uiRail button.off .v { color: var(--ui-warn); }
 #uiRail button.tnn { background: rgba(88, 214, 230, .14); color: var(--ui-tnn); font-weight: 600; }
 #uiRail button.tnn:hover, #uiRail button.tnn.on { background: rgba(88, 214, 230, .26); color: #c8f6fc; }
 #uiRail hr { border: 0; height: 1px; margin: 4px 6px; background: var(--ui-line); }

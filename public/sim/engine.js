@@ -1505,9 +1505,20 @@ function emitFromWheels(dt) {
    ===================================================================== */
 const keys = {};
 let camMode = 0, audio = null, muted = false;
+try { muted = localStorage.getItem('carsim.muted') === '1'; } catch (e) { }
+// the sound on or off (M, the rail's Sound; #343): the synth told at once (a training's silence is its own: no audio
+// then), said on screen, kept in this browser
+function setMuted(on = !muted) {
+  muted = !!on;
+  try { if (muted) localStorage.setItem('carsim.muted', '1'); else localStorage.removeItem('carsim.muted'); } catch (e) { }
+  audio?.node.port.postMessage({ on: muted || window.__sim?.paused ? 0 : 1 });
+  flash(muted ? 'Sound off · M turns it on' : 'Sound on', '#fff', 1.4);
+  return muted;
+}
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.repeat) return;
+  if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey) { setMuted(); startAudio(); return; }   // (everywhere: the editor and a replay too)
   if (e.code === 'KeyP' && e.shiftKey) { setPressure((car.pIdx + 1) % PRESSURES.length); flash(`Tires: ${PRESSURES[car.pIdx].psi} psi${car.pIdx === VEH.pIdx ? ' (its own)' : ''} · Shift+P changes it`, '#fff', 1.8); }
   else if (e.code === 'KeyP') { simPause(); return; }
   if (e.code === 'Digit4') {
@@ -1521,7 +1532,7 @@ addEventListener('keydown', e => {
   if (ed.on) { if ((e.code === 'Delete' || e.code === 'Backspace') && ed.tool === 'wp' && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) { e.preventDefault(); deleteWaypoint(ed.sel); } return; }
   if (e.code === 'KeyI') { aiToggle(); return; }
   if (e.code === 'KeyY') { rp.on ? stopReplay() : startReplay(); return; }
-  if (rp.on) { replayKey(e); if (e.code === 'KeyC') nextCam(); if (e.code === 'KeyH') document.getElementById('help').style.display = document.getElementById('help').style.display === 'none' ? '' : 'none'; if (e.code === 'KeyM') muted = !muted; return; }
+  if (rp.on) { replayKey(e); if (e.code === 'KeyC') nextCam(); if (e.code === 'KeyH') document.getElementById('help').style.display = document.getElementById('help').style.display === 'none' ? '' : 'none'; return; }
   if (e.code === 'KeyK') { togglePaintPanel(); return; }
   if (e.code === 'KeyB') { resetBest(); return; }
   if (e.code === 'KeyN') { document.getElementById('botBtn').click(); return; }
@@ -1533,7 +1544,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyG') { setSurface(ROAD ? 'sand' : SURF === SURFACES.sand ? 'earth' : 'road'); flash(`Ground: ${groundName()}`, '#fff', 1.5); }
   if (e.code === 'KeyC') nextCam();
   if (e.code === 'KeyH') document.getElementById('help').style.display = document.getElementById('help').style.display === 'none' ? '' : 'none';
-  if (e.code === 'KeyM') muted = !muted;
   startAudio();
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -8835,6 +8845,7 @@ setTimeout(() => {
   // for tests and the console: step the physics without drawing (headless browsers draw at a frame a second)
   Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
+  Object.assign(window.__sim, { sound: { muted: () => muted, set: setMuted } });   // (the rail's Sound, the room's page; #343)
   Object.assign(window.__sim, { aiFollow, aiFollowing, aiMyLap, aiKeepLap, aiLapClean, aiLapProfile, aiMapCmp });   // (a lap to follow, #340)
   Object.assign(window.__sim, { setup: SETUP });                                  // (the Car setup drawer, ui.js)
   Object.assign(window.__sim, { renderer });                                      // for the Claude bridge's screenshots (bridge.js)

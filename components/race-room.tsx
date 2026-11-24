@@ -63,6 +63,19 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
     if (phase === 'lobby') setPanel(true);
   }, [phase]);
 
+  // M is the sim's sound on or off. With the keyboard in this page (its panel, the chat's button) the key doesn't
+  // reach the sim's frame, where the engine idles on: pass it on (#343)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyM' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      sim.current?.mute();
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
+
   // the sim's drawers (the car's setup, the lab) run down the left side, where this panel is: it steps aside for them
   // and comes back after them; opened over one, it closes it (#332)
   const panelNow = useRef(panel); panelNow.current = panel;

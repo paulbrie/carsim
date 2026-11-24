@@ -23,9 +23,10 @@ See README.md for the layout. Notes:
   index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, the car's setup (the drive, the split,
   the tires' pressure, kept per car: `SETUP`, #332) `setup.py`, a network's laps as best laps, marked with its name and maker (#333) `net-laps.py`, a saved network's preview (the networks page's Watch it drive, `?net=<id>`, #336) `preview.py`, a training kept whole in the browser (the chart, the last exam, the rivals; storage full: the chart shortened, then a warning, #341) `keep.py`,
   a lap to follow (the driver's best lap kept, the lab's choice, the review against it, #340) `follow.py`,
+  the sound's switch (M, the rail's Sound, #343) `sound.py`,
   last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -170,6 +171,9 @@ See README.md for the layout. Notes:
   would go to every worker): kept in `finishLap` by `aiKeepLap`, only laps `aiLapClean` passes; anything else that ends
   a lap for the driver must call it too, and anything that moves the car within a lap must stay visible to it on the
   replay's tape (a jump, a stop). The review (`aiMapCmp`) reads `AI.map` and the lap's profile at the same line points.
+- The sound (#343): mute through `setMuted(on)` (`sound.py`), not by writing `muted`; M is handled first in the sim's key
+  handler, before the editor's and the replay's returns: a key that must work everywhere goes there. Keys pressed in a
+  page around the sim (the race room's panel) don't reach its frame: pass on the ones that matter (`SimHandle.mute`).
 - Dev server: `npm run dev` on port 7001 (3000 is the admin). `next.config.ts` is read at start: a change to it
   (the `/drive` and `/lab` redirects) needs a restart.
 - The database (#318, README: The database): Postgres, `DATABASE_URL` in `.env.local`, the container from

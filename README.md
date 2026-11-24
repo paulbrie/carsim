@@ -242,6 +242,15 @@ In a room, the timer's best laps with each car and the best laps with ours besid
 it through to the drive). The timer's checkpoint times of the last laps fold the same way, in the single-player sim
 too: click **LAP DETAILS** (#317).
 
+## The sound on or off (M) (#343)
+
+**M**, or **Sound** in the rail (it reads On or Off), turns the sim's sound off and on: everywhere in the sim (the
+course editor and a replay too: the editor's key handler used to return before M, while the engine idled on), with a
+short "Sound off" / "Sound on" on screen, and kept in this browser (`carsim.muted`). One switch, `setMuted`
+(`scripts/patches/sound.py`; `__sim.sound`: `muted()`, `set(on)`). In a race room, M pressed while the keyboard is in
+the room's own panel is passed on to the sim (`{ t: 'mute' }`, `components/race-room.tsx`): the sim's frame doesn't
+get the page's keys. A training's silence is its own (the tries make no sound unless watched).
+
 ## All-wheel drive's torque split
 
 A car with permanent all-wheel drive shares the engine's drive between its axles as a centre differential
@@ -552,7 +561,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x && python3 scripts/patches/setup.py /tmp/x && python3 scripts/patches/net-laps.py /tmp/x && python3 scripts/patches/preview.py /tmp/x && python3 scripts/patches/keep.py /tmp/x && python3 scripts/patches/follow.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x && python3 scripts/patches/setup.py /tmp/x && python3 scripts/patches/net-laps.py /tmp/x && python3 scripts/patches/preview.py /tmp/x && python3 scripts/patches/keep.py /tmp/x && python3 scripts/patches/follow.py /tmp/x && python3 scripts/patches/sound.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Eight of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
@@ -716,6 +725,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `scripts/patches/live.py` | the course editor builds every change while it is open; faster earthworks and distance to the course |
 | `scripts/patches/tracks.py`, `app/api/tracks` | driving a map alone: the start menu's tracks |
 | `scripts/patches/follow.py` | a lap to follow: the driver's best lap kept, the lab's choice of the lap the network takes as its example, the review map against it |
+| `scripts/patches/sound.py` | the sound on or off (M, the rail's Sound): one switch, everywhere, remembered |
 | `scripts/patches/setup.py` | the car's setup: the drive, the split and the tires' pressure, kept per car; the figures for the Car setup drawer (U, `ui.js`) |
 | `public/sim/circuit-gen.js`, `scripts/patches/circuits.py`, `scripts/maps/generate.mjs` | the circuit generator (the editor's GENERATE A CIRCUIT, MY CIRCUITS; course files from node; tested in `test/circuit-gen.test.mjs`) |
 | `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |

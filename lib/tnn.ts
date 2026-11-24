@@ -1,14 +1,14 @@
 // A tiny neural network as the sim's autopilot keeps it (scripts/patches/autopilot.py: AI_INPUTS, aiNet), for the
 // pages that draw one. An input set is a list of ids; some ids are several inputs.
 export const INPUT_NAMES: Record<string, string[]> = {
-  speed: ['speed'], line6: ['line 6 m'], line15: ['line 15 m'], line30: ['line 30 m'], offset: ['offset'], yaw: ['yaw rate'],
+  speed: ['speed'], line6: ['line 6 m'], line15: ['line 15 m'], line30: ['line 30 m'], line50: ['line 50 m'], line100: ['line 100 m'], offset: ['offset'], yaw: ['yaw rate'],
   pace: ['pace note'], ahead: ['pace ahead'], edges: ['left edge', 'right edge'],
   rays: ['ray 60° L', 'ray 30° L', 'ray ahead', 'ray 30° R', 'ray 60° R'], slide: ['sideways'], wslip: ['front slip', 'rear slip'],
   sink: ['sinkage'], g: ['g forward', 'g sideways'], rival: ['rival ahead', 'rival behind', 'rival side', 'rival closing'], tilt: ['roll', 'pitch'],
 };
 /** What each input tells the network, in a few words. */
 export const INPUT_HINTS: Record<string, string> = {
-  speed: 'how fast it is going', 'line 6 m': 'where the racing line is 6 m ahead', 'line 15 m': 'the bend it is turning into', 'line 30 m': 'the next bend, early',
+  speed: 'how fast it is going', 'line 6 m': 'where the racing line is 6 m ahead', 'line 15 m': 'the bend it is turning into', 'line 30 m': 'the next bend, early', 'line 50 m': 'a bend a few seconds off', 'line 100 m': 'the shape of what is coming',
   offset: 'how far it is off the line', 'yaw rate': 'how fast it is turning', 'pace note': 'the speed this bit can take, less its own', 'pace ahead': 'the same, a moment ahead: time to brake',
   'left edge': 'room to the left', 'right edge': 'room to the right', sideways: 'how fast it slides sideways', 'front slip': 'front wheels spinning or locking', 'rear slip': 'rear wheels spinning or locking',
   sinkage: 'how deep the wheels sink', 'g forward': 'accelerating or braking, in g', 'g sideways': 'cornering, in g', roll: 'leaning to the side', pitch: 'nose up or down',

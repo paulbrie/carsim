@@ -6468,10 +6468,10 @@ const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_BUDGET_BLIND = 15, AI_LAP_B
 const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '', cores: 1, draw: true, ped3d: true, speed: 1, onRoad: false, hbTurn: false, hbNoBrake: false, hbLock: 0.3 };
 // the rival (#311): another of this car on the course, near enough to matter within AI_RV_NEAR m along the line
 const AI_RV_NEAR = 30, AI_RV_MODES = ['off', 'replay', 'car'];
-const AI_LOOK_T = [0.3, 0.7, 1.4];                                     // the look-ahead in seconds, if by time (at least AI_LOOK_MIN m)
-const AI_LOOK_MIN = [3, 6, 12];
+const AI_LOOK_T = [0.3, 0.7, 1.4, 2.4, 4.8];                           // the look-ahead in seconds, if by time (at least AI_LOOK_MIN m)
+const AI_LOOK_MIN = [3, 6, 12, 20, 40];
 const AI_AHEAD_T = 0.5, AI_AHEAD_MIN = 5;                                // the pace note ahead: so far ahead
-const AI_LOOK = [6, 15, 30], AI_RAYS = [60, 30, 0, -30, -60], AI_RAY_MAX = 40;
+const AI_LOOK = [6, 15, 30, 50, 100], AI_LOOK_IDS = ['line6', 'line15', 'line30', 'line50', 'line100'], AI_RAYS = [60, 30, 0, -30, -60], AI_RAY_MAX = 40;
 const aiDeg = v => Math.round(Math.asin(clamp(v / AI_CFG.bearing, -1, 1)) * 180 / Math.PI) + '°';
 // the inputs to choose from (Inputs & outputs, in the panel): each gives one number or a few, roughly -1..1, shown in real units
 const AI_INPUTS = [
@@ -6479,6 +6479,8 @@ const AI_INPUTS = [
   { id: 'line6', names: ['line 6 m'], tip: 'where the racing line is 6 m ahead (the sine of its bearing, + to the left)', show: aiDeg },
   { id: 'line15', names: ['line 15 m'], tip: 'where the racing line is 15 m ahead', show: aiDeg },
   { id: 'line30', names: ['line 30 m'], tip: 'where the racing line is 30 m ahead', show: aiDeg },
+  { id: 'line50', names: ['line 50 m'], tip: 'where the racing line is 50 m ahead: a bend still a few seconds off', show: aiDeg },
+  { id: 'line100', names: ['line 100 m'], tip: 'where the racing line is 100 m ahead: the shape of what is coming, from far off', show: aiDeg },
   { id: 'offset', names: ['offset'], tip: 'how far it is to the side of the racing line (+ left)', show: v => (v * 5).toFixed(1) + ' m' },
   { id: 'yaw', names: ['yaw rate'], tip: 'how fast it is turning', show: v => Math.round(v * 115) + '°/s' },
   { id: 'pace', names: ['pace note'], tip: "the speed the line can be taken at here (from its bends and the ground's grip) less its own", show: v => (v > 0 ? '+' : '') + Math.round(v * 36) + ' km/h' },
@@ -6757,6 +6759,8 @@ function aiObserve(st, dt = AI_DT) {
     case 'line6': aiX[j++] = brg[0]; break;
     case 'line15': aiX[j++] = brg[1]; break;
     case 'line30': aiX[j++] = brg[2]; break;
+    case 'line50': aiX[j++] = brg[3]; break;
+    case 'line100': aiX[j++] = brg[4]; break;
     case 'offset': aiX[j++] = off / 5; break;
     case 'yaw': aiX[j++] = car.w.y / 2; break;
     case 'pace': aiX[j++] = (aiPace()[bi] * AI_CFG.pace - v) / 10; break;   // (the notes for the grip set: aiPace)                    // the course's pace note: how much faster it could go here
@@ -7415,8 +7419,8 @@ function aiRaceStart() {
 }
 // ---------- watching it think: the network, live, and on the track the points it looks at ----------
 const aiCol = (v, a = 1) => v >= 0 ? `rgba(255,138,61,${a})` : `rgba(74,168,255,${a})`;
-const aiMarks = [0, 1, 2].map(k => {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.45 - k * 0.08, 14, 10), new THREE.MeshBasicMaterial({ color: 0x5fe0ff, transparent: true, opacity: 0.85, depthTest: false }));
+const aiMarks = AI_LOOK.map((_, k) => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(k < 3 ? 0.45 - k * 0.08 : 0.45, 14, 10), new THREE.MeshBasicMaterial({ color: 0x5fe0ff, transparent: true, opacity: 0.85, depthTest: false }));
   m.renderOrder = 20; m.visible = false; scene.add(m); return m;
 });
 // the feelers (edge rays), when it has them: a line from the car to where each leaves the course
@@ -7577,9 +7581,9 @@ function aiViz(dt) {
     aiLoadTick();
     if (AI.open) AI.el.querySelector('#aiRate').textContent = AI.rate;
   }
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < aiMarks.length; k++) {
     const m = aiMarks[k], q = AI.look[k];
-    m.visible = live && AI.open && !!q && !rp.on;
+    m.visible = live && AI.open && !!q && !rp.on && (k < 3 || AI.inputs.includes(AI_LOOK_IDS[k]));   // (the far ones, #342: when it looks there)
     if (m.visible) m.position.set(q.x, surfaceAt(q.x, q.z, car.pos.y + 5) + 0.6, q.z);
   }
   aiRayLines.visible = live && AI.open && !rp.on && AI.rayEnds.length > 0;
@@ -7599,6 +7603,8 @@ const AI_ABOUT = {
   line6: 'Which way the racing line goes 6 m ahead: the near cue for the steering.',
   line15: 'The line 15 m ahead: the bend it is turning into.',
   line30: 'The line 30 m ahead: the next bend, early enough to set up for it.',
+  line50: 'The line 50 m ahead: a bend still a few seconds off, at speed.',
+  line100: 'The line 100 m ahead: the shape of the track coming, from far off (a fast car needs to know sooner).',
   offset: 'How far it is to the side of the racing line: steer back to it.',
   yaw: 'How fast the car is turning: steadies the steering, so it doesn’t weave.',
   pace: 'The speed this bit of line can be taken at, less its own: below 0, too fast here.',
@@ -8145,7 +8151,7 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div clas
       <label title="Added for each metre gained on the rival over a try or the race (lost: taken off). 0: it races only the clock">+ a metre gained on it <input type="number" id="aiPen_gain" min="0" max="10" step="0.1"></label></div>
     <div class="card"><div class="h3">Racing line and pace notes</div>
       <label title="Steer by, and take the pace notes from, the smoothest line within the road (out, clip the inside, out again) instead of the course's centre"><input type="checkbox" id="aiRL"> follow a racing line, not the centre</label>
-      <label title="Where the line is looked at: 6, 15 and 30 m ahead, or 0.3, 0.7 and 1.4 s ahead at its speed (at least 3, 6, 12 m): one steering for every speed"><input type="checkbox" id="aiLT"> look ahead by time, not metres</label>
+      <label title="Where the line is looked at: 6, 15, 30, 50 and 100 m ahead, or 0.3, 0.7, 1.4, 2.4 and 4.8 s ahead at its speed (at least 3, 6, 12, 20, 40 m): one steering for every speed"><input type="checkbox" id="aiLT"> look ahead by time, not metres</label>
       <label style="justify-content:space-between" title="How far either side of the centre the racing line may go (0: the road's edge less 1.6 m, so the car stays on it; more: onto the verge, as drivers do)">racing line: room either side, m <input type="number" id="aiLW" min="0" max="15" step="0.5"></label>
       <label style="justify-content:space-between" title="How hard the car can speed up, for the pace notes (0: as fast as the bends allow at once)">pace notes: acceleration g <input type="number" id="aiGa" min="0" max="2" step="0.05"></label>
       <label style="justify-content:space-between" title="The grip the pace notes count on in bends, on tarmac (the bots': 0.84 g; sand and earth in proportion). Bends go with its square root">pace notes: cornering g <input type="number" id="aiGc" min="0.2" max="2" step="0.02"></label>
@@ -8166,7 +8172,7 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div clas
     <small>Each set of inputs and outputs is a network, and a training, of its own (the others are kept). Penalties apply from the next try.</small>
   </details>
   <small class="aiHelp">Watch runs the training at real speed, or 2× or 4× (speed), with sound, to follow each try; Drive it and Race it go at that speed too. The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on
-  an output, orange + (left, throttle), blue − (right, brake), thicker stronger; hover a dot for what it is. On the track, the 3 points it looks at.
+  an output, orange + (left, throttle), blue − (right, brake), thicker stronger; hover a dot for what it is. On the track, the points of the line it looks at.
   Learns on this course with this car, ${AI_CFG.pop} tries a generation, and remembers it in this browser. Charts: each generation's exam score
   (orange) and its tries' average (blue), dashed a lap; once it laps, its lap times (faster higher), dashed the best. Hover them for the values.
   ⤢ shows it all on the whole screen, with every setting explained. <b>I</b> hides this.</small>

@@ -322,7 +322,8 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
 - **What it sees:** by default its speed; where the racing line is 6, 15 and 30 m ahead (the sine of the
   bearing); how far it is to the side of the line; its yaw rate; and a pace note: the speed the line can be taken
   at there (from its bends and the ground's grip, the same profile the bots use) less its own. **Inputs, outputs
-  and penalties** (in the panel) picks others too: the distances to the course's left and right edges (the
+  and penalties** (in the panel) picks others too: the racing line further ahead, 50 and 100 m (#342: the bends
+  a fast car must set up for early; on the track, a marker for each when it has them), the distances to the course's left and right edges (the
   tarmac's on road, the gate posts' off it), 5 edge rays (feelers at ±60°, ±30° and ahead: how far until they
   leave the course, up to 40 m, drawn on the track), its sideways speed, its wheels' slip (the front pair's and the rear
   pair's slip ratio: + spinning, − locking), its wheels' sinkage (the deepest:
@@ -428,12 +429,12 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   their values live.
 - **Watching it think:** the panel draws the network live while it trains or drives: each input with its value
   (km/h, degrees, metres), each output (steer left/right, gas/brake %), and a line from each input to each output
-  coloured and thickened by its pull right now (value × weight; orange +, blue −). On the track, three markers show
-  the points on the racing line it looks at (6, 15 and 30 m ahead).
+  coloured and thickened by its pull right now (value × weight; orange +, blue −). On the track, markers show
+  the points on the racing line it looks at (6, 15 and 30 m ahead, and 50 and 100 m when those are inputs).
 - **Driving faster** (settings there, all optional; ticket #311's RS 6 work): **pace notes: cornering g / braking g /
   acceleration g** (the bots' notes count on 0.84 g and 0.76 g on tarmac and no limit speeding up; a grippier car
   can take more), **pace note ×**, **follow a racing line** (the smoothest path within the road, **room either
-  side** set, instead of the centre), **look ahead by time** (0.3 / 0.7 / 1.4 s instead of 6 / 15 / 30 m: one
+  side** set, instead of the centre), **look ahead by time** (0.3 / 0.7 / 1.4 / 2.4 / 4.8 s instead of 6 / 15 / 30 / 50 / 100 m: one
   steering for every speed), **tries start rolling** (at 85 % of the notes' speed, not from a standstill), and a
   **recorded lap to follow** (`__sim.aiDemo(trace)`, a ghost's trace, e.g. your best lap's: the `trace` of its row in the database's `records`): its
   line and speeds take the place of the racing line and the notes. **Exams are flying laps** (two laps in a row from the

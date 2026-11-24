@@ -26,6 +26,14 @@ car by car and track by track, is the leaderboard.
   laid out now (`courseKey` there is the sim's, and `test/showcase.test.mjs` runs the sim's own against it). A lap on
   an earlier layout, or a network trained on a course that is no map's (the solo sim's own figure-8, a circuit of
   one's own), is on no board; the network still shows in `/networks`.
+- **Watch it drive** (#336, `/networks`, signed in or not): each network's card opens the sim at
+  `/sim/index.html?net=<id>` (`scripts/patches/preview.py`). It fetches the network from `/api/networks/<id>` (public:
+  what it takes to drive, its best weights, and its maker's name as the page shows it), takes its ground, car and
+  track (the map its course is; the figure-8 when it learnt a course of its maker's own) and drives it, a bar at the
+  bottom saying whose it is (✕ ends it). Nothing of it is kept: the visitor's own lab training and settings in that
+  browser stay as they were (`aiSave` does nothing while `AI.preview`; Train goes back to their own). Still for 4 s
+  (against a post, off the road), it starts again from the grid. It drives with the visitor's lab settings (racing
+  line, pace), which a saved network doesn't carry: one trained with others may drive a little differently.
 - **Names on public pages**: a visitor who is not signed in sees "Paul B." (`publicName`, `lib/format.ts`); signed in,
   the full name.
 - **The look**: one dark theme, tokens in `app/globals.css` (`--human` orange, also the primary; `--tnn` cyan; classes

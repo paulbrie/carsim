@@ -49,10 +49,22 @@ test('bridge: codes expire, bad commands are refused, idle pairings end', async 
   assert.throws(() => b.status(agentToken), e => e.status === 401);
 });
 
-test('bridge: off in production unless CLAUDE_BRIDGE=on (#338)', () => {
+test('bridge: on everywhere (the super admin only) unless CLAUDE_BRIDGE=off (#338, #346)', () => {
   assert.equal(bridgeOn({ NODE_ENV: 'development' }), true);
   assert.equal(bridgeOn({}), true);
-  assert.equal(bridgeOn({ NODE_ENV: 'production' }), false);
-  assert.equal(bridgeOn({ NODE_ENV: 'production', CLAUDE_BRIDGE: 'on' }), true);
-  assert.equal(bridgeOn({ NODE_ENV: 'production', CLAUDE_BRIDGE: '1' }), false);
+  assert.equal(bridgeOn({ NODE_ENV: 'production' }), true);             // #346: the super admin has it on the deployed site
+  assert.equal(bridgeOn({ NODE_ENV: 'production', CLAUDE_BRIDGE: 'off' }), false);
+  assert.equal(bridgeOn({ NODE_ENV: 'development', CLAUDE_BRIDGE: 'off' }), false);
+});
+
+test('bridge: wrong codes are limited, so a code can\'t be guessed', () => {
+  let t = 1000;
+  const b = new Bridge({ now: () => t });
+  const { code } = b.pair('google:admin');
+  const wrong = String((Number(code) + 1) % 1e6).padStart(6, '0');
+  for (let i = 0; i < BRIDGE_LIMITS.misses; i++) assert.throws(() => b.claim(wrong, 'x'), e => e.status === 404);
+  assert.throws(() => b.claim(code, 'x'), e => e.status === 429);      // even the right one, while they last
+  t += BRIDGE_LIMITS.codeMs + 1;
+  const again = b.pair('google:admin');
+  assert.ok(b.claim(again.code, 'Claude').agentToken);
 });

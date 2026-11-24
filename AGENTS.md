@@ -119,7 +119,7 @@ See README.md for the layout. Notes:
   reason to `aiHalt(drive, why)`, not a bare `aiTrain(false)` (that is for the user's own Pause). A flash alone isn't
   enough: the full-screen lab covers the sim. The training is driven by animation frames, and by `aiBgKick`'s message loop
   while the tab is hidden: a new per-frame step of the training goes in `aiTrainFrame`, which both call.
-- Claude bridge (README; development only, #338: off in production unless `CLAUDE_BRIDGE=on`, `bridgeOn`): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and
+- Claude bridge (README; the super admin only, in production too (#346; `CLAUDE_BRIDGE=off` turns it off, `bridgeOn`; there `CARSIM_URL` is the site's)): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and
   `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
   (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.
   Or the MCP tools (`.mcp.json` → `scripts/bridge-mcp.mjs`): `sim_pair { code }`, `sim_state`, `sim_screenshot`, `sim_command`.

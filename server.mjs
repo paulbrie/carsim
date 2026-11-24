@@ -26,6 +26,12 @@ const port = Number(process.env.PORT) || 7001;
 const hostname = process.env.HOST || '0.0.0.0';
 const base = (process.env.BASE_PATH || '').replace(/\/+$/, '');   // e.g. /projects/carsim, see next.config.ts
 const secret = process.env.AUTH_SECRET;
+// Without it every page that asks who is signed in fails (Auth.js "MissingSecret", a 500) and the race server refuses
+// everyone: in production, don't start (on Railway the failed health check keeps the deploy before running, #319).
+if (!secret && !dev) {
+  console.error('[carsim] AUTH_SECRET is not set: add it to the service\'s variables (openssl rand -base64 32; README: Deploy on Railway)');
+  process.exit(1);
+}
 if (!secret) console.warn('[carsim] AUTH_SECRET is not set: sign-in and the race server will refuse everyone');
 
 // The database first (ticket #318): the maps, the best laps and the saved autopilots live in Postgres. Bring it up to
@@ -44,6 +50,12 @@ try {
   console.error(`[carsim] the database is not ready: ${e?.message ?? e}`);
   process.exit(1);
 }
+
+// Next fetches pages of its own from this process (the page a server action redirects to, e.g. sign-out's "/"). `next start`
+// tells it where (__NEXT_PRIVATE_ORIGIN); a custom server must, or Next takes the request's x-forwarded-proto, and behind
+// Railway's TLS proxy speaks https to this plain-http port: "failed to get redirect response ... wrong version number" (#319).
+const self = hostname === '0.0.0.0' || hostname === '::' ? '127.0.0.1' : hostname.includes(':') ? `[${hostname}]` : hostname;
+process.env.__NEXT_PRIVATE_ORIGIN ??= `http://${self}:${port}`;
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();

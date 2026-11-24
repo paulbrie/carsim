@@ -505,7 +505,8 @@ a domain's root (Railway). Google's redirect URI there:
 1. New project → deploy from this repo. `railway.json` sets the build (`npm run build`), the start
    (`npm start`), the health check (`/api/health`) and **one replica**: rooms live in the
    process's memory, so more replicas would split them.
-2. Variables: `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (and `AUTH_GUEST=1` only if
+2. Variables: `AUTH_SECRET` (`openssl rand -base64 32`; the server won't start without it in production: every
+   page would fail with Auth.js's `MissingSecret`), `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (and `AUTH_GUEST=1` only if
    guests should be allowed). `PORT` is Railway's. Node 24 (`engines`).
    The maps, the best laps and the saved autopilots are in Postgres: add a **Postgres** service to the project and
    set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on the app (the private one: no TLS needed). The server applies

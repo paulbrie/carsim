@@ -101,6 +101,7 @@ for (const it of ITEMS) {
   if (!it) { rail.append(document.createElement('hr')); continue; }
   const b = it.el = document.createElement('button'); b.type = 'button';
   b.innerHTML = `${svg(it.icon)}<span class="l">${it.label || ''}</span>${it.value ? '<span class="v"></span>' : ''}${it.key ? `<kbd>${it.key}</kbd>` : ''}`;
+  if (it.id) b.dataset.for = it.id;                                     // the button it stands in for (bridge.js places its panel by it)
   if (it.cls) b.classList.add(it.cls);
   if (it.title) b.title = it.title;
   b.addEventListener('click', () => {

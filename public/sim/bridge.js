@@ -231,8 +231,13 @@ function ui() {
   const place = () => {
     const a = document.getElementById('aiBtn')?.getBoundingClientRect(), mp = document.body.classList.contains('mp');
     if (a?.width) { b.style.top = (mp ? a.top : a.bottom + 8) + 'px'; b.style.right = (mp ? innerWidth - a.left + 8 : 12) + 'px'; }
-    const r = b.getBoundingClientRect();                                  // the panel: left of the buttons, within the window
-    p.style.right = (innerWidth - r.left + 8) + 'px'; p.style.top = Math.max(12, Math.min(r.top, innerHeight - p.offsetHeight - 12)) + 'px';
+    // the panel: left of the Claude button on the screen, within the window. With the rail (ui.js) that is the rail's
+    // entry: this button is parked off the screen (ui.css), and a panel beside it opened out of sight (#347)
+    const seen = el => { const r = el?.getBoundingClientRect(); return r && r.width && r.right > 0 && r.left < innerWidth ? r : null; };
+    const r = seen(document.querySelector('#uiRail [data-for="brBtn"]')) || seen(b);
+    const right = r ? innerWidth - r.left + 8 : 12, top = r ? r.top : 12;
+    p.style.right = Math.min(right, Math.max(12, innerWidth - p.offsetWidth - 12)) + 'px';
+    p.style.top = Math.max(12, Math.min(top, innerHeight - p.offsetHeight - 12)) + 'px';
   };
   setInterval(() => { place(); if (st.pageId && !st.agent) show(); }, 1000);
   place();

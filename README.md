@@ -13,6 +13,7 @@ car by car and track by track, is the leaderboard.
 | `/` | the home page, public: the closest duel on the board, the three ways in, the scoreboard, how a network drives and learns, the simulator, the findings (`app/page.tsx`) |
 | `/drive`, `/lab` | the sim alone (`/sim/index.html`), and the same with the TNN lab opening once a car and ground are picked (`?lab=1`); redirects in `next.config.ts`; no account needed. Its start menu picks the track first: the race rooms' maps or the course of one's own (below) |
 | `/leaderboard`, `/networks` | public: humans vs networks on every track; every saved network drawn from its weights |
+| `/tnn` | public: what a tiny neural network is, for teenagers: a neuron to play with (`components/tnn-explainer.tsx`), the networks, evolution on a map of two weights, sizes, measured speed (`PERF` in the page: change it when re-measured), a saved network's weights |
 | `/tech` | public: what the physics takes into account, with its constants, and every car's figures (torque and power curves, gearing, top speed, suspension, tires), read from `public/sim/engine.js` itself (`lib/tech/specs.mjs`) |
 | `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
@@ -612,6 +613,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | | |
 |---|---|
 | `app/page.tsx`, `app/leaderboard/`, `app/networks/`, `app/signin/`, `components/showcase.tsx` | the public pages |
+| `app/tnn/`, `components/tnn-explainer.tsx` | the explainer page: what a tiny neural network is and how ours learn; its evolution demo is the training's own step (ranks, ± pairs) in two weights |
 | `app/tech/`, `components/tech-cars.tsx`, `lib/tech/` | the tech specs page: the physics explained, the cars' table and cards; the sim's figures read out of engine.js |
 | `lib/showcase/store.mjs`, `lib/tnn.ts`, `lib/format.ts` | the scoreboard from the database; a network's shape and links for drawing; lap times and names |
 | `components/site-nav.tsx`, `components/site-footer.tsx`, `components/brand.tsx`, `components/track-outline.tsx`, `components/net-diagram.tsx` | the bar, the footer (credits), the logo, a track and a network drawn |

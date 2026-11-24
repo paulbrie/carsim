@@ -8,13 +8,14 @@ import { UserMenu } from '@/components/user-menu';
 import { cn } from '@/lib/utils';
 import { withBase } from '@/lib/base-path';
 
-export type NavKey = 'home' | 'leaderboard' | 'networks' | 'tech' | 'race' | 'maps' | 'signin';
+export type NavKey = 'home' | 'leaderboard' | 'networks' | 'tnn' | 'tech' | 'race' | 'maps' | 'signin';
 export interface NavUser { name: string; image: string | null; admin?: boolean }
 
 const LINKS: { key: NavKey; href: string; label: string }[] = [
   { key: 'race', href: '/lobby', label: 'Race' },
   { key: 'leaderboard', href: '/leaderboard', label: 'Leaderboard' },
   { key: 'networks', href: '/networks', label: 'Networks' },
+  { key: 'tnn', href: '/tnn', label: 'What is a TNN?' },
   { key: 'tech', href: '/tech', label: 'Tech' },
 ];
 

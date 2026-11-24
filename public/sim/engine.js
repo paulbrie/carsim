@@ -3123,7 +3123,7 @@ function updateEditor(dt) {
 
 function showBusy(msg) { const el = document.getElementById('busy'); el.textContent = msg; el.style.display = msg ? 'flex' : 'none'; }
 function regenerateWorld() {
-  aiHalt();
+  aiHalt(false, 'the world was rebuilt (another course, ground or map)');
   TRACK = buildTrack(COURSE.wp);
   generateTerrain();
   for (const ch of chunks.values()) ch.dispose(); chunks.clear(); active.fill(0);
@@ -3133,7 +3133,7 @@ function regenerateWorld() {
 }
 function toggleEditor(on) {
   if (on === ed.on) return;
-  if (on) aiHalt();
+  if (on) aiHalt(false, 'the course editor opened');
   ed.on = on;
   edEl.style.display = on ? 'block' : 'none';
   for (const id of ['timer', 'nav', 'hud']) document.getElementById(id).style.visibility = on ? 'hidden' : '';
@@ -5518,7 +5518,7 @@ function mpKeyBlocked(e) {
 
 // grid slot n: two columns, staggered, behind the start line along the course
 function mpGrid(slot) {
-  aiHalt(true);
+  aiHalt(true, 'a race started');
   if (rp.on) stopReplay();
   restartRun();
   lap.lapNo = 0; lap.last = null; lap.laps = []; lap.valid = []; lap.history = [];   // lap 1 of the race, whatever was driven before
@@ -6937,11 +6937,12 @@ async function aiWorkerMain() {
 function aiTrainFail(e) {
   AI.lastError = String(e && (e.stack || e.message) || e).slice(0, 2000); console.error('Autopilot training stopped:', e);
   try { if (car.isRival && AI.rv) aiRvSwap(AI.rv); } catch (e2) { }
+  AI.stopWhy = { why: `an error: ${String(e && e.message || e).slice(0, 160)}`, gen: AI.gen, err: true };   // (before: aiTrain shows it)
   try { aiTrain(false); } catch (e2) { AI.training = false; }
   flash(`Training stopped: an error (${String(e && e.message || e).slice(0, 80)})`, '#ff8a7a', 5);
 }
 function aiTrainFrame(dt) {
-  if (aiKey() !== AI.key) { aiTrain(false); return; }                 // another course or car
+  if (aiKey() !== AI.key) { aiStopped('another course or car'); return; }   // another course or car
   const tick = AI.par ? aiTickPar : aiTick;                            // (on several cores, or this tab's alone)
   if (AI.watch) {                                                      // at 1x: as much driving as time went by, with the sound
     audio = AI.mute;
@@ -6953,14 +6954,27 @@ function aiTrainFrame(dt) {
   }
   if (AI_CFG.draw || AI.watch) refreshChunks(car.pos.x, car.pos.z, 6);
   if (AI.autoStop) {                                                   // its generations done, or no better lap for a while
-    AI.autoStopWhy = AI.autoStop; AI.autoStop = false; aiTrain(false);
-    flash(`Training stopped: ${AI.autoStopWhy}`, '#9fd4ff', 3);
+    AI.autoStopWhy = AI.autoStop; AI.autoStop = false; aiStopped(AI.autoStopWhy, true);
   }
   if ((AI.hudT = (AI.hudT || 0) + 1) % 6 === 0) aiShow();
+}
+// the training stopped by itself (#323): why, flashed and kept for the lab's status line until the next training
+function aiStopped(why, auto) {
+  aiTrain(false);
+  AI.stopWhy = { why, gen: AI.gen, auto: !!auto };
+  flash(`Training stopped: ${why}`, '#9fd4ff', 4); aiShow();
+}
+const aiEsc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function aiStopLine() {
+  const S = AI.stopWhy;
+  return `<b style="color:${S.err ? '#ff8a7a' : '#ffd88a'}">Training stopped at generation ${S.gen}: ${aiEsc(S.why)}</b>`
+    + (S.auto && /no better lap/.test(S.why) ? ' · <span style="opacity:.8">the setting “stop after generations without a better lap” (0: never)</span>' : '')
+    + ` · ${AI.gen ? 'Train more goes on from here' : 'Train to start again'}`;
 }
 function aiTrain(on) {
   if (on === AI.training) return;
   AI.autoStop = false;
+  if (on) AI.stopWhy = null;
   if (on) AI.genEnd = AI.gen + AI.gens;                                // so many more, from now
   if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (on) {
@@ -6976,6 +6990,7 @@ function aiTrain(on) {
     if (AI.mute) AI.mute.node.port.postMessage({ on: 0 });
     if (AI.examKind !== aiExamKind()) aiReexam();
     if (AI.par) aiPoolStart();
+    aiBgKick();
   } else {
     AI.training = false; AI.ep = null; AI.cands = null; AI.exam = false; AI.ctl = null; AI.examSolo = null; if (AI.rv) AI.rv.on = false;
     Object.assign(AI_POOL, { epoch: AI_POOL.epoch + 1, jobs: [], gen: null }); AI_POOL.exams.clear(); AI.job = null;   // (what the workers still drive is dropped)
@@ -7352,7 +7367,24 @@ function aiIoLive(live) {
 }
 
 // before the world changes under it (called from regenerateWorld, also at boot, before AI exists)
-function aiHalt(drive) { try { if (AI.training) aiTrain(false); if (drive && AI.drive) { AI.drive = false; aiShow(); } } catch (e) { } }
+// A hidden tab (another tab in front, the window minimised) gets no animation frames, and the training waited for
+// them (#323): while hidden it goes on from here, a frame's worth at a time, from a message to itself (not slowed down
+// as a hidden tab's timers are); the workers' results come in between. Shown again, the frames take over.
+const aiBg = { ch: null, on: false, t: 0 };
+function aiBgKick() {
+  if (AI_WK || aiBg.on || !AI.training || !document.hidden) return;
+  if (!aiBg.ch) { aiBg.ch = new MessageChannel(); aiBg.ch.port1.onmessage = aiBgSlice; }
+  aiBg.on = true; aiBg.ch.port2.postMessage(0);
+}
+function aiBgSlice() {
+  aiBg.on = false;
+  if (!AI.training || !document.hidden) return;
+  const now = performance.now(), dt = Math.min((now - (aiBg.t || now)) / 1000, 0.05); aiBg.t = now;
+  try { aiTrainFrame(dt); } catch (e) { aiTrainFail(e); }
+  aiBgKick();
+}
+if (!AI_WK) document.addEventListener('visibilitychange', () => { aiBg.t = 0; aiBgKick(); });
+function aiHalt(drive, why) { try { if (AI.training) { aiTrain(false); if (why) { AI.stopWhy = { why, gen: AI.gen }; aiShow(); } } if (drive && AI.drive) { AI.drive = false; aiShow(); } } catch (e) { } }
 // in a race room: not on the grid or in a race (before our finish); there the others see none of it (mpFrame, mpSendHit)
 const aiAllowed = () => !MP.on || !(MP.hold || ((MP.phase === 'countdown' || MP.phase === 'racing') && !MP.finished && !MP.spectator));
 // for tests (the headless browser draws a frame a second): whole generations, now
@@ -7595,6 +7627,7 @@ const aiRaceLine = L => !L ? '' : `<br>Race: ${L.why === 'lap' ? 'finished' : L.
 // ---------- the panel (I): a column on the left, or the whole screen (⤢) ----------
 document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel{display:none;left:12px;top:250px;width:270px;overflow:auto;pointer-events:auto;z-index:3}
+  #toast{z-index:30}
   #aiPanel .aiHd{display:flex;align-items:flex-start;gap:8px} #aiPanel .aiHd>div{flex:1;min-width:0}
   #aiPanel .lt{font-size:12px;letter-spacing:2px;opacity:.85}
   #aiPanel .sub{font-size:11px;opacity:.7;margin-bottom:6px}
@@ -8024,10 +8057,10 @@ function aiShow() {
   const sec = t => t < 60 ? `${t.toFixed(2)}<span class="u">s</span>` : fmt(t).slice(0, -1);
   const kpi = (k, v, sub, tip) => `<div title="${tip}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${sub || '&nbsp;'}</div></div>`;
   AI.el.querySelector('#aiKpi').innerHTML =
-    kpi('Generation', AI.gen, AI.training ? (AI.gens ? `training, to ${AI.genEnd}` : 'training') : AI.gen ? 'paused' : 'not trained', `${AI_CFG.pop} tries a generation, then an exam: a lap from the start`)
+    kpi('Generation', AI.gen, AI.training ? (AI.gens ? `training, to ${AI.genEnd}` : 'training') : AI.stopWhy ? 'stopped' : AI.gen ? 'paused' : 'not trained', `${AI_CFG.pop} tries a generation, then an exam: a lap from the start`)
     + kpi('Best', AI.bestFit < 0 ? '—' : AI.bestLap != null ? sec(AI.bestLap) : `${pct(AI.bestFit)}<span class="u">%</span>`, AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? 'a full lap' : `${Math.round(AI.bestFit)} of ${Math.round(len)} m`, 'The best exam so far: its lap time, or how far round it got')
     + kpi('Last exam', !L ? '—' : L.why === 'lap' && L.lap != null ? sec(L.lap) : `${L.at}<span class="u">m</span>`, AI.bestLap != null && AI.sinceBest ? `${AI.sinceBest} since the best` : L ? (L.why === 'lap' ? 'a lap' : 'stopped there') : '', 'The latest generation\'s exam, and how long since the best got better');
-  AI.el.querySelector('#aiStat').innerHTML = `<div class="ln">${AI.training ? `<b>${AI.exam ? `Exam: a ${AI_CFG.flying ? 'flying ' : ''}lap from the start` : AI.par ? `Tries ${AI_POOL.gen ? AI_CFG.pop - AI_POOL.gen.left : 0} of ${AI_CFG.pop}${AI.from != null ? ` from ${Math.round(AI.from)} m` : ''} · ${aiPoolOk() + 1} of ${Math.min(AI_CFG.cores, aiCoresMax())} cores${AI_POOL.exams.size ? ` · ${AI_POOL.exams.size} exam${AI_POOL.exams.size > 1 ? 's' : ''} under way` : ''}${AI_POOL.err ? ` · a core was dropped: ${AI_POOL.err}` : ''}` : `Try ${AI.ci + 1} of ${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}${AI.cands && AI.scen ? ` · rival ${AI_RV_KINDS[AI.scen.kind]}` : ''}`}${AI.examSolo ? ' · the race with the rival' : ''}</b>` : AI.drive ? `<b>${AI.race ? 'Racing' : 'Driving'} its best</b>` : best === 'nothing yet' ? 'Train it: it starts knowing nothing' : AI.big ? `Best: ${AI.bestLap != null ? fmt(AI.bestLap) : best}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; training stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `Best: ${best}`}</div>${L ? `<div class="ln dim">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.hb ? ` · handbrake ${L.hb} s` : ''}${L.hbHeld ? ` · handbrake held back ${L.hbHeld} s` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</div>${AI.lastExamRace ? `<div class="ln dim">${aiRaceLine(AI.lastExamRace).slice(4)}</div>` : ''}` : ''}`;
+  AI.el.querySelector('#aiStat').innerHTML = `<div class="ln">${AI.training ? `<b>${AI.exam ? `Exam: a ${AI_CFG.flying ? 'flying ' : ''}lap from the start` : AI.par ? `Tries ${AI_POOL.gen ? AI_CFG.pop - AI_POOL.gen.left : 0} of ${AI_CFG.pop}${AI.from != null ? ` from ${Math.round(AI.from)} m` : ''} · ${aiPoolOk() + 1} of ${Math.min(AI_CFG.cores, aiCoresMax())} cores${AI_POOL.exams.size ? ` · ${AI_POOL.exams.size} exam${AI_POOL.exams.size > 1 ? 's' : ''} under way` : ''}${AI_POOL.err ? ` · a core was dropped: ${AI_POOL.err}` : ''}` : `Try ${AI.ci + 1} of ${AI_CFG.pop}${AI.cands && AI.from != null ? ` from ${Math.round(AI.from)} m` : ''}${AI.cands && AI.scen ? ` · rival ${AI_RV_KINDS[AI.scen.kind]}` : ''}`}${AI.examSolo ? ' · the race with the rival' : ''}</b>` : AI.drive ? `<b>${AI.race ? 'Racing' : 'Driving'} its best</b>` : AI.stopWhy ? aiStopLine() : best === 'nothing yet' ? 'Train it: it starts knowing nothing' : AI.big ? `Best: ${AI.bestLap != null ? fmt(AI.bestLap) : best}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; training stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `Best: ${best}`}</div>${L ? `<div class="ln dim">Last exam: ${L.why === 'lap' ? 'a lap' : L.at + ' m'}${L.offM ? ` · ${L.offM} m off the road` : ''}${L.dmg ? ` · damage ${L.dmg} %` : ''}${L.wrecked ? ' · wrecked' : ''}${L.kmh ? ` · ${L.kmh} km/h` : ''}${L.swing ? ` · ${L.swing} swings` : ''}${L.hb ? ` · handbrake ${L.hb} s` : ''}${L.hbHeld ? ` · handbrake held back ${L.hbHeld} s` : ''}${L.extra ? ` · ${L.extra} m extra path` : ''}${L.pen ? ` · ${L.pen > 0 ? '−' + L.pen : '+' + -L.pen}` : ''}</div>${AI.lastExamRace ? `<div class="ln dim">${aiRaceLine(AI.lastExamRace).slice(4)}</div>` : ''}` : ''}`;
   AI.el.querySelectorAll('#aiStat .ln').forEach(n => { n.title = n.textContent; });   // (each a line, cut short: all of it on hover)
   AI.el.querySelector('#aiTrain').textContent = AI.training ? 'Pause' : AI.gen ? 'Train more' : 'Train';
   AI.el.querySelector('#aiTrain').classList.toggle('on', AI.training);

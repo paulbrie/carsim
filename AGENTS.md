@@ -21,7 +21,7 @@ See README.md for the layout. Notes:
   (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, and the sim page's interface (`ui.css` and `ui.js` in
   index.html, the page's title) `ui.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, ui, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, ui, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -89,6 +89,10 @@ See README.md for the layout. Notes:
   anything a try depends on must reach the workers: the course, ground and car come from the localStorage copy they
   boot with (`aiPoolSpawn`), the network's shape and the car's settings from `aiPoolSetup`, the rest of `AI_CFG` /
   `AI_PEN` and the rivals with each job (`aiPoolPump`). A worker is used only when its ground hashes as the tab's.
+- Training that stops by itself must say why (#323, `scripts/patches/lab-stops.py`): call `aiStopped(why)`, or pass a
+  reason to `aiHalt(drive, why)`, not a bare `aiTrain(false)` (that is for the user's own Pause). A flash alone isn't
+  enough: the full-screen lab covers the sim. The training is driven by animation frames, and by `aiBgKick`'s message loop
+  while the tab is hidden: a new per-frame step of the training goes in `aiTrainFrame`, which both call.
 - Claude bridge (README): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and
   `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
   (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.

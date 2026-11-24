@@ -58,8 +58,8 @@ rep(""": AI.gen ? 'paused' : 'not trained',""", """: AI.stopWhy ? 'stopped' : AI
 rep(""" : AI.drive ? `<b>${AI.race ? 'Racing' : 'Driving'} its best</b>` : best === 'nothing yet'""",
     """ : AI.drive ? `<b>${AI.race ? 'Racing' : 'Driving'} its best</b>` : AI.stopWhy ? aiStopLine() : best === 'nothing yet'""")
 # the flash over the full-screen lab
-rep("""  #aiPanel{display:none;left:12px;top:250px;width:270px;overflow:auto;pointer-events:auto;z-index:3}""",
-    """  #aiPanel{display:none;left:12px;top:250px;width:270px;overflow:auto;pointer-events:auto;z-index:3}
+rep("""  @media (prefers-reduced-motion: reduce){#aiPanel{transition:none}}""",
+    """  @media (prefers-reduced-motion: reduce){#aiPanel{transition:none}}
   #toast{z-index:30}""")
 
 # ---------------------------------------------------------------- a hidden tab goes on training

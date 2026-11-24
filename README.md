@@ -368,6 +368,12 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   the frame loop; the Claude bridge logs the page's errors.
 - **Drawing** (same card): the pedals and foot in 3D or flat; and the 3D world drawn while it trains or not (not:
   the picture stops, the panel goes on, and the training gets 15 ms of each frame instead of 12).
+- **A drawer** (#331): the lab (I, or the rail's TNN lab; `/lab` once a car and ground are picked) slides in from the
+  left, the window's height, and out again on ✕ or I; the drive goes on beside it, and the car's read-out moves to
+  the bottom, next to it. **⤢ Full screen** widens it to the whole window, opaque: the 3D world is hidden and no
+  longer drawn (all of the frame for the training); **⤡ Back to the drawer** (or Esc) narrows it back. The slide is
+  CSS (`@starting-style`, `display`'s discrete transition: the sim still just shows and hides the panel); without
+  them, or with reduced motion, it simply appears.
 - **Full screen (⤢ in the panel's corner, Esc back):** three columns. The numbers (generation, best, last exam), the
   buttons and the wheel and pedals; the network as large as the screen allows (hover a dot: what it is, its value,
   its pulls on the outputs) over two charts with axes, a legend and the values under the pointer (each exam's

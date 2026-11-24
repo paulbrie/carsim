@@ -5676,7 +5676,7 @@ function frame(now) {
   updateHud(dt);
   updateLapHud(dt);
   aiViz(dt);
-  if (!AI.training || AI_CFG.draw || AI.watch) renderer.render(scene, camera);   // (training, maybe not drawn: more time for it)
+  if (!AI.big && (!AI.training || AI_CFG.draw || AI.watch)) renderer.render(scene, camera);   // (training, maybe not drawn: more time for it; the lab full screen hides it)
   AI_LOAD.busy += performance.now() - aiF0;
   requestAnimationFrame(frame);
 }
@@ -7837,8 +7837,20 @@ const aiRaceLine = L => !L ? '' : `<br>Race: ${L.why === 'lap' ? 'finished' : L.
 
 // ---------- the panel (I): a column on the left, or the whole screen (⤢) ----------
 document.head.insertAdjacentHTML('beforeend', `<style>
-  #aiPanel{display:none;left:12px;top:250px;width:270px;overflow:auto;pointer-events:auto;z-index:3}
+  /* a drawer down the left side (#331), sliding in when the lab opens and out when it closes; ⤢ widens it to the whole
+     window, which hides the drive (nor is it drawn then), ⤡ narrows it back. The sim shows and hides it with display:
+     @starting-style and display's discrete transition let it slide both ways (without them it just shows and goes) */
+  :root{--ai-w:min(360px,calc(100vw - 24px));--ai-ease:cubic-bezier(.2,.8,.2,1)}
+  #aiPanel{display:none;left:0;top:0;bottom:0;width:var(--ai-w);max-height:none;box-sizing:border-box;border-radius:0 14px 14px 0;overflow:auto;pointer-events:auto;z-index:15;
+    background:rgba(14,11,8,.96);box-shadow:8px 0 32px #0008;transform:none;
+    transition:transform .32s var(--ai-ease),width .32s var(--ai-ease),border-radius .32s,display .32s allow-discrete}
+  #aiPanel[style*="display: none"]{transform:translateX(-102%)}
+  @starting-style{#aiPanel{transform:translateX(-102%)}}
+  @media (prefers-reduced-motion: reduce){#aiPanel{transition:none}}
   #toast{z-index:30}
+  #aiPanel .aiHd .ic+.ic{margin-left:-4px}
+  /* the car's read-out moves out from under the drawer: beside it, at the bottom */
+  body.ai-drawer #hud{left:calc(var(--ai-w) + 12px);top:auto;bottom:12px}
   #aiPanel .aiHd{display:flex;align-items:flex-start;gap:8px} #aiPanel .aiHd>div{flex:1;min-width:0}
   #aiPanel .lt{font-size:12px;letter-spacing:2px;opacity:.85}
   #aiPanel .sub{font-size:11px;opacity:.7;margin-bottom:6px}
@@ -7894,8 +7906,8 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel .srv button{margin:0;padding:4px 8px}
   #aiPanel small{display:block;opacity:.7;margin-top:6px;font-size:11px;line-height:1.35}
   /* the whole screen */
-  #aiPanel.big{display:flex!important;flex-direction:column;inset:12px;width:auto;max-height:none;padding:14px 18px 12px;z-index:20;overflow:hidden;
-    background:rgba(14,11,8,.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:12px;font-size:14px;text-shadow:none;box-shadow:0 10px 40px #0009}
+  #aiPanel.big{display:flex!important;flex-direction:column;inset:0 auto 0 0;width:100vw;max-height:none;padding:14px 18px 12px;z-index:20;overflow:hidden;
+    background:#0e0b08;border-radius:0;font-size:14px;text-shadow:none;box-shadow:none}
   #aiPanel.big .aiHd{align-items:center;margin-bottom:10px} #aiPanel.big .lt{font-size:15px;font-weight:700}
   #aiPanel.big .sub{font-size:12.5px;margin-bottom:4px} #aiPanel.big .aiHd .sub{margin:2px 0 0}
   #aiPanel.big button.ic{font-size:13px;padding:7px 12px}
@@ -7931,7 +7943,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
 </style>`);
 AI.el = document.createElement('div'); AI.el.id = 'aiPanel'; AI.el.className = 'panel';
 AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div class="sub" id="aiSize"></div></div>
-  <button id="aiBig" class="ic" title="Full screen: the network, the charts and every setting, explained (Esc: back)">⤢</button></div>
+  <button id="aiBig" class="ic" title="Full screen: the network, the charts and every setting, explained (Esc: back)">⤢ Full screen</button><button id="aiClose" class="ic" title="Close the lab (I)" aria-label="Close the lab">✕</button></div>
   <div class="aiBody">
   <section class="aiLeft">
     <div class="aiKpi" id="aiKpi"></div>
@@ -8016,6 +8028,8 @@ AI.el.querySelector('#aiSpeed').addEventListener('change', e => { const v = +e.t
 AI.el.querySelector('#aiStopQ').addEventListener('change', e => { const f = AI.el.querySelector('#aiStopAfter'); f.value = e.target.value === '' ? 0 : e.target.value; f.dispatchEvent(new Event('change', { bubbles: true })); aiShow(); });   // (#330)
 AI.el.querySelector('#aiCoresQ').addEventListener('change', e => { const f = AI.el.querySelector('#aiCores'); f.value = e.target.value; f.dispatchEvent(new Event('change', { bubbles: true })); e.target.blur(); });   // (the same as This computer's)
 AI.el.querySelector('#aiBig').addEventListener('click', e => { e.currentTarget.blur(); aiBig(); });
+AI.el.querySelector('#aiClose').addEventListener('click', e => { e.currentTarget.blur(); if (AI.open) aiToggle(); });
+AI.el.addEventListener('transitionend', e => { if (e.target === AI.el && e.propertyName === 'width') { aiShow(); aiVizT = 1; } });   // (⤢/⤡ widen it over a moment: the canvases drawn again at their new size)
 addEventListener('keydown', e => { if (e.code === 'Escape' && AI.big) { e.stopImmediatePropagation(); e.preventDefault(); aiBig(false); } }, true);
 addEventListener('resize', () => { if (AI.big) aiShow(); });
 AI.ctlBig = AI.el.querySelector('#aiCtlBig'); AI.ctlBox = AI.el.querySelector('.aiCtlBox');
@@ -8036,7 +8050,8 @@ function aiBig(on = !AI.big) {
   for (const id of ['#aiNet', '#aiChart', '#aiChart2', '#aiMap']) { const cv = AI.el.querySelector(id); cv._hx = cv._hy = null; }   // (the pointer was over the other layout)
   const d = AI.el.querySelector('#aiCfg');
   if (on) { AI.cfgWas = d.open; d.open = true; } else d.open = !!AI.cfgWas;
-  const b = AI.el.querySelector('#aiBig'); b.textContent = on ? '⤡ Back to the column' : '⤢'; b.title = on ? 'Back to the column on the left (Esc)' : 'Full screen: the network, the charts and every setting, explained (Esc: back)';
+  const b = AI.el.querySelector('#aiBig'); b.textContent = on ? '⤡ Back to the drawer' : '⤢ Full screen'; b.title = on ? 'Back to the drawer on the left, the drive beside it (Esc)' : 'Full screen: the network, the charts and every setting, explained (Esc: back)';
+  document.body.classList.toggle('ai-drawer', AI.open && !on);
   aiShow(); aiVizT = 1;
 }
 AI.el.querySelector('#aiCfg').addEventListener('change', e => {
@@ -8235,13 +8250,12 @@ function aiToggle() {
   AI.open = !AI.open;
   if (AI.open && aiKey() !== AI.key && !AI.training) aiLoad();
   AI.el.style.display = AI.open ? 'block' : 'none'; AI.btn.classList.toggle('on', AI.open);
+  document.body.classList.toggle('ai-drawer', AI.open && !AI.big);
   aiShow();
 }
 function aiShow() {
   if (!AI.open) return;
-  const y0 = document.getElementById('hud').getBoundingClientRect().bottom + 10, help = document.getElementById('help');   // under the car's read-out, over the help
-  if (AI.big) { if (AI.el.style.top) AI.el.style.top = AI.el.style.maxHeight = ''; }
-  else { AI.el.style.top = y0 + 'px'; AI.el.style.maxHeight = ((help.offsetHeight ? help.getBoundingClientRect().top - 10 : innerHeight - 12) - y0) + 'px'; }
+  if (AI.el.style.top) AI.el.style.top = AI.el.style.maxHeight = '';     // (the drawer: the window's height, its CSS)
   const len = botPath().len, pct = f => Math.min(100, Math.round(f / len * 100));
   const best = AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? `a full lap in ${fmt(AI.bestLap)}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `${Math.round(AI.bestFit)} m of ${Math.round(len)} m (${pct(AI.bestFit)} %)`;
   AI.el.querySelector('#aiSize').textContent = `${AI.h ? 'a tiny neural network' : 'the smallest network'}: ${AI.nIn} inputs ${AI.h ? `→ ${AI.h} hidden →` : 'straight to'} ${AI.nOut} outputs, ${AI.np} weights${AI.kp || AI.ks ? ` · ${[AI.kp && 'pedals', AI.ks && 'steering'].filter(Boolean).join(' and ')} like the keyboard` : ''}${AI.nb ? ' · no brake' : ''}`;

@@ -183,7 +183,11 @@ body #editor input[type=range] { accent-color: var(--ui-human); }
 body #editor input[type=text], body #editor select { background: rgba(255, 255, 255, .08); border: 1px solid var(--ui-line); border-radius: 8px; }
 
 /* ---------------------------------------------------------------- the TNN lab (the sim's #aiPanel) */
-body #aiPanel { background: var(--ui-bg-solid); width: 284px; }
+/* a drawer down the left side (#331: the slide, the widths and the full screen are the sim's, autopilot.py): flush with the edge */
+body #aiPanel { background: var(--ui-bg-solid); border-left: 0; border-top: 0; border-bottom: 0; border-radius: 0 18px 18px 0; padding: 16px 16px 14px 18px; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 18px 0 48px -18px rgba(0, 0, 0, .8); }
+body #aiPanel .aiHd { margin-bottom: 8px; }
+body #aiPanel .aiHd button.ic { font: 600 12px/1 var(--ui-sans); padding: 7px 10px; white-space: nowrap; }
+body #aiPanel #aiClose { padding: 7px 9px; }
 body #aiPanel .lt { font: 800 15px/1.1 var(--ui-display); font-stretch: 112%; letter-spacing: .02em; color: var(--ui-tnn); }
 body #aiPanel .sub { color: var(--ui-mut); opacity: 1; }
 body #aiPanel button { border-radius: 8px; font-weight: 600; }
@@ -192,7 +196,7 @@ body #aiPanel input[type=number], body #aiPanel select { background: rgba(255, 2
 body #aiPanel input[type=checkbox] { accent-color: var(--ui-tnn); }
 body #aiPanel .aiKpi > div { border-radius: 10px; }
 body #aiPanel .aiKpi .v { font-family: var(--ui-mono); }
-body #aiPanel.big { background: rgba(10, 12, 17, .97); border-radius: 18px; padding: 18px 22px 14px; }
+body #aiPanel.big { background: #0d0f14; border: 0; border-radius: 0; box-shadow: none; padding: 18px 22px 14px; }
 body #aiPanel.big .lt { font-size: 22px; }
 body #aiPanel.big .aiBox, body #aiPanel.big .card { background: rgba(255, 255, 255, .035); border-color: var(--ui-line); border-radius: 14px; }
 body #aiPanel.big .h3 { font: 500 10.5px/1.4 var(--ui-mono); letter-spacing: .16em; color: var(--ui-mut); opacity: 1; }

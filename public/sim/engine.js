@@ -2821,6 +2821,91 @@ document.getElementById('eOptimise').addEventListener('click', e => {
   COURSE.level = 100; COURSE.bank = BANK_MAX; COURSE.grade = grade; levelEl.value = 100; bankEl.value = BANK_MAX; gradeEl.value = grade; ed.wpDirty = true; showShape();
   flash(`Road optimised: ${sm.changed ? sm.msg : `no corner under ${ed.rMin} m`} · levelled, no grade over ${grade}%, gentle crests and dips · bends banked for their speed (up to ${BANK_MAX}°) · built when you close the editor`, sm.lost || sm.short ? '#ffd88a' : '#7dff9a', 5);
 });
+// ---------- GENERATE a circuit and MY CIRCUITS (#315) ----------
+// A generated course replaces the editor's (the one before it: Back, up to 20); built when the editor closes, as any edit.
+// It keeps the ground (Sand / Earth / Road) and has no terrain strokes, bridges or even grades of its own.
+const GEN = { style: localStorage.getItem('carsim.gen.style') || 'mixed', back: [], mod: null, busy: false, last: null, short: '' };
+const CIRCUITS_KEY = 'carsim.circuits';                    // [{ name, course, len, at, gen? }] (not 'sandbuggy.': the autopilot's workers boot with those)
+const gKm = document.getElementById('gKm'), gSeed = document.getElementById('gSeed'), cList = document.getElementById('cList');
+const courseCopy = c => JSON.parse(JSON.stringify(c));
+const wpSig = wp => JSON.stringify(wp);
+function genShow() {
+  document.getElementById('gKmV').textContent = `${(+gKm.value).toFixed(1)} km`;
+  edEl.querySelectorAll('[data-gs]').forEach(b => b.classList.toggle('on', b.dataset.gs === GEN.style));
+  document.getElementById('gBack').disabled = !GEN.back.length;
+  document.getElementById('gNote').textContent = GEN.short && GEN.last?.sig === wpSig(COURSE.wp) ? GEN.short : `Corners no tighter than ${ed.rMin} m (Min. corner radius, under SHAPE)`;
+  libShow();
+}
+// the editor's course becomes c (back: it goes on the Back list)
+function genSet(c, back = true) {
+  if (back) { GEN.back.push(courseCopy(COURSE)); if (GEN.back.length > 20) GEN.back.shift(); }
+  COURSE = c;
+  ed.undoWp = null; ed.undoEven = null; ed.sel = -1; ed.drag = -1; endEvenPick(); ed.wpDirty = true;
+  bankEl.value = COURSE.bank || 0; levelEl.value = COURSE.level || 0; gradeEl.value = COURSE.grade || 2;
+  showShape(); updatePreview(); genShow();
+}
+const genLoad = async () => GEN.mod ||= await import(new URL('circuit-gen.js', import.meta.url).href);
+async function genMake(seed) {
+  if (GEN.busy) return;
+  GEN.busy = true; gSeed.value = seed;
+  try {
+    await genLoad();
+    const km = +gKm.value, style = GEN.style, rMin = ed.rMin, c = GEN.mod.generateCircuit({ seed, km, style, rMin });
+    if (!c) { flash(`No circuit fits with ${rMin} m corners: lower the Min. corner radius (SHAPE)`, '#ff8a7a', 3); return; }
+    GEN.last = { seed: c.seed, km, style, rMin, len: Math.round(c.len), sig: wpSig(c.wp) };
+    GEN.short = c.len < km * 1000 * 0.94 ? `${(c.len / 1000).toFixed(2)} km: the longest this seed fits in the world with ${rMin} m corners (a lower Min. corner radius makes room for more)` : '';
+    genSet({ wp: c.wp, bank: 8, level: 100, even: [], grade: OPT_GRADE, ops: [], base: COURSE.base, road: !!COURSE.road, bridges: [], noBridge: [] });
+    flash(`Circuit ${c.seed}: ${(c.len / 1000).toFixed(2)} km · built when you close the editor (E)`, GEN.short ? '#ffd88a' : '#7dff9a', 3);
+  } catch (err) { console.warn('circuit generator:', err); flash('The circuit generator could not load', '#ff8a7a', 3); }
+  finally { GEN.busy = false; }
+}
+document.getElementById('gNew').addEventListener('click', e => { e.currentTarget.blur(); genMake(String(1 + Math.floor(Math.random() * 999999))); });
+document.getElementById('gMake').addEventListener('click', e => { e.currentTarget.blur(); genMake(gSeed.value.trim() || '1'); });
+document.getElementById('gBack').addEventListener('click', e => { e.currentTarget.blur(); if (!GEN.back.length) return; genSet(GEN.back.pop(), false); flash('The course before', '#fff', 1.5); });
+gSeed.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); genMake(gSeed.value.trim() || '1'); } });
+gKm.addEventListener('input', genShow);
+edEl.querySelectorAll('[data-gs]').forEach(b => b.addEventListener('click', () => { b.blur(); GEN.style = b.dataset.gs; try { localStorage.setItem('carsim.gen.style', GEN.style); } catch (err) { } genShow(); }));
+sRadEl.addEventListener('input', genShow);
+edEl.addEventListener('keydown', e => { if (e.target.matches('input[type=text], select')) e.stopPropagation(); });   // typing a seed or a name: not the sim's keys
+// MY CIRCUITS: in this browser's storage
+const libRead = () => { try { const a = JSON.parse(localStorage.getItem(CIRCUITS_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => x && typeof x.name === 'string' && x.course && Array.isArray(x.course.wp) && x.course.wp.length >= 3) : []; } catch (err) { return []; } };
+const libWrite = a => { try { localStorage.setItem(CIRCUITS_KEY, JSON.stringify(a)); return true; } catch (err) { flash('Browser storage is full: delete a circuit, or Export this one', '#ff8a7a', 3); return false; } };
+function libShow() {
+  const a = libRead(), sel = cList.value, cur = wpSig(COURSE.wp);
+  cList.innerHTML = a.length ? '' : '<option value="">(none yet)</option>';
+  for (const x of a) { const o = document.createElement('option'); o.value = x.name; o.textContent = `${wpSig(x.course.wp) === cur ? '● ' : ''}${x.name}${x.len ? ` · ${(x.len / 1000).toFixed(2)} km` : ''}`; cList.appendChild(o); }
+  const on = a.find(x => wpSig(x.course.wp) === cur);
+  cList.value = a.some(x => x.name === sel) ? sel : on ? on.name : a[0]?.name ?? '';
+  document.getElementById('cLoad').disabled = document.getElementById('cDel').disabled = !a.length;
+}
+document.getElementById('cSave').addEventListener('click', e => {
+  e.currentTarget.blur();
+  const a = libRead(), g = GEN.last && GEN.last.sig === wpSig(COURSE.wp) ? GEN.last : null;
+  const cur = a.find(x => wpSig(x.course.wp) === wpSig(COURSE.wp));
+  const def = cur ? cur.name : g ? `${g.style[0].toUpperCase() + g.style.slice(1)} ${g.seed}${g.rMin !== 25 ? ` r${g.rMin}` : ''}` : `Course ${a.length + 1}`;
+  const name = (prompt('Save this course in My circuits as:', def) || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+  if (!name) return;
+  const i = a.findIndex(x => x.name === name);
+  if (i >= 0 && !confirm(`Replace "${name}" with this course?`)) return;
+  const x = { name, course: courseCopy(COURSE), len: Math.round((ed.track || buildTrack(COURSE.wp)).len), at: Date.now(), ...(g ? { gen: { seed: g.seed, km: g.km, style: g.style, rMin: g.rMin } } : {}) };
+  if (i >= 0) a[i] = x; else a.push(x);
+  if (libWrite(a)) { cList.value = name; libShow(); flash(`Saved in My circuits: ${name}`, '#7dff9a', 2); }
+});
+document.getElementById('cLoad').addEventListener('click', e => {
+  e.currentTarget.blur();
+  const x = libRead().find(y => y.name === cList.value); if (!x) return;
+  const c = x.course;
+  genSet({ wp: c.wp.map(([px, pz]) => [+px, +pz]), bank: bankOf(c.bank), level: levelOf(c.level), even: evenOf(c.even), grade: gradeOf(c.grade), ops: Array.isArray(c.ops) ? c.ops : [], base: COURSE.base, road: !!COURSE.road,
+    bridges: Array.isArray(c.bridges) ? c.bridges.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [], noBridge: Array.isArray(c.noBridge) ? c.noBridge.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [] });
+  GEN.last = x.gen ? { ...x.gen, len: x.len, sig: wpSig(c.wp) } : null;
+  flash(`${x.name} · built when you close the editor (E)`, '#7dff9a', 2.5);
+});
+document.getElementById('cDel').addEventListener('click', e => {
+  e.currentTarget.blur();
+  const a = libRead(), i = a.findIndex(y => y.name === cList.value); if (i < 0 || !confirm(`Delete "${a[i].name}" from My circuits?`)) return;
+  a.splice(i, 1); if (libWrite(a)) { libShow(); flash('Deleted', '#fff', 1.5); }
+});
+genShow();
 document.getElementById('eSmooth').addEventListener('click', e => { e.currentTarget.blur(); const r = smoothCurves(); flash(r.msg, r.col, r.dur); });
 // Smooth curves (and Optimise): the waypoints reshaped so no corner is tighter than the min. radius (undoable)
 function smoothCurves() {
@@ -3062,7 +3147,7 @@ function toggleEditor(on) {
     orbit.update();
     scene.fog.near = 400; scene.fog.far = 1400;
     ed.undoWp = null; bankEl.value = COURSE.bank || 0; levelEl.value = COURSE.level || 0; gradeEl.value = COURSE.grade || 2; showShape();
-    setTool(ed.tool); updatePreview();
+    setTool(ed.tool); updatePreview(); genShow(); genLoad().catch(() => { });
   } else {
     orbit.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
     camMode = 0; orbit.enabled = false;

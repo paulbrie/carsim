@@ -14,10 +14,12 @@ See README.md for the layout. Notes:
   skid marks (ours and, in a race, the others' from their `sk`) `skids.py` and the grounds' landscapes (dunes for
   sand, countryside for earth and road; the road's width) `grounds.py`, the autopilot (a tiny network trained in
   the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, pausing (P; tire pressure on Shift+P)
-  `pause.py`, the Claude bridge's loader
+  `pause.py`, the course editor's GENERATE A CIRCUIT and MY CIRCUITS (the generator itself: `public/sim/circuit-gen.js`,
+  also run by `scripts/maps/generate.mjs` and `test/circuit-gen.test.mjs`: keep it free of the DOM and THREE) `circuits.py`,
+  the Claude bridge's loader
   (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, bridge, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, bridge, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes

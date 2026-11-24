@@ -61,9 +61,15 @@ driver to a room: it gets ready, lines up, drives the course, and finishes.
 wide bends and long straights; *Mixed*; *Twisty*: hairpin after hairpin) and a **seed** (any number or word: the
 same seed, length, style and min. corner radius always give the same circuit; **New circuit** picks a random
 one). Its corners are no tighter than SHAPE's **Min. corner radius**, it never comes within 22–28 m of
-itself (no crossings, so no bridges) and stays inside the world; it is levelled, graded (6 %) and banked (8°) as
-the maps are, on the ground it is driven on, without terrain strokes, and built when the editor closes like
-any edit. **Back** returns to the course before (the last 20). How it is made (`public/sim/circuit-gen.js`): the
+itself (but where it crosses itself) and stays inside the world; it is levelled, graded (6 %) and banked (8°) as
+the maps are, on the ground it is driven on, without terrain strokes, and built at once like any edit.
+**Bridges** (#326: 0, 1, 2, 3 or *Random*, a number drawn from the seed) is how many times the road crosses over
+itself: the blob's outline is twisted across that many of its necks (a stretch one cell wide, or a one-cell slot
+between two arms of it: its two sides cut and joined crosswise, so the road loops over itself there, like the
+figure-8), and the circuit kept only if the sim would bridge every crossing (55° or more, the bridges and their
+ramps apart along the road as `buildTrack` wants them, the start clear of them). 0 gives the circuits as before.
+The world holds only so many: with 25 m corners one fits at any length, two from about 1.2 km, three at 1.4 km
+for most seeds (with 20 m corners, three from 1.4 km); fewer than asked, the hint says so. **Back** returns to the course before (the last 20). How it is made (`public/sim/circuit-gen.js`): the
 outline of a random blob of grid cells (fingers of the blob are hairpins, its sides straights; never a hole or two
 cells touching by a corner, so the outline never touches itself), the grid turned, the plane gently warped, some
 corners cut, every corner rounded with an arc, then checked on the very Catmull-Rom curve the sim builds; the
@@ -73,8 +79,14 @@ when the circuit is shorter than asked. **MY CIRCUITS** keeps courses (generated
 name (`carsim.circuits` in localStorage): **Save as…**, **Load**, **Delete**; ● marks the one in the editor.
 Best laps and the autopilot's trainings go by the course, so each circuit keeps its own: load another to train
 on it, and back. The same generator from node writes course files (for Import, or maps with `add.mjs`):
-`node scripts/maps/generate.mjs --seed 42 --km 1.6 --style twisty --r 20 --ground road [--count 10] [--out dir]`
+`node scripts/maps/generate.mjs --seed 42 --km 1.6 --style twisty --r 20 [--bridges 2] --ground road [--count 10] [--out dir]`
 (tests: `test/circuit-gen.test.mjs`).
+
+Every change is built while the editor stays open (#326, `scripts/patches/live.py`): a moment (0.35 s) after the
+course stops changing, not while a waypoint is held or a brush paints, the world is rebuilt (road, ground, banking,
+levelling, grades, bridges and their earthworks, gates) and the note under the editor's numbers says so; closing the
+editor then has nothing left to build. (A rebuild is about a second here, under half what it was: the bridges'
+earthworks and the distance to the course find their nearest points from a field made once, the same ground.)
 
 Besides waypoints, bridges, terrain brushes and ground paint, the SHAPE section has:
 
@@ -462,7 +474,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Seven of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
@@ -613,6 +625,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `scripts/patches/autopilot.py` | the autopilot: a tiny network trained in the browser to drive a lap (I) |
 | `scripts/patches/pause.py` | pausing the drive (P, the Pause button); tire pressure on Shift+P |
 | `scripts/patches/contacts.py` | car against car (`ccSolve`: the bots, the other players' cars, the rival) |
+| `scripts/patches/live.py` | the course editor builds every change while it is open; faster earthworks and distance to the course (last in the chain) |
 | `public/sim/circuit-gen.js`, `scripts/patches/circuits.py`, `scripts/maps/generate.mjs` | the circuit generator (the editor's GENERATE A CIRCUIT, MY CIRCUITS; course files from node; tested in `test/circuit-gen.test.mjs`) |
 | `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |
 

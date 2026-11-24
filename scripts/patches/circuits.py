@@ -17,8 +17,9 @@ def rep(a, b):
 
 rep("""document.getElementById('eSmooth').addEventListener('click', e => {""", """// ---------- GENERATE a circuit and MY CIRCUITS (#315) ----------
 // A generated course replaces the editor's (the one before it: Back, up to 20); built when the editor closes, as any edit.
-// It keeps the ground (Sand / Earth / Road) and has no terrain strokes, bridges or even grades of its own.
-const GEN = { style: localStorage.getItem('carsim.gen.style') || 'mixed', back: [], mod: null, busy: false, last: null, short: '' };
+// It keeps the ground (Sand / Earth / Road) and has no terrain strokes or even grades of its own; its bridges (#326, Bridges:
+// 0 to 3 or Random) are where it crosses itself, one branch over the other.
+const GEN = { style: localStorage.getItem('carsim.gen.style') || 'mixed', bridges: localStorage.getItem('carsim.gen.bridges') || '0', back: [], mod: null, busy: false, last: null, short: '' };
 const CIRCUITS_KEY = 'carsim.circuits';                    // [{ name, course, len, at, gen? }] (not 'sandbuggy.': the autopilot's workers boot with those)
 const gKm = document.getElementById('gKm'), gSeed = document.getElementById('gSeed'), cList = document.getElementById('cList');
 const courseCopy = c => JSON.parse(JSON.stringify(c));
@@ -26,6 +27,7 @@ const wpSig = wp => JSON.stringify(wp);
 function genShow() {
   document.getElementById('gKmV').textContent = `${(+gKm.value).toFixed(1)} km`;
   edEl.querySelectorAll('[data-gs]').forEach(b => b.classList.toggle('on', b.dataset.gs === GEN.style));
+  edEl.querySelectorAll('[data-gb]').forEach(b => b.classList.toggle('on', b.dataset.gb === GEN.bridges));
   document.getElementById('gBack').disabled = !GEN.back.length;
   document.getElementById('gNote').textContent = GEN.short && GEN.last?.sig === wpSig(COURSE.wp) ? GEN.short : `Corners no tighter than ${ed.rMin} m (Min. corner radius, under SHAPE)`;
   libShow();
@@ -44,12 +46,15 @@ async function genMake(seed) {
   GEN.busy = true; gSeed.value = seed;
   try {
     await genLoad();
-    const km = +gKm.value, style = GEN.style, rMin = ed.rMin, c = GEN.mod.generateCircuit({ seed, km, style, rMin });
+    const km = +gKm.value, style = GEN.style, rMin = ed.rMin, bridges = GEN.bridges === 'random' ? 'random' : +GEN.bridges;
+    const c = GEN.mod.generateCircuit({ seed, km, style, rMin, bridges });
     if (!c) { flash(`No circuit fits with ${rMin} m corners: lower the Min. corner radius (SHAPE)`, '#ff8a7a', 3); return; }
-    GEN.last = { seed: c.seed, km, style, rMin, len: Math.round(c.len), sig: wpSig(c.wp) };
-    GEN.short = c.len < km * 1000 * 0.94 ? `${(c.len / 1000).toFixed(2)} km: the longest this seed fits in the world with ${rMin} m corners (a lower Min. corner radius makes room for more)` : '';
+    GEN.last = { seed: c.seed, km, style, rMin, bridges, len: Math.round(c.len), sig: wpSig(c.wp) };
+    const nb = n => `${n} bridge${n === 1 ? '' : 's'}`;
+    GEN.short = [c.len < km * 1000 * 0.94 ? `${(c.len / 1000).toFixed(2)} km: the longest this seed fits in the world with ${rMin} m corners (a lower Min. corner radius makes room for more)` : '',
+      c.bridges < c.bridgesAsked ? `${nb(c.bridgesAsked)}${bridges === 'random' ? ' (drawn)' : ''} don't fit at this length with ${rMin} m corners: ${c.bridges} (longer, or a lower Min. corner radius, makes room)` : ''].filter(Boolean).join(' · ');
     genSet({ wp: c.wp, bank: 8, level: 100, even: [], grade: OPT_GRADE, ops: [], base: COURSE.base, road: !!COURSE.road, bridges: [], noBridge: [] });
-    flash(`Circuit ${c.seed}: ${(c.len / 1000).toFixed(2)} km · built when you close the editor (E)`, GEN.short ? '#ffd88a' : '#7dff9a', 3);
+    flash(`Circuit ${c.seed}: ${(c.len / 1000).toFixed(2)} km${c.bridges ? ` · ${nb(c.bridges)}` : ''}${bridges === 'random' ? ' (random)' : ''}`, GEN.short ? '#ffd88a' : '#7dff9a', 3);
   } catch (err) { console.warn('circuit generator:', err); flash('The circuit generator could not load', '#ff8a7a', 3); }
   finally { GEN.busy = false; }
 }
@@ -59,6 +64,7 @@ document.getElementById('gBack').addEventListener('click', e => { e.currentTarge
 gSeed.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); genMake(gSeed.value.trim() || '1'); } });
 gKm.addEventListener('input', genShow);
 edEl.querySelectorAll('[data-gs]').forEach(b => b.addEventListener('click', () => { b.blur(); GEN.style = b.dataset.gs; try { localStorage.setItem('carsim.gen.style', GEN.style); } catch (err) { } genShow(); }));
+edEl.querySelectorAll('[data-gb]').forEach(b => b.addEventListener('click', () => { b.blur(); GEN.bridges = b.dataset.gb; try { localStorage.setItem('carsim.gen.bridges', GEN.bridges); } catch (err) { } genShow(); }));
 sRadEl.addEventListener('input', genShow);
 edEl.addEventListener('keydown', e => { if (e.target.matches('input[type=text], select')) e.stopPropagation(); });   // typing a seed or a name: not the sim's keys
 // MY CIRCUITS: in this browser's storage
@@ -76,12 +82,12 @@ document.getElementById('cSave').addEventListener('click', e => {
   e.currentTarget.blur();
   const a = libRead(), g = GEN.last && GEN.last.sig === wpSig(COURSE.wp) ? GEN.last : null;
   const cur = a.find(x => wpSig(x.course.wp) === wpSig(COURSE.wp));
-  const def = cur ? cur.name : g ? `${g.style[0].toUpperCase() + g.style.slice(1)} ${g.seed}${g.rMin !== 25 ? ` r${g.rMin}` : ''}` : `Course ${a.length + 1}`;
+  const def = cur ? cur.name : g ? `${g.style[0].toUpperCase() + g.style.slice(1)} ${g.seed}${g.rMin !== 25 ? ` r${g.rMin}` : ''}${g.bridges ? ` b${g.bridges === 'random' ? '?' : g.bridges}` : ''}` : `Course ${a.length + 1}`;
   const name = (prompt('Save this course in My circuits as:', def) || '').trim().replace(/\\s+/g, ' ').slice(0, 48);
   if (!name) return;
   const i = a.findIndex(x => x.name === name);
   if (i >= 0 && !confirm(`Replace "${name}" with this course?`)) return;
-  const x = { name, course: courseCopy(COURSE), len: Math.round((ed.track || buildTrack(COURSE.wp)).len), at: Date.now(), ...(g ? { gen: { seed: g.seed, km: g.km, style: g.style, rMin: g.rMin } } : {}) };
+  const x = { name, course: courseCopy(COURSE), len: Math.round((ed.track || buildTrack(COURSE.wp)).len), at: Date.now(), ...(g ? { gen: { seed: g.seed, km: g.km, style: g.style, rMin: g.rMin, ...(g.bridges ? { bridges: g.bridges } : {}) } } : {}) };
   if (i >= 0) a[i] = x; else a.push(x);
   if (libWrite(a)) { cList.value = name; libShow(); flash(`Saved in My circuits: ${name}`, '#7dff9a', 2); }
 });
@@ -92,7 +98,7 @@ document.getElementById('cLoad').addEventListener('click', e => {
   genSet({ wp: c.wp.map(([px, pz]) => [+px, +pz]), bank: bankOf(c.bank), level: levelOf(c.level), even: evenOf(c.even), grade: gradeOf(c.grade), ops: Array.isArray(c.ops) ? c.ops : [], base: COURSE.base, road: !!COURSE.road,
     bridges: Array.isArray(c.bridges) ? c.bridges.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [], noBridge: Array.isArray(c.noBridge) ? c.noBridge.filter(b => b && isFinite(b.x) && isFinite(b.z)).map(b => ({ x: +b.x, z: +b.z })) : [] });
   GEN.last = x.gen ? { ...x.gen, len: x.len, sig: wpSig(c.wp) } : null;
-  flash(`${x.name} · built when you close the editor (E)`, '#7dff9a', 2.5);
+  flash(x.name, '#7dff9a', 2);
 });
 document.getElementById('cDel').addEventListener('click', e => {
   e.currentTarget.blur();
@@ -114,7 +120,8 @@ def hrep(a, b):
 hrep("""  <div class="sec">SHAPE</div>""", """  <div class="sec">GENERATE A CIRCUIT</div>
   <label title="How long the circuit should be (as far as it fits in the world with corners no tighter than the min. radius)">Length <input id="gKm" type="range" min="0.5" max="3.5" step="0.1" value="1.2"> <span id="gKmV" class="val">1.2 km</span></label>
   <div class="tools"><button data-gs="flowing" title="Few, wide bends and long straights">Flowing</button><button data-gs="mixed" title="Straights, hairpins and sweepers">Mixed</button><button data-gs="twisty" title="Hairpin after hairpin, the corners near the min. radius">Twisty</button>
-    <label title="The same seed, length, style and min. radius always give the same circuit">Seed <input id="gSeed" type="text" value="1" size="7" spellcheck="false" autocomplete="off"></label></div>
+    <label title="The same seed, length, style, bridges and min. radius always give the same circuit">Seed <input id="gSeed" type="text" value="1" size="7" spellcheck="false" autocomplete="off"></label></div>
+  <div class="tools" title="How many times the road crosses over itself: a bridge at each crossing, one branch over the other"><span class="lbl">Bridges</span><button data-gb="0">0</button><button data-gb="1">1</button><button data-gb="2">2</button><button data-gb="3">3</button><button data-gb="random" title="A number of bridges (0 to 3) drawn from the seed">Random</button></div>
   <div class="tools"><button id="gNew" title="A circuit from a new random seed">&#127922; New circuit</button><button id="gMake" title="The circuit of this seed (Enter in the seed)">Generate</button><button id="gBack" disabled title="Back to the course before">Back</button></div>
   <div class="hint" id="gNote"></div>
   <div class="sec">MY CIRCUITS</div>
@@ -125,6 +132,7 @@ hrep("""  #editor button:disabled{opacity:.45;cursor:default}""", """  #editor b
   #editor{max-height:calc(100vh - 24px);overflow-y:auto}
   #editor input[type=text]{font:inherit;font-size:12px;width:72px;border:0;border-radius:6px;padding:5px 7px;background:#ffffff22;color:#fff}
   #editor select{font:inherit;font-size:12px;flex:1;min-width:0;border:0;border-radius:6px;padding:5px 6px;background:#3a3a3a;color:#fff}
-  #editor .tools label{margin:0 0 0 auto}""")
+  #editor .tools label{margin:0 0 0 auto}
+  #editor .tools .lbl{font-size:12px;align-self:center;margin-right:4px}""")
 open(hp, 'w').write(h)
 print('circuits patched')

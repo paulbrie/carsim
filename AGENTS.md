@@ -22,7 +22,7 @@ See README.md for the layout. Notes:
   and the sim page's interface (`ui.css` and `ui.js` in
   index.html, the page's title) `ui.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -49,6 +49,13 @@ See README.md for the layout. Notes:
   `countryHeight`, sand with `duneHeight`; the road is always on earth (`COURSE.base` is 'earth' whenever
   `COURSE.road`). `setSurface` rebuilds the world when the landscape or the road changes and says so (true):
   don't rebuild again after it. Anything as wide as the road uses `ROAD_HALF` (6 m), not a number.
+- The course editor builds every change while it is open (#326, `scripts/patches/live.py`, last in the chain): anything that
+  changes the course must set `ed.wpDirty` (or `ed.opsDirty` for terrain strokes alone), and the editor's frame
+  (`liveFrame`) rebuilds the world once it has stayed the same for 0.35 s and no waypoint is held (`ed.drag`) or brush
+  painting; don't rebuild from an edit's own handler. Its messages don't say "built when you close the editor".
+- The circuit generator's bridges (#326, `circuit-gen.js`: `twist`, `crossings`, `bridgesFit`) copy the sim's rules for
+  bridging a crossing (`buildTrack`'s `crossBridge` and `fits`, `RAMP`): change one, change the other, or a generated
+  circuit gets fewer bridges than it says. `bridges: 0` must keep giving the circuits as before (a test compares).
 - Even-grade sections (`COURSE.even`, `scripts/patches/even.py`, last in the chain) are waypoint indices:
   anything that inserts, removes or refits waypoints must keep them pointing at the same stretch (`shiftEven`).
 - The weather is `scripts/patches/weather.py`, after `glass.py` in the re-patch chain (it only touches the

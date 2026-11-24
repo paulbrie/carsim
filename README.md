@@ -400,7 +400,7 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   following the record lap (31.66 s, a driver's).
 - **When to stop:** once it laps, the chart shows each generation's lap time (faster higher, dashed the best),
   and training stops by itself after so many generations without a better lap (30 unless set otherwise, 0:
-  never); the panel says how long since the best. Or a fixed number: each Train runs so many generations, then
+  never: "stop if no better lap in … gens" beside max gens in the Training row, #330); the panel says how long since the best. Or a fixed number: each Train runs so many generations, then
   stops (0: until paused). Whenever training stops by itself (those two, an error, another course or car, the
   world rebuilt, the editor opened, a race starting), the lab's status line says why and at which generation
   until the next Train, and the Generation box reads "stopped", not "paused" (#323: in the full-screen lab the

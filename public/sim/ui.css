@@ -125,6 +125,22 @@ body #vehBtns button { max-width: none; text-align: left; padding: 11px 13px; ba
 body #vehBtns button:hover { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .22); }
 body #vehBtns button.on { background: rgba(255, 122, 51, .16); border-color: var(--ui-human); box-shadow: 0 0 0 1px var(--ui-human) inset; }
 body #menu button small { font: 400 11px/1.35 var(--ui-mono); opacity: 1; color: var(--ui-mut); margin-top: 4px; }
+/* the tracks (#329, scripts/patches/tracks.py): the rooms' maps and the browser's own course, each drawn */
+body #menu #trkSec { margin-bottom: 22px; }
+body #menu .trkGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 8px; }
+body #menu .trkGrid .trkWait { font: 400 12px/1.4 var(--ui-mono); color: var(--ui-mut); padding: 10px 0; }
+body #menu button.trk { display: flex; flex-direction: column; align-items: stretch; text-align: left; padding: 8px 12px 11px; background: rgba(255, 255, 255, .04); border: 1px solid var(--ui-line); line-height: 1.25; color: var(--ui-fg); transition: background .12s, border-color .12s; }
+body #menu button.trk svg { display: block; width: 100%; height: 64px; margin-bottom: 6px; }
+body #menu button.trk svg .bed { fill: none; stroke: currentColor; stroke-opacity: .16; stroke-width: 6; stroke-linejoin: round; }
+body #menu button.trk svg .ln { fill: none; stroke: currentColor; stroke-opacity: .85; stroke-width: 1.6; stroke-linejoin: round; }
+body #menu button.trk svg .st { fill: var(--ui-human); }
+body #menu button.trk.own svg .ln { stroke-dasharray: 4 3; }
+body #menu button.trk:hover:not(:disabled) { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .22); }
+body #menu button.trk.on { background: rgba(255, 122, 51, .16); border-color: var(--ui-human); box-shadow: 0 0 0 1px var(--ui-human) inset; }
+body #menu button.trk:disabled { cursor: progress; }
+body #menu button.trk:disabled:not(.on) { opacity: .6; }
+body.ui-lab #menu button.trk.on { background: rgba(88, 214, 230, .14); border-color: var(--ui-tnn); box-shadow: 0 0 0 1px var(--ui-tnn) inset; }
+body.ui-lab #menu button.trk svg .st { fill: var(--ui-tnn); }
 body #menu .uiGrounds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 body #menu button[data-s] { position: relative; text-align: left; padding: 16px 44px 16px 56px; font-size: 16px; font-weight: 700; color: var(--ui-fg); background: rgba(255, 255, 255, .05) !important; border: 1px solid var(--ui-line); transition: background .12s, border-color .12s, transform .12s; }
 body #menu button[data-s]::before { content: ""; position: absolute; left: 14px; top: 50%; width: 30px; height: 30px; margin-top: -15px; border-radius: 9px; }

@@ -11,7 +11,7 @@ car by car and track by track, is the leaderboard.
 | | |
 |---|---|
 | `/` | the home page, public: the closest duel on the board, the three ways in, the scoreboard, how a network drives and learns, the simulator, the findings (`app/page.tsx`) |
-| `/drive`, `/lab` | the sim alone (`/sim/index.html`), and the same with the TNN lab opening once a car and ground are picked (`?lab=1`); redirects in `next.config.ts`; no account needed |
+| `/drive`, `/lab` | the sim alone (`/sim/index.html`), and the same with the TNN lab opening once a car and ground are picked (`?lab=1`); redirects in `next.config.ts`; no account needed. Its start menu picks the track first: the race rooms' maps or the course of one's own (below) |
 | `/leaderboard`, `/networks` | public: humans vs networks on every track; every saved network drawn from its weights |
 | `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
@@ -31,8 +31,8 @@ car by car and track by track, is the leaderboard.
   `components/track-outline.tsx` draws a track from its waypoints, `components/net-diagram.tsx` a network from its weights.
 - **The sim's own page** has the same look from `public/sim/ui.css` and `public/sim/ui.js` (`scripts/patches/ui.py`, last
   in the chain, only adds them to `index.html`): the rail of buttons under the minimap (stand-ins for the sim's own
-  buttons, each with its key), the keys sheet (H), the start menu's frame and **Car and ground** to open it again, the
-  way home. Nothing in `engine.js` depends on them.
+  buttons, each with its key), the keys sheet (H), the start menu's frame and **Track, car and ground** to open it again,
+  the way home. Nothing in `engine.js` depends on them.
 
 - **Next.js 16** (App Router) + **Tailwind 4** + **shadcn/ui** (radix-nova) for the pages
 - **UI SDK** (`@ui-sdk/react`) for what shadcn lacks: the paint colour picker and the segmented controls
@@ -444,6 +444,12 @@ guests never are). Only the super admin can create, edit and delete maps; anyone
   the last one tried, for the editor to open on).
 - **Saved** in the database (table `maps`, `lib/maps/store.mjs`), through
   `/api/maps` (GET for anyone signed in; POST, PUT, DELETE for the super admin, 403 for others).
+- **Driving a map alone** (#329, `scripts/patches/tracks.py`): the sim alone (`/drive`, `/lab`) opens on a menu whose
+  first row is every map, drawn, and **Your course** (the editor's or the generator's, kept aside in this browser,
+  `carsim.course.mine`, while it drives a map). A pick is built at once on the ground of the moment, and stays the
+  sim's course after a reload; a browser that never had a course of its own starts on the rooms' figure-8. From
+  `/api/tracks` (the list: names, outlines, lengths, course keys) and `/api/tracks/<id>` (one course), public and
+  read-only: nothing about who edited them. Best laps and trainings go by the course, so each map keeps its own.
 - **Maps in git**: `scripts/maps/*.json`, courses as the editor's *Export course* writes them, added to
   a server's maps with `node scripts/maps/add.mjs scripts/maps/<map>.json` (named after the file, or
   `--name`; a map of that name already there is left alone, `--replace` saves the file's course over
@@ -474,7 +480,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Eight of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
@@ -626,7 +632,8 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `scripts/patches/autopilot.py` | the autopilot: a tiny network trained in the browser to drive a lap (I) |
 | `scripts/patches/pause.py` | pausing the drive (P, the Pause button); tire pressure on Shift+P |
 | `scripts/patches/contacts.py` | car against car (`ccSolve`: the bots, the other players' cars, the rival) |
-| `scripts/patches/live.py` | the course editor builds every change while it is open; faster earthworks and distance to the course (last in the chain) |
+| `scripts/patches/live.py` | the course editor builds every change while it is open; faster earthworks and distance to the course |
+| `scripts/patches/tracks.py`, `app/api/tracks` | driving a map alone: the start menu's tracks (last in the chain) |
 | `public/sim/circuit-gen.js`, `scripts/patches/circuits.py`, `scripts/maps/generate.mjs` | the circuit generator (the editor's GENERATE A CIRCUIT, MY CIRCUITS; course files from node; tested in `test/circuit-gen.test.mjs`) |
 | `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |
 

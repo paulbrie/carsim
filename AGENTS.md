@@ -20,9 +20,9 @@ See README.md for the layout. Notes:
   the Claude bridge's loader
   (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, the wheels' spin solved implicitly (`wheelSpin`, #327) `tires.py`,
   and the sim page's interface (`ui.css` and `ui.js` in
-  index.html, the page's title) `ui.py`, last in the chain
+  index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -49,7 +49,7 @@ See README.md for the layout. Notes:
   `countryHeight`, sand with `duneHeight`; the road is always on earth (`COURSE.base` is 'earth' whenever
   `COURSE.road`). `setSurface` rebuilds the world when the landscape or the road changes and says so (true):
   don't rebuild again after it. Anything as wide as the road uses `ROAD_HALF` (6 m), not a number.
-- The course editor builds every change while it is open (#326, `scripts/patches/live.py`, last in the chain): anything that
+- The course editor builds every change while it is open (#326, `scripts/patches/live.py`): anything that
   changes the course must set `ed.wpDirty` (or `ed.opsDirty` for terrain strokes alone), and the editor's frame
   (`liveFrame`) rebuilds the world once it has stayed the same for 0.35 s and no waypoint is held (`ed.drag`) or brush
   painting; don't rebuild from an edit's own handler. Its messages don't say "built when you close the editor".
@@ -103,6 +103,10 @@ See README.md for the layout. Notes:
   anything a try depends on must reach the workers: the course, ground and car come from the localStorage copy they
   boot with (`aiPoolSpawn`), the network's shape and the car's settings from `aiPoolSetup`, the rest of `AI_CFG` /
   `AI_PEN` and the rivals with each job (`aiPoolPump`). A worker is used only when its ground hashes as the tab's.
+- Driving a map alone (#329, `tracks.py`): the sim alone keeps one course (`sandbuggy.course`) and knows which map it is
+  by `courseKey()` (and `carsim.track`); the browser's own course waits in `carsim.course.mine`. Its keys are not
+  `sandbuggy.*` (the autopilot's workers boot with a copy of those). `/api/tracks` is public: send nothing more there
+  than the sim needs (no `updatedBy`).
 - Training that stops by itself must say why (#323, `scripts/patches/lab-stops.py`): call `aiStopped(why)`, or pass a
   reason to `aiHalt(drive, why)`, not a bare `aiTrain(false)` (that is for the user's own Pause). A flash alone isn't
   enough: the full-screen lab covers the sim. The training is driven by animation frames, and by `aiBgKick`'s message loop

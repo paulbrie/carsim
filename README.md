@@ -131,6 +131,15 @@ cabin gives less than half as much; the detailed models' panels hang loose, then
   (a 14 m/s corner hit: ~15° off line in 4 s with the wheel straight). "Frame bent · it pulls right"
   on the hit; the damage panel draws the four wheels turned by their toe, orange when out of line.
 - **Bots** crumple where you hit them too; a restart (T) repairs everyone.
+- **Car against car** (#322, `scripts/patches/contacts.py`: `ccSolve`, for the bots, the other players and the
+  autopilot's rival alike): each car is a capsule on the ground (its box's length, its half width round the ends),
+  the impulse goes in at the point where they touch, with both cars' masses and yaw inertias, so a hit off the
+  centre turns them (a nudge on the rear quarter spins the car hit), with a little bounce (0.35 in a bump, 0.08 in a
+  hard hit: the bodies crumple) and the bodies' scrape along each other (friction 0.3). Momentum and angular
+  momentum are kept, energy only lost. A bot hit is knocked along its line (its speed), across it (it slides till its
+  tires stop it, 7 m/s²) and turned off it (it catches it in about a second); before, it was on rails: we bounced off
+  it as off a wall, and one hit from behind slowed down (a parked RS 6 hit at 34 km/h stopped a Supra dead and didn't
+  move; now the Supra goes on at 3.6 m/s and the RS 6 at 4.3).
 - **In a race** each hit (`[x, y, z, push direction, speed, kind]`, body space) goes to the room and is
   replayed on that car in the others' sims, so everyone sees every car's dents; the server keeps
   each player's hits until they repair (a new race, a wreck reset, a reload), so a late joiner sees
@@ -281,7 +290,7 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   `aiRvRecord`) and doesn't react: ours learns to keep off it, follow and pass. **A car** is a second car with physics
   of its own: the sim's physics drives one car (`car`, with `VEH`, `ENG`, `PRESSURES`, the box, `input` and the frame
   vectors), so the rival is a whole car's state kept aside and swapped in for its steps (`aiRvSwap`); both see each
-  other, and they push and dent each other (`aiCarContact`: the bots' two circles a car, both pushed by their masses).
+  other, and they push and dent each other (`aiCarContact`: `ccSolve`, as the bots, both pushed by their masses).
   The **rival inputs** (rival ahead, behind, side, closing: all 0 beyond 30 m along the line) let the network see
   it. Training: a share of generations (`rivalShare`, half) start their tries with it ahead and slower (to catch),
   alongside, or close behind (`aiScenario`); each impact costs **contact** metres per m/s, the car behind taking 3/4
@@ -448,7 +457,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x`.
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x`.
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Seven of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
@@ -468,8 +477,15 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   let go and it eases back behind after 0.7 s. The orbit (C) and editor cameras keep their own mouse controls.
   Opened without `?mp=1`, `/sim/index.html` is the single-player sim as it was (editor, bots, replays).
 - **Physics run in each browser.** A client reports its car 20 times a second; the server relays
-  the positions to the room; the others draw it 120 ms in the past, interpolated, and push against
-  it like the sim's bots (each side moves only its own car), and draw its skid marks under its wheels. Laps and the finish come from the
+  the positions to the room; the others interpolate it 120 ms in the past, then carry it on to where it is now
+  (#322: along its heading at its speed, turning at its rate, with its slide, over those 120 ms and the trip here,
+  `MP.lag`: how long our own state takes to come back from the server, which echoes it), draw it there, push
+  against it like the sim's bots (each side moves only its own car, and keeps the push it gave the other,
+  `pe.kicks`, till the other's own reply to it arrives) and draw its skid marks under its wheels. Before, a car was
+  drawn and touched where it had been ~0.2 s before (~5 m at 90 km/h): a car rear-ending another bounced off a car
+  that wasn't there yet, 8 m short, while the one ahead never felt it, and a car swerving into another drove
+  through it, the other shoved a moment later by nothing (both in a test of two sims with 70 ms between them; now
+  both feel the same touch in the same frame, drawn within ~0.3–0.7 m of where the other really is). Laps and the finish come from the
   sim's own gate timing; the server keeps the order and the clock (a finish time far from the
   server's own measure is replaced by it), adds 5 s per gate missed, and ends the race when all
   have finished or left, or 60 s after the winner.
@@ -580,12 +596,14 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `public/sim/` | the engine |
 | `scripts/patches/autopilot.py` | the autopilot: a tiny network trained in the browser to drive a lap (I) |
 | `scripts/patches/pause.py` | pausing the drive (P, the Pause button); tire pressure on Shift+P |
+| `scripts/patches/contacts.py` | car against car (`ccSolve`: the bots, the other players' cars, the rival) |
 | `public/sim/circuit-gen.js`, `scripts/patches/circuits.py`, `scripts/maps/generate.mjs` | the circuit generator (the editor's GENERATE A CIRCUIT, MY CIRCUITS; course files from node; tested in `test/circuit-gen.test.mjs`) |
 | `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |
 
 ## Not yet
 
-- Car-to-car contact is approximate (each side pushes only itself, against a position 120 ms old).
+- Car-to-car contact in a race is still each side's own: both see the touch, and each pushes only its own car,
+  so with a lot of lag (or a sudden swerve the other side can't predict) they may see it a little differently.
 - The single-player sim (`/sim/index.html`) still has its own editor, saved in that browser only;
   its Export can be imported as a map by the super admin.
 - Rooms are in memory only: one replica, and a restart clears them.

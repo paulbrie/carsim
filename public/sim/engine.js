@@ -5093,7 +5093,7 @@ function setBots(n) {
   for (let i = 0; i < BOTS.n; i++) {
     const key = pool[i % pool.length], Vb = makeRoadVehicle(key); Vb.vis.visible = true; setPaint(Vb, BOT_PAINT[i], false);
     BOTS.list.push({ V: Vb, i, name: ROAD_CARS[key].short || ROAD_CARS[key].name, s: 0, dist: 0, lat: 0, home: 0, latT: 0, v: 0, y: 0, yaw: 0, pitch: 0, roll: 0, spin: 0, steer: 0, skill: BOT_SKILL[i] * (0.99 + Math.random() * 0.02),
-      pos: new THREE.Vector3(), q: new THREE.Quaternion(), fx: 0, fz: 1, bump: 0, col: '#' + BOT_PAINT[i].toString(16).padStart(6, '0') });
+      pos: new THREE.Vector3(), q: new THREE.Quaternion(), fx: 0, fz: 1, hx: 0, hz: 1, lv: 0, yo: 0, wy: 0, bump: 0, col: '#' + BOT_PAINT[i].toString(16).padStart(6, '0') });
   }
   restartRun();
 }
@@ -5102,7 +5102,7 @@ function gridBots() {
   BOTS.pIdx = -1; BOTS.order = [];
   if (!BOTS.list.length) { BOTS.hold = 0; return; }
   const Pt = botPath(); BOTS.hold = 3.4; BOTS.cd = -1; BOTS.lap0 = lap.lapNo;
-  BOTS.list.forEach((b, i) => { const back = i < 2 ? -6 : -22; b.home = (i % 2 ? 1 : -1) * 1.9; b.lat = b.latT = b.home; b.dist = back; b.s = ((Pt.s0 + back) % Pt.len + Pt.len) % Pt.len; b.v = 0; b.bump = 0; b.y = 0; poseBot(b, Pt, 0, true); });
+  BOTS.list.forEach((b, i) => { const back = i < 2 ? -6 : -22; b.home = (i % 2 ? 1 : -1) * 1.9; b.lat = b.latT = b.home; b.dist = back; b.s = ((Pt.s0 + back) % Pt.len + Pt.len) % Pt.len; b.v = 0; b.bump = 0; b.y = 0; b.lv = b.yo = b.wy = 0; poseBot(b, Pt, 0, true); });
 }
 const bE = new THREE.Euler(0, 0, 0, 'YXZ');
 function poseBot(b, Pt, dt, snap) {
@@ -5116,13 +5116,86 @@ function poseBot(b, Pt, dt, snap) {
   b.y = snap ? g : lerp(b.y, g, 1 - Math.exp(-14 * dt));
   const W0 = b.V.wheels[0], tRest = b.V.REST - b.V.mass * 9.81 / 4 / b.V.K, lift = b.V.R - W0.hp.y + tRest;
   b.pitch = lerp(b.pitch, Math.atan2(gR - gF, 2 * hl), e); b.roll = lerp(b.roll, Math.atan2(gL - gRt, 2 * hw) + clamp(k * b.v * b.v * 0.004, -0.06, 0.06), e);
-  b.yaw = Math.atan2(fx, fz);
+  b.yaw = Math.atan2(fx, fz) + b.yo; b.hx = Math.sin(b.yaw); b.hz = Math.cos(b.yaw);     // (yo: knocked off its line's heading)
   b.pos.set(x, b.y + lift, z); b.q.setFromEuler(bE.set(b.pitch, b.yaw, b.roll));
   b.steer = lerp(b.steer, clamp(Math.atan(S.L * 0.6 * k), -0.5, 0.5), e); b.spin += b.v / b.V.R * dt; b.tRest = tRest;
 }
 function drawBot(b) {
   const G = b.V.vis; G.position.copy(b.pos); G.quaternion.copy(b.q);
   for (const W of b.V.wheels) { W.holder.position.set(W.hp.x, W.hp.y - (b.tRest ?? b.V.REST), W.hp.z); W.holder.rotation.set(0, W.front ? b.steer : 0, 0); W.spinner.rotation.x = b.spin; }
+}
+/* Car against car (#322), for the bots, the other players' cars and the autopilot's rival alike. Each car is a capsule on
+   the ground: a segment along its axis (its box's length less its half width at each end) with its half width round it.
+   One contact a pair, in the middle of where the capsules overlap: the impulse there from both cars' masses and yaw
+   inertias (a hit off the centre turns them), a little bounce (less the harder the hit: the bodies crumple) and the
+   bodies' scrape along each other (friction, up to CC_MU of the push); and the overlap pushed out by their masses.
+   ccBody fills in a car (a mass of 0: it doesn't move, the replayed rival); ccSolve changes both bodies' velocities and
+   yaw rates, and their moves out of the overlap (dx, dz), and returns the contact (CC.hit: where, which way it pushes
+   A (n, from B to A), the closing speed vn at that point, the impulse J) or null when they don't touch. */
+const CC = { a: {}, b: {}, hit: {} }, CC_E = [0.35, 0.08], CC_MU = 0.3;
+function ccBody(o, x, z, fx, fz, hw, zF, zR, vx, vz, wy, m, Iy) {
+  const r = Math.max(0.9, hw), pc = (zF + zR) / 2, fl = Math.hypot(fx, fz) || 1;
+  o.x = x; o.z = z; o.fx = fx / fl; o.fz = fz / fl; o.r = r; o.hl = Math.max(0.3, (zF - zR) / 2 - r);
+  o.cx = x + o.fx * pc; o.cz = z + o.fz * pc;
+  o.vx = vx; o.vz = vz; o.wy = wy; o.im = m > 0 ? 1 / m : 0; o.iI = m > 0 && Iy > 0 ? 1 / Iy : 0; o.dx = 0; o.dz = 0;
+  return o;
+}
+// the parameter (-1..1) of the point of B's axis nearest to (px, pz), and how far A's axis point s is from B's axis
+const ccOn = (B, px, pz) => clamp(((px - B.cx) * B.fx + (pz - B.cz) * B.fz) / B.hl, -1, 1);
+function ccGap(A, B, s) { const px = A.cx + A.fx * A.hl * s, pz = A.cz + A.fz * A.hl * s, t = ccOn(B, px, pz); return Math.hypot(px - B.cx - B.fx * B.hl * t, pz - B.cz - B.fz * B.hl * t); }
+function ccSolve(A, B) {
+  const reach = A.r + B.r - 0.1;
+  if (Math.hypot(A.cx - B.cx, A.cz - B.cz) > A.hl + B.hl + reach) return null;
+  // the nearest points of the two axes (segment against segment, parameters -1..1)
+  const ax = A.fx * A.hl, az = A.fz * A.hl, bx = B.fx * B.hl, bz = B.fz * B.hl, rx = A.cx - B.cx, rz = A.cz - B.cz;
+  const a = ax * ax + az * az, e = bx * bx + bz * bz, b = ax * bx + az * bz, c = ax * rx + az * rz, f = bx * rx + bz * rz, den = a * e - b * b;
+  let s = den > 1e-9 * a * e ? clamp((b * f - c * e) / den, -1, 1) : 0, t = (b * s + f) / e;
+  if (t < -1) { t = -1; s = clamp((-b - c) / a, -1, 1); } else if (t > 1) { t = 1; s = clamp((b - c) / a, -1, 1); }
+  let dx = rx + ax * s - bx * t, dz = rz + az * s - bz * t, d = Math.hypot(dx, dz);
+  if (d >= reach) return null;
+  let nx, nz;
+  if (d > 1e-4) { nx = dx / d; nz = dz / d; }
+  else { const l = Math.hypot(rx, rz); if (l > 1e-4) { nx = rx / l; nz = rz / l; } else { nx = -B.fz; nz = B.fx; } }
+  // where along A they touch: the middle of the stretch of A's axis within reach of B's (side by side: their overlap)
+  let lo = s, hi = s;
+  if (ccGap(A, B, -1) < reach) lo = -1; else { let u = -1; for (let k = 0; k < 8; k++) { const m = (u + lo) / 2; if (ccGap(A, B, m) < reach) lo = m; else u = m; } }
+  if (ccGap(A, B, 1) < reach) hi = 1; else { let u = 1; for (let k = 0; k < 8; k++) { const m = (u + hi) / 2; if (ccGap(A, B, m) < reach) hi = m; else u = m; } }
+  const sm = (lo + hi) / 2, pax = A.cx + ax * sm, paz = A.cz + az * sm, tm = ccOn(B, pax, paz), pbx = B.cx + bx * tm, pbz = B.cz + bz * tm;
+  const cx = (pax - nx * A.r + pbx + nx * B.r) / 2, cz = (paz - nz * A.r + pbz + nz * B.r) / 2;
+  const rax = cx - A.x, raz = cz - A.z, rbx = cx - B.x, rbz = cz - B.z, ims = A.im + B.im;
+  const H = CC.hit; H.nx = nx; H.nz = nz; H.cx = cx; H.cz = cz; H.pen = reach - d; H.J = 0; H.Jt = 0;
+  // out of the overlap, by the masses (a little at a time: the impulse below parts them)
+  if (ims > 0) { const p = Math.min(Math.max(0, H.pen - 0.02) * 0.8, 0.25) / ims; A.dx = nx * p * A.im; A.dz = nz * p * A.im; B.dx = -nx * p * B.im; B.dz = -nz * p * B.im; }
+  const vn = H.vn = -((A.vx + A.wy * raz - B.vx - B.wy * rbz) * nx + (A.vz - A.wy * rax - B.vz + B.wy * rbx) * nz);
+  if (vn <= 0 || ims <= 0) return H;
+  const rna = raz * nx - rax * nz, rnb = rbz * nx - rbx * nz;
+  const kn = ims + rna * rna * A.iI + rnb * rnb * B.iI, J = H.J = (1 + lerp(CC_E[0], CC_E[1], sstep(1, 8, vn))) * vn / kn;
+  ccPush(A, nx * J, nz * J, rax, raz); ccPush(B, -nx * J, -nz * J, rbx, rbz);
+  // the scrape: what is left of their sliding along each other, slowed by friction
+  const tx = -nz, tz = nx, vt = (A.vx + A.wy * raz - B.vx - B.wy * rbz) * tx + (A.vz - A.wy * rax - B.vz + B.wy * rbx) * tz;
+  const rta = raz * tx - rax * tz, rtb = rbz * tx - rbx * tz;
+  const Jt = H.Jt = clamp(-vt / (ims + rta * rta * A.iI + rtb * rtb * B.iI), -CC_MU * J, CC_MU * J);
+  ccPush(A, tx * Jt, tz * Jt, rax, raz); ccPush(B, -tx * Jt, -tz * Jt, rbx, rbz);
+  // the scrape's turn can close them again: no more than to stop that
+  const v2 = -((A.vx + A.wy * raz - B.vx - B.wy * rbz) * nx + (A.vz - A.wy * rax - B.vz + B.wy * rbx) * nz);
+  if (v2 > 0) { const J2 = v2 / kn; ccPush(A, nx * J2, nz * J2, rax, raz); ccPush(B, -nx * J2, -nz * J2, rbx, rbz); H.J += J2; }
+  return H;
+}
+// an impulse (jx, jz) at r from a body's centre: its velocity and its yaw rate
+function ccPush(o, jx, jz, rx, rz) { o.vx += jx * o.im; o.vz += jz * o.im; o.wy += (rz * jx - rx * jz) * o.iI; }
+// our car as a body, and the solved one put back on it
+const ccOurs = o => ccBody(o, car.pos.x, car.pos.z, fwd.x, fwd.z, CAR_HW, CAR_ZF, CAR_ZR, car.vel.x, car.vel.z, car.w.y, car.mass, car.I.y);
+function ccOursBack(o) { car.vel.x = o.vx; car.vel.z = o.vz; car.w.y = o.wy; car.pos.x += o.dx; car.pos.z += o.dz; }
+// our car struck at the contact H: its dents, the damage, the crash's sound and a note; the zone, or null if not hard enough
+const ccQi = new THREE.Quaternion(), ccN = new THREE.Vector3(), ccPt = new THREE.Vector3();
+function ccOurHit(H, who) {
+  if (H.vn <= 1.5 || car.grace > 0) return null;
+  ccQi.copy(car.q).invert(); ccN.set(H.nx, 0, H.nz).applyQuaternion(ccQi); ccPt.set(H.cx - car.pos.x, 0, H.cz - car.pos.z).applyQuaternion(ccQi); ccPt.y = 0.45;
+  const zone = Math.abs(ccN.z) >= Math.abs(ccN.x) ? (ccN.z < 0 ? 'front' : 'rear') : (ccN.x < 0 ? 'left' : 'right');
+  addDamage(zone, (H.vn - 1.5) ** 2 * 0.012); carHit(ccPt, ccN, H.vn, HIT.ball);
+  audio?.node.port.postMessage({ crash: Math.min(1, H.vn * 0.1) });
+  if (hitCooldown <= 0 && !car.wrecked) { hitCooldown = 0.6; flash(`Contact with ${who} · ${zone} damage ${Math.round(car.dmg[zone] * 100)}%`, '#ff9a6a', 1.8); }
+  return zone;
 }
 const bV = new THREE.Vector3(), bN = new THREE.Vector3(), bQi = new THREE.Quaternion();
 function playerOnPath(Pt) {
@@ -5161,35 +5234,30 @@ function updateBots(dt) {
     const acc = q.acc * (1 - 0.75 * b.v / q.top) * (0.9 + 0.1 * b.skill);
     b.v += clamp(vt - b.v, -q.brk * 1.15 * dt, acc * dt); if (b.v < 0) b.v = 0;
     b.lat += clamp(b.latT - b.lat, -(0.5 + b.v * 0.08) * dt, (0.5 + b.v * 0.08) * dt);
+    // knocked (#322): sliding across its line till the tires stop it, turned till it catches it
+    if (b.lv || b.yo || b.wy) {
+      b.lat = clamp(b.lat + b.lv * dt, -BOT_LW - 2, BOT_LW + 2); b.lv -= Math.sign(b.lv) * Math.min(Math.abs(b.lv), 7 * dt);
+      b.wy += (-b.yo * 9 - b.wy * 5) * dt; b.yo = clamp(b.yo + b.wy * dt, -0.9, 0.9);
+      if (Math.abs(b.lv) + Math.abs(b.yo) + Math.abs(b.wy) < 1e-3) b.lv = b.yo = b.wy = 0;
+    }
     const d = b.v * dt; b.s = (b.s + d) % len; b.dist += d;
     poseBot(b, Pt, dt, false);
-    // contact with the player's car: two circles per car
-    const pf = fwd, hlP = Math.max(0.6, (CAR_ZF - CAR_ZR) / 2 - 0.9), hlB = Math.max(0.6, ROAD_CARS[b.V.key].L / 2 - 0.9), pc = (CAR_ZF + CAR_ZR) / 2, rr = Math.max(0.9, CAR_HW);
-    let best = null;
-    for (const sp of [-1, 1]) for (const sb of [-1, 1]) {
-      const dx = car.pos.x + pf.x * (pc + sp * hlP) - (b.pos.x + b.fx * sb * hlB), dz = car.pos.z + pf.z * (pc + sp * hlP) - (b.pos.z + b.fz * sb * hlB), dd = Math.hypot(dx, dz);
-      if (dd < rr * 2 - 0.15 && (!best || dd < best.dd)) best = { dd, dx, dz, sp, sb };
-    }
-    if (best && Math.abs(car.pos.y - b.pos.y) < 1.6 && !rp.on) {
-      const nl = best.dd || 1e-3, nx = best.dx / nl, nz = best.dz / nl, pen = rr * 2 - 0.15 - best.dd;
-      const vn = -((car.vel.x - b.fx * b.v) * nx + (car.vel.z - b.fz * b.v) * nz);
-      car.pos.x += nx * pen * 0.7; car.pos.z += nz * pen * 0.7; b.lat = clamp(b.lat - (nx * -b.fz + nz * b.fx) * pen * 0.3, -BOT_LW - 1, BOT_LW + 1);
-      if (vn > 0) {
-        const mp = VEH.mass, mb = b.V.mass, j = vn * 1.25 * mb / (mp + mb);
-        car.vel.x += nx * j; car.vel.z += nz * j;
-        car.w.y += ((pf.x * (pc + best.sp * hlP)) * nz - (pf.z * (pc + best.sp * hlP)) * nx) * -j * 0.12;
-        b.v = Math.max(0, b.v - (nx * b.fx + nz * b.fz) * -vn * 1.25 * mp / (mp + mb)); b.bump = 0.5;
-        if (vn > 1.5 && car.grace <= 0) {
-          bQi.copy(car.q).invert(); bN.set(nx, 0, nz).applyQuaternion(bQi); bV.set(-bN.x * CAR_HW, 0.45, pc + best.sp * hlP - bN.z * 0.9);
-          const zone = Math.abs(bN.z) >= Math.abs(bN.x) ? (bN.z < 0 ? 'front' : 'rear') : (bN.x < 0 ? 'left' : 'right');
-          addDamage(zone, (vn - 1.5) ** 2 * 0.012); carHit(bV, bN, vn, HIT.ball);
-          // and the bot's: the same contact seen from its side (where our car met it, pushing into it)
+    // contact with our car (#322: ccSolve): the bot's push along its line goes to its speed, across it to lv, its turn to wy
+    if (Math.abs(car.pos.y - b.pos.y) < 1.6 && !rp.on) {
+      const S = b.V, npx = -b.fz, npz = b.fx, vx0 = b.fx * b.v + npx * b.lv, vz0 = b.fz * b.v + npz * b.lv;
+      const A = ccOurs(CC.a), O = ccBody(CC.b, b.pos.x, b.pos.z, b.hx, b.hz, S.box[0], S.box[1], S.box[2], vx0, vz0, b.wy, S.mass, S.I.y), H = ccSolve(A, O);
+      if (H) {
+        ccOursBack(A);
+        const dvx = O.vx - vx0, dvz = O.vz - vz0;
+        b.v = Math.max(0, b.v + dvx * b.fx + dvz * b.fz); b.lv += dvx * npx + dvz * npz; b.wy = O.wy;
+        b.s = ((b.s + O.dx * b.fx + O.dz * b.fz) % len + len) % len; b.lat = clamp(b.lat + O.dx * npx + O.dz * npz, -BOT_LW - 2, BOT_LW + 2);
+        if (H.J > 0) b.bump = 0.5;
+        if (ccOurHit(H, `the ${b.name}`)) {
+          // and the bot's dent: the same contact seen from its side (pushing into it)
           bQi.copy(b.q).invert();
-          bV.set(b.pos.x + b.fx * best.sb * hlB + nx * rr, b.pos.y, b.pos.z + b.fz * best.sb * hlB + nz * rr).sub(b.pos).applyQuaternion(bQi); bV.y = 0.5;
-          bN.set(-nx, 0, -nz).applyQuaternion(bQi);
-          bodyHit(b.V, [rd2(bV.x), rd2(bV.y), rd2(bV.z), rd3(bN.x), rd3(bN.y), rd3(bN.z), rd2(vn), HIT.ball], v3.set(b.fx * b.v, 0, b.fz * b.v));
-          audio?.node.port.postMessage({ crash: Math.min(1, vn * 0.1) });
-          if (hitCooldown <= 0 && !car.wrecked) { hitCooldown = 0.6; flash(`Contact with the ${b.name} · ${zone} damage ${Math.round(car.dmg[zone] * 100)}%`, '#ff9a6a', 1.8); }
+          bV.set(H.cx - b.pos.x, 0, H.cz - b.pos.z).applyQuaternion(bQi); bV.y = 0.5;
+          bN.set(-H.nx, 0, -H.nz).applyQuaternion(bQi);
+          bodyHit(b.V, [rd2(bV.x), rd2(bV.y), rd2(bV.z), rd3(bN.x), rd3(bN.y), rd3(bN.z), rd2(H.vn), HIT.ball], v3.set(O.vx, 0, O.vz));
         }
       }
     }
@@ -5431,10 +5499,12 @@ addEventListener('resize', () => {
    With ?edit=1 (the super admin's map editor, app/maps/[id]) the page opens on the course editor,
    with the map from window.__simCourse, nothing saved in this browser:
      in:  get {id}            out: ready · course {id, course, sig} (the answer to get) · sig {sig} (when the course changes) · save (Ctrl/Cmd+S)
-   Other cars are drawn 120 ms behind their latest position, interpolated, and pushed against like
-   the bots (each side moves only its own car).
+   Other cars are interpolated 120 ms behind their latest position, carried on from there to where they are now (by
+   their speed and turn, over that and the trip here: MP.lag) and pushed against like the bots (ccSolve; each side
+   moves only its own car).
    ===================================================================== */
 const PEER_DELAY = 120, PEER_STALE = 3000;
+Object.assign(MP, { lag: 60, sent: [] });           // lag: ms from our state sent to it back in a snap (the others' states are as old)
 function mpPost(msg) { if ((MP.on || MP.edit) && parent !== window) parent.postMessage(msg, location.origin); }
 const hexOf = s => typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s) ? parseInt(s.slice(1), 16) : null;
 
@@ -5511,7 +5581,7 @@ function mpMakeVehicle(key) {
     if (o.userData.sbSpin != null) wheels[o.userData.sbSpin].spinner = o;
   });
   vis.visible = true; scene.add(vis);
-  return { key: 'buggy', vis, wheels, R: BUGGY.R, REST: BUGGY.REST, K: BUGGY.K, mass: BUGGY.mass, box: BUGGY.box, roofY: BUGGY.roofY, paintMats: [...copies.values()], ownMats: [...copies.values()] };
+  return { key: 'buggy', vis, wheels, R: BUGGY.R, REST: BUGGY.REST, K: BUGGY.K, mass: BUGGY.mass, I: BUGGY.I, box: BUGGY.box, roofY: BUGGY.roofY, paintMats: [...copies.values()], ownMats: [...copies.values()] };
 }
 
 function mpLabel(text, col) {
@@ -5545,7 +5615,8 @@ function mpRoster(players) {
     if (pe && pe.key !== pl.vehicle) { mpDropPeer(pe); pe = null; }
     if (!pe) {
       const V = mpMakeVehicle(pl.vehicle); V.vis.visible = false;
-      pe = { id: pl.id, key: V.key === 'buggy' ? 'buggy' : pl.vehicle, V, buf: [], pos: new THREE.Vector3(), q: new THREE.Quaternion(), fx: 0, fz: 1, v: 0, spin: 0, steer: 0, shown: false, label: null, name: '', paint: undefined, col: '#fff' };
+      pe = { id: pl.id, key: V.key === 'buggy' ? 'buggy' : pl.vehicle, V, buf: [], pos: new THREE.Vector3(), q: new THREE.Quaternion(), fx: 0, fz: 1, v: 0, spin: 0, steer: 0,
+        sx: 0, sz: 0, wy: 0, vx: 0, vz: 0, kicks: [], shown: false, label: null, name: '', paint: undefined, col: '#fff' };
       if (pe.key !== pl.vehicle) pe.key = pl.vehicle;
       MP.peers.set(pl.id, pe);
       const p0 = pe; V.onModel = () => mpReplayHits(p0);              // a detailed model arriving: the hits so far go onto it
@@ -5568,9 +5639,20 @@ function mpRoster(players) {
 function mpSnap(cars) {
   const now = performance.now();
   for (const c of cars) {
+    if (c[0] === MP.myId) { mpLagEcho(c, now); continue; }
     const pe = MP.peers.get(c[0]); if (!pe) continue;
     pe.buf.push({ t: now, p: [c[1], c[2], c[3]], q: [c[4], c[5], c[6], c[7]], v: c[8], st: c[9], w: c[10], sk: c[11] || 0 });
     if (pe.buf.length > 40) pe.buf.splice(0, pe.buf.length - 40);
+  }
+}
+
+// our own state back from the server: the time since we sent it (the last of the same sends: not while standing still)
+function mpLagEcho(c, now) {
+  const S = MP.sent;
+  for (let i = S.length - 1; i > 0; i--) {
+    if (S[i].x !== c[1] || S[i].y !== c[2] || S[i].z !== c[3]) continue;
+    if (S[i - 1].x === c[1] && S[i - 1].y === c[2] && S[i - 1].z === c[3]) return;
+    MP.lag = lerp(MP.lag, clamp(now - S[i].t, 0, 500), 0.1); return;
   }
 }
 
@@ -5929,8 +6011,11 @@ function mpFrame(dt) {
     else if (cd !== MP.cd && cd <= 3) { MP.cd = cd; flash(String(cd), '#fff', 0.9); }
   }
   if (MP.finishFlash) { flash(MP.finishFlash, '#7dff9a', 5); MP.finishFlash = null; }
-  // the others, a little in the past
-  const rt = now - PEER_DELAY;
+  // the others, a little in the past, then carried on to now (#322): along their heading at their speed and turning at
+  // their rate (its slide across that and the turn from their last states, smoothed), so they are drawn and touched
+  // where they are, not where they were 0.2 s ago; and with the pushes we gave them (mpContacts: pe.kicks) till their own
+  // reply to those comes back (lead after the push)
+  const rt = now - PEER_DELAY, lead = (PEER_DELAY + MP.lag) / 1000, ks = 1 - Math.exp(-dt / 0.12);
   for (const pe of MP.peers.values()) {
     const B = pe.buf, V = pe.V;
     const show = B.length > 0 && now - B[B.length - 1].t < PEER_STALE && !(pe.spectator && !MP.spectator && MP.phase !== 'lobby' && MP.phase !== 'results');
@@ -5941,7 +6026,24 @@ function mpFrame(dt) {
     pe.pos.set(lerp(A.p[0], C.p[0], f), lerp(A.p[1], C.p[1], f), lerp(A.p[2], C.p[2], f));
     pe.q.copy(mpQa.fromArray(A.q)).slerp(mpQb.fromArray(C.q), Math.min(f, 1));
     pe.v = lerp(A.v, C.v, Math.min(f, 1)); pe.steer = lerp(A.st, C.st, Math.min(f, 1)); pe.spin += (C.w || 0) * dt;
+    if (C !== A && C.t - A.t > 0.025e3) {
+      const dts = (C.t - A.t) / 1000, qa = mpQa.fromArray(A.q), qc = mpQb.fromArray(C.q);
+      mpV.set(0, 0, 1).applyQuaternion(qa); const ya = Math.atan2(mpV.x, mpV.z); mpV.set(0, 0, 1).applyQuaternion(qc); const yc = Math.atan2(mpV.x, mpV.z);
+      const hl = Math.hypot(mpV.x, mpV.z) || 1, fx = mpV.x / hl, fz = mpV.z / hl, vx = (C.p[0] - A.p[0]) / dts, vz = (C.p[2] - A.p[2]) / dts, sl = vx * -fz + vz * fx;
+      pe.sx = lerp(pe.sx, -fz * sl, ks); pe.sz = lerp(pe.sz, fx * sl, ks);
+      pe.wy = lerp(pe.wy, clamp(Math.atan2(Math.sin(yc - ya), Math.cos(yc - ya)) / dts, -4, 4), ks);
+    }
+    let dYaw = pe.wy * lead, kx = 0, kz = 0, kvx = 0, kvz = 0, kw = 0;
+    pe.kicks = pe.kicks.filter(k => {
+      const age = (now - k.t) / 1000, w = 1 - sstep(lead, lead + 0.15, age), a = Math.min(age, lead);
+      kx += (k.vx * a + k.dx) * w; kz += (k.vz * a + k.dz) * w; dYaw += k.wy * a * w; kvx += k.vx * w; kvz += k.vz * w; kw += k.wy * w;
+      return w > 0;
+    });
+    mpV.set(0, 0, 1).applyQuaternion(pe.q).applyAxisAngle(THREE.Object3D.DEFAULT_UP, pe.wy * lead / 2);    // its heading half way on
+    pe.pos.x += (mpV.x * pe.v + pe.sx) * lead + kx; pe.pos.y += mpV.y * pe.v * lead; pe.pos.z += (mpV.z * pe.v + pe.sz) * lead + kz;
+    pe.q.premultiply(mpQa.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, dYaw));
     mpV.set(0, 0, 1).applyQuaternion(pe.q); const hl = Math.hypot(mpV.x, mpV.z) || 1; pe.fx = mpV.x / hl; pe.fz = mpV.z / hl;
+    pe.vx = pe.fx * pe.v + pe.sx + kvx; pe.vz = pe.fz * pe.v + pe.sz + kvz; pe.wy0 = pe.wy + kw;   // now (mpContacts)
     V.vis.position.copy(pe.pos); V.vis.quaternion.copy(pe.q);
     const tRest = V.REST - V.mass * 9.81 / 4 / V.K;
     for (const W of V.wheels) {
@@ -5959,37 +6061,24 @@ function mpFrame(dt) {
     MP.sendT = 0;
     const R = car.wheels[2];
     mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo, sk: mpSkidsOut() });
+    MP.sent.push({ t: now, x: rd2(car.pos.x), y: rd2(car.pos.y), z: rd2(car.pos.z) }); if (MP.sent.length > 30) MP.sent.shift();   // (mpLagEcho: as the server rounds them)
   }
 }
 
-// contact with the other players' cars: two circles per car, as with the bots; each side moves only its own car
-const mpN = new THREE.Vector3(), mpB = new THREE.Vector3(), mpQi = new THREE.Quaternion();
+// contact with the other players' cars (#322: ccSolve, as with the bots, where mpFrame put them: now): each side moves
+// only its own car, and keeps the push it gave the other (pe.kicks) till the other's own reply to it comes back
 function mpContacts(dt) {
   if (!MP.on || MP.spectator || rp.on || !MP.peers.size) return;
-  const pf = fwd, hlP = Math.max(0.6, (CAR_ZF - CAR_ZR) / 2 - 0.9), pc = (CAR_ZF + CAR_ZR) / 2, rP = Math.max(0.9, CAR_HW);
+  const now = performance.now();
   for (const pe of MP.peers.values()) {
     if (!pe.shown || pe.spectator || Math.abs(car.pos.y - pe.pos.y) > 1.6) continue;
-    const [hw, zF, zR] = pe.V.box, hlB = Math.max(0.6, (zF - zR) / 2 - 0.9), cb = (zF + zR) / 2, rB = Math.max(0.9, hw), reach = rP + rB - 0.15;
-    let best = null;
-    for (const sp of [-1, 1]) for (const sb of [-1, 1]) {
-      const dx = car.pos.x + pf.x * (pc + sp * hlP) - (pe.pos.x + pe.fx * (cb + sb * hlB)), dz = car.pos.z + pf.z * (pc + sp * hlP) - (pe.pos.z + pe.fz * (cb + sb * hlB)), dd = Math.hypot(dx, dz);
-      if (dd < reach && (!best || dd < best.dd)) best = { dd, dx, dz, sp };
-    }
-    if (!best) continue;
-    const nl = best.dd || 1e-3, nx = best.dx / nl, nz = best.dz / nl, pen = reach - best.dd;
-    const vn = -((car.vel.x - pe.fx * pe.v) * nx + (car.vel.z - pe.fz * pe.v) * nz);
-    car.pos.x += nx * pen * 0.5; car.pos.z += nz * pen * 0.5;
-    if (vn <= 0) continue;
-    const mp = VEH.mass, mb = pe.V.mass, j = vn * 1.25 * mb / (mp + mb);
-    car.vel.x += nx * j; car.vel.z += nz * j;
-    car.w.y += ((pf.x * (pc + best.sp * hlP)) * nz - (pf.z * (pc + best.sp * hlP)) * nx) * -j * 0.12;
-    if (vn > 1.5 && car.grace <= 0) {
-      mpQi.copy(car.q).invert(); mpN.set(nx, 0, nz).applyQuaternion(mpQi); mpB.set(-mpN.x * CAR_HW, 0.45, pc + best.sp * hlP - mpN.z * 0.9);
-      const zone = Math.abs(mpN.z) >= Math.abs(mpN.x) ? (mpN.z < 0 ? 'front' : 'rear') : (mpN.x < 0 ? 'left' : 'right');
-      addDamage(zone, (vn - 1.5) ** 2 * 0.012); carHit(mpB, mpN, vn, HIT.ball);
-      audio?.node.port.postMessage({ crash: Math.min(1, vn * 0.1) });
-      if (hitCooldown <= 0 && !car.wrecked) { hitCooldown = 0.6; flash(`Contact with ${pe.name} · ${zone} damage ${Math.round(car.dmg[zone] * 100)}%`, '#ff9a6a', 1.8); }
-    }
+    const [hw, zF, zR] = pe.V.box, A = ccOurs(CC.a), O = ccBody(CC.b, pe.pos.x, pe.pos.z, pe.fx, pe.fz, hw, zF, zR, pe.vx, pe.vz, pe.wy0 || 0, pe.V.mass, pe.V.I?.y);
+    const H = ccSolve(A, O); if (!H) continue;
+    ccOursBack(A);
+    pe.kicks.push({ t: now, vx: O.vx - pe.vx, vz: O.vz - pe.vz, wy: O.wy - (pe.wy0 || 0), dx: O.dx, dz: O.dz });
+    if (pe.kicks.length > 60) pe.kicks.shift();
+    pe.vx = O.vx; pe.vz = O.vz; pe.wy0 = O.wy; pe.pos.x += O.dx; pe.pos.z += O.dz;                  // (till mpFrame's next)
+    ccOurHit(H, pe.name);
   }
 }
 
@@ -7422,33 +7511,22 @@ function aiRvPose(R, k) {
   const m = Math.min(k, T.length / 10 - 1) * 10, c = R.c;
   c.pos.set(T[m], T[m + 1], T[m + 2]); c.q.set(T[m + 3], T[m + 4], T[m + 5], T[m + 6]); c.vel.set(T[m + 7], T[m + 8], T[m + 9]); c.w.set(0, 0, 0);
 }
-// Car against car, as the bots' contact (two circles along each car), but both pushed, by their masses (a replay: only
-// ours, it doesn't give); dents on both (aiCarDent). The impact speed (m/s), or null when they don't touch
+// Car against car (ccSolve, as the bots' contact), both pushed, by their masses (a replay: only ours, it doesn't give);
+// dents on both (aiCarDent). The impact speed (m/s), or null when they don't touch
 const aiCQ = new THREE.Quaternion(), aiCN = new THREE.Vector3(), aiCV = new THREE.Vector3();
 function aiCarContact(R) {
   const b = R.c, kin = R.mode === 'replay';
   if (Math.abs(car.pos.y - b.pos.y) > 1.6) return null;
-  const fl = Math.hypot(fwd.x, fwd.z) || 1, fax = fwd.x / fl, faz = fwd.z / fl, qb = b.q;
-  const bx = 2 * (qb.x * qb.z + qb.w * qb.y), bz = 1 - 2 * (qb.x * qb.x + qb.y * qb.y), bl = Math.hypot(bx, bz) || 1, fbx = bx / bl, fbz = bz / bl;
-  const [hwB, zfB, zrB] = R.box;
-  const hlA = Math.max(0.6, (CAR_ZF - CAR_ZR) / 2 - 0.9), pcA = (CAR_ZF + CAR_ZR) / 2, hlB = Math.max(0.6, (zfB - zrB) / 2 - 0.9), pcB = (zfB + zrB) / 2;
-  const lim = Math.max(0.9, CAR_HW) + Math.max(0.9, hwB) - 0.15;
-  let best = null;
-  for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
-    const la = pcA + sa * hlA, lb = pcB + sb * hlB, dx = car.pos.x + fax * la - (b.pos.x + fbx * lb), dz = car.pos.z + faz * la - (b.pos.z + fbz * lb), dd = Math.hypot(dx, dz);
-    if (dd < lim && (!best || dd < best.dd)) best = { dd, dx, dz, la, lb };
+  const qb = b.q, bx = 2 * (qb.x * qb.z + qb.w * qb.y), bz = 1 - 2 * (qb.x * qb.x + qb.y * qb.y), [hwB, zfB, zrB] = R.box;
+  const A = ccOurs(CC.a), O = ccBody(CC.b, b.pos.x, b.pos.z, bx, bz, hwB, zfB, zrB, b.vel.x, b.vel.z, b.w.y, kin ? 0 : b.mass, b.I.y), H = ccSolve(A, O);
+  if (!H) return null;
+  ccOursBack(A);
+  if (!kin) { b.vel.x = O.vx; b.vel.z = O.vz; b.w.y = O.wy; b.pos.x += O.dx; b.pos.z += O.dz; }
+  const vn = H.vn, nx = H.nx, nz = H.nz;
+  if (vn > 1.5) {
+    const la = (H.cx - car.pos.x) * A.fx + (H.cz - car.pos.z) * A.fz, lb = (H.cx - b.pos.x) * O.fx + (H.cz - b.pos.z) * O.fz;
+    aiCarDent(nx, nz, la, vn); if (!kin) { aiRvSwap(R); aiCarDent(-nx, -nz, lb, vn); aiRvSwap(R); }
   }
-  if (!best) return null;
-  const nl = best.dd || 1e-3, nx = best.dx / nl, nz = best.dz / nl, pen = lim - best.dd, ma = car.mass, mb = b.mass, sa = kin ? 1 : mb / (ma + mb);
-  car.pos.x += nx * pen * sa; car.pos.z += nz * pen * sa;
-  if (!kin) { b.pos.x -= nx * pen * (1 - sa); b.pos.z -= nz * pen * (1 - sa); }
-  const vn = -((car.vel.x - b.vel.x) * nx + (car.vel.z - b.vel.z) * nz);
-  if (vn <= 0) return vn;
-  const J = vn * 1.25 * (kin ? ma : ma * mb / (ma + mb)), ja = J / ma;   // the impulse (a little bounce)
-  car.vel.x += nx * ja; car.vel.z += nz * ja;
-  car.w.y += (fax * best.la * nz - faz * best.la * nx) * -ja * 0.12;
-  if (!kin) { const jb = J / mb; b.vel.x -= nx * jb; b.vel.z -= nz * jb; b.w.y += (fbx * best.lb * -nz - fbz * best.lb * -nx) * -jb * 0.12; }
-  if (vn > 1.5) { aiCarDent(nx, nz, best.la, vn); if (!kin) { aiRvSwap(R); aiCarDent(-nx, -nz, best.lb, vn); aiRvSwap(R); } }
   return vn;
 }
 // the car in `car` struck at l m along its axis, from where n points (from the other car to it)

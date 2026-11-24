@@ -16,11 +16,12 @@ See README.md for the layout. Notes:
   the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, pausing (P; tire pressure on Shift+P)
   `pause.py`, the course editor's GENERATE A CIRCUIT and MY CIRCUITS (the generator itself: `public/sim/circuit-gen.js`,
   also run by `scripts/maps/generate.mjs` and `test/circuit-gen.test.mjs`: keep it free of the DOM and THREE) `circuits.py`,
+  car against car (the bots, the other players' cars, the autopilot's rival: `ccBody` / `ccSolve`) `contacts.py`,
   the Claude bridge's loader
   (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, and the sim page's interface (`ui.css` and `ui.js` in
   index.html, the page's title) `ui.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, bridge, ui, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, ui, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -92,6 +93,12 @@ See README.md for the layout. Notes:
   `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
   (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.
   Or the MCP tools (`.mcp.json` → `scripts/bridge-mcp.mjs`): `sim_pair { code }`, `sim_state`, `sim_screenshot`, `sim_command`.
+- Car against car (#322) is one contact, `ccSolve` (`contacts.py`): the bots' (`updateBots`), the other players'
+  (`mpContacts`, mp-block.js) and the rival's (`aiCarContact`). Give it both cars as bodies (`ccBody`: a mass of 0 doesn't
+  move) and put the velocities, yaw rates and moves it returns back on them; a new kind of car-to-car touch should
+  use it too. In a race the others' `pe.pos` / `pe.q` are where they are now (carried on from 120 ms in the past by
+  their speed and turn, `MP.lag` more for the trip), not where they were: anything that wants their last reported
+  state reads `pe.buf`.
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
   every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
   `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).

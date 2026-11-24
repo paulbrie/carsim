@@ -1428,33 +1428,22 @@ function aiRvPose(R, k) {
   const m = Math.min(k, T.length / 10 - 1) * 10, c = R.c;
   c.pos.set(T[m], T[m + 1], T[m + 2]); c.q.set(T[m + 3], T[m + 4], T[m + 5], T[m + 6]); c.vel.set(T[m + 7], T[m + 8], T[m + 9]); c.w.set(0, 0, 0);
 }
-// Car against car, as the bots' contact (two circles along each car), but both pushed, by their masses (a replay: only
-// ours, it doesn't give); dents on both (aiCarDent). The impact speed (m/s), or null when they don't touch
+// Car against car (ccSolve, as the bots' contact), both pushed, by their masses (a replay: only ours, it doesn't give);
+// dents on both (aiCarDent). The impact speed (m/s), or null when they don't touch
 const aiCQ = new THREE.Quaternion(), aiCN = new THREE.Vector3(), aiCV = new THREE.Vector3();
 function aiCarContact(R) {
   const b = R.c, kin = R.mode === 'replay';
   if (Math.abs(car.pos.y - b.pos.y) > 1.6) return null;
-  const fl = Math.hypot(fwd.x, fwd.z) || 1, fax = fwd.x / fl, faz = fwd.z / fl, qb = b.q;
-  const bx = 2 * (qb.x * qb.z + qb.w * qb.y), bz = 1 - 2 * (qb.x * qb.x + qb.y * qb.y), bl = Math.hypot(bx, bz) || 1, fbx = bx / bl, fbz = bz / bl;
-  const [hwB, zfB, zrB] = R.box;
-  const hlA = Math.max(0.6, (CAR_ZF - CAR_ZR) / 2 - 0.9), pcA = (CAR_ZF + CAR_ZR) / 2, hlB = Math.max(0.6, (zfB - zrB) / 2 - 0.9), pcB = (zfB + zrB) / 2;
-  const lim = Math.max(0.9, CAR_HW) + Math.max(0.9, hwB) - 0.15;
-  let best = null;
-  for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
-    const la = pcA + sa * hlA, lb = pcB + sb * hlB, dx = car.pos.x + fax * la - (b.pos.x + fbx * lb), dz = car.pos.z + faz * la - (b.pos.z + fbz * lb), dd = Math.hypot(dx, dz);
-    if (dd < lim && (!best || dd < best.dd)) best = { dd, dx, dz, la, lb };
+  const qb = b.q, bx = 2 * (qb.x * qb.z + qb.w * qb.y), bz = 1 - 2 * (qb.x * qb.x + qb.y * qb.y), [hwB, zfB, zrB] = R.box;
+  const A = ccOurs(CC.a), O = ccBody(CC.b, b.pos.x, b.pos.z, bx, bz, hwB, zfB, zrB, b.vel.x, b.vel.z, b.w.y, kin ? 0 : b.mass, b.I.y), H = ccSolve(A, O);
+  if (!H) return null;
+  ccOursBack(A);
+  if (!kin) { b.vel.x = O.vx; b.vel.z = O.vz; b.w.y = O.wy; b.pos.x += O.dx; b.pos.z += O.dz; }
+  const vn = H.vn, nx = H.nx, nz = H.nz;
+  if (vn > 1.5) {
+    const la = (H.cx - car.pos.x) * A.fx + (H.cz - car.pos.z) * A.fz, lb = (H.cx - b.pos.x) * O.fx + (H.cz - b.pos.z) * O.fz;
+    aiCarDent(nx, nz, la, vn); if (!kin) { aiRvSwap(R); aiCarDent(-nx, -nz, lb, vn); aiRvSwap(R); }
   }
-  if (!best) return null;
-  const nl = best.dd || 1e-3, nx = best.dx / nl, nz = best.dz / nl, pen = lim - best.dd, ma = car.mass, mb = b.mass, sa = kin ? 1 : mb / (ma + mb);
-  car.pos.x += nx * pen * sa; car.pos.z += nz * pen * sa;
-  if (!kin) { b.pos.x -= nx * pen * (1 - sa); b.pos.z -= nz * pen * (1 - sa); }
-  const vn = -((car.vel.x - b.vel.x) * nx + (car.vel.z - b.vel.z) * nz);
-  if (vn <= 0) return vn;
-  const J = vn * 1.25 * (kin ? ma : ma * mb / (ma + mb)), ja = J / ma;   // the impulse (a little bounce)
-  car.vel.x += nx * ja; car.vel.z += nz * ja;
-  car.w.y += (fax * best.la * nz - faz * best.la * nx) * -ja * 0.12;
-  if (!kin) { const jb = J / mb; b.vel.x -= nx * jb; b.vel.z -= nz * jb; b.w.y += (fbx * best.lb * -nz - fbz * best.lb * -nx) * -jb * 0.12; }
-  if (vn > 1.5) { aiCarDent(nx, nz, best.la, vn); if (!kin) { aiRvSwap(R); aiCarDent(-nx, -nz, best.lb, vn); aiRvSwap(R); } }
   return vn;
 }
 // the car in `car` struck at l m along its axis, from where n points (from the other car to it)

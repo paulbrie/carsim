@@ -17,10 +17,12 @@
    With ?edit=1 (the super admin's map editor, app/maps/[id]) the page opens on the course editor,
    with the map from window.__simCourse, nothing saved in this browser:
      in:  get {id}            out: ready · course {id, course, sig} (the answer to get) · sig {sig} (when the course changes) · save (Ctrl/Cmd+S)
-   Other cars are drawn 120 ms behind their latest position, interpolated, and pushed against like
-   the bots (each side moves only its own car).
+   Other cars are interpolated 120 ms behind their latest position, carried on from there to where they are now (by
+   their speed and turn, over that and the trip here: MP.lag) and pushed against like the bots (ccSolve; each side
+   moves only its own car).
    ===================================================================== */
 const PEER_DELAY = 120, PEER_STALE = 3000;
+Object.assign(MP, { lag: 60, sent: [] });           // lag: ms from our state sent to it back in a snap (the others' states are as old)
 function mpPost(msg) { if ((MP.on || MP.edit) && parent !== window) parent.postMessage(msg, location.origin); }
 const hexOf = s => typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s) ? parseInt(s.slice(1), 16) : null;
 
@@ -96,7 +98,7 @@ function mpMakeVehicle(key) {
     if (o.userData.sbSpin != null) wheels[o.userData.sbSpin].spinner = o;
   });
   vis.visible = true; scene.add(vis);
-  return { key: 'buggy', vis, wheels, R: BUGGY.R, REST: BUGGY.REST, K: BUGGY.K, mass: BUGGY.mass, box: BUGGY.box, roofY: BUGGY.roofY, paintMats: [...copies.values()], ownMats: [...copies.values()] };
+  return { key: 'buggy', vis, wheels, R: BUGGY.R, REST: BUGGY.REST, K: BUGGY.K, mass: BUGGY.mass, I: BUGGY.I, box: BUGGY.box, roofY: BUGGY.roofY, paintMats: [...copies.values()], ownMats: [...copies.values()] };
 }
 
 function mpLabel(text, col) {
@@ -130,7 +132,8 @@ function mpRoster(players) {
     if (pe && pe.key !== pl.vehicle) { mpDropPeer(pe); pe = null; }
     if (!pe) {
       const V = mpMakeVehicle(pl.vehicle); V.vis.visible = false;
-      pe = { id: pl.id, key: V.key === 'buggy' ? 'buggy' : pl.vehicle, V, buf: [], pos: new THREE.Vector3(), q: new THREE.Quaternion(), fx: 0, fz: 1, v: 0, spin: 0, steer: 0, shown: false, label: null, name: '', paint: undefined, col: '#fff' };
+      pe = { id: pl.id, key: V.key === 'buggy' ? 'buggy' : pl.vehicle, V, buf: [], pos: new THREE.Vector3(), q: new THREE.Quaternion(), fx: 0, fz: 1, v: 0, spin: 0, steer: 0,
+        sx: 0, sz: 0, wy: 0, vx: 0, vz: 0, kicks: [], shown: false, label: null, name: '', paint: undefined, col: '#fff' };
       if (pe.key !== pl.vehicle) pe.key = pl.vehicle;
       MP.peers.set(pl.id, pe);
       const p0 = pe; V.onModel = () => mpReplayHits(p0);              // a detailed model arriving: the hits so far go onto it
@@ -153,9 +156,20 @@ function mpRoster(players) {
 function mpSnap(cars) {
   const now = performance.now();
   for (const c of cars) {
+    if (c[0] === MP.myId) { mpLagEcho(c, now); continue; }
     const pe = MP.peers.get(c[0]); if (!pe) continue;
     pe.buf.push({ t: now, p: [c[1], c[2], c[3]], q: [c[4], c[5], c[6], c[7]], v: c[8], st: c[9], w: c[10], sk: c[11] || 0 });
     if (pe.buf.length > 40) pe.buf.splice(0, pe.buf.length - 40);
+  }
+}
+
+// our own state back from the server: the time since we sent it (the last of the same sends: not while standing still)
+function mpLagEcho(c, now) {
+  const S = MP.sent;
+  for (let i = S.length - 1; i > 0; i--) {
+    if (S[i].x !== c[1] || S[i].y !== c[2] || S[i].z !== c[3]) continue;
+    if (S[i - 1].x === c[1] && S[i - 1].y === c[2] && S[i - 1].z === c[3]) return;
+    MP.lag = lerp(MP.lag, clamp(now - S[i].t, 0, 500), 0.1); return;
   }
 }
 
@@ -515,8 +529,11 @@ function mpFrame(dt) {
     else if (cd !== MP.cd && cd <= 3) { MP.cd = cd; flash(String(cd), '#fff', 0.9); }
   }
   if (MP.finishFlash) { flash(MP.finishFlash, '#7dff9a', 5); MP.finishFlash = null; }
-  // the others, a little in the past
-  const rt = now - PEER_DELAY;
+  // the others, a little in the past, then carried on to now (#322): along their heading at their speed and turning at
+  // their rate (its slide across that and the turn from their last states, smoothed), so they are drawn and touched
+  // where they are, not where they were 0.2 s ago; and with the pushes we gave them (mpContacts: pe.kicks) till their own
+  // reply to those comes back (lead after the push)
+  const rt = now - PEER_DELAY, lead = (PEER_DELAY + MP.lag) / 1000, ks = 1 - Math.exp(-dt / 0.12);
   for (const pe of MP.peers.values()) {
     const B = pe.buf, V = pe.V;
     const show = B.length > 0 && now - B[B.length - 1].t < PEER_STALE && !(pe.spectator && !MP.spectator && MP.phase !== 'lobby' && MP.phase !== 'results');
@@ -527,7 +544,24 @@ function mpFrame(dt) {
     pe.pos.set(lerp(A.p[0], C.p[0], f), lerp(A.p[1], C.p[1], f), lerp(A.p[2], C.p[2], f));
     pe.q.copy(mpQa.fromArray(A.q)).slerp(mpQb.fromArray(C.q), Math.min(f, 1));
     pe.v = lerp(A.v, C.v, Math.min(f, 1)); pe.steer = lerp(A.st, C.st, Math.min(f, 1)); pe.spin += (C.w || 0) * dt;
+    if (C !== A && C.t - A.t > 0.025e3) {
+      const dts = (C.t - A.t) / 1000, qa = mpQa.fromArray(A.q), qc = mpQb.fromArray(C.q);
+      mpV.set(0, 0, 1).applyQuaternion(qa); const ya = Math.atan2(mpV.x, mpV.z); mpV.set(0, 0, 1).applyQuaternion(qc); const yc = Math.atan2(mpV.x, mpV.z);
+      const hl = Math.hypot(mpV.x, mpV.z) || 1, fx = mpV.x / hl, fz = mpV.z / hl, vx = (C.p[0] - A.p[0]) / dts, vz = (C.p[2] - A.p[2]) / dts, sl = vx * -fz + vz * fx;
+      pe.sx = lerp(pe.sx, -fz * sl, ks); pe.sz = lerp(pe.sz, fx * sl, ks);
+      pe.wy = lerp(pe.wy, clamp(Math.atan2(Math.sin(yc - ya), Math.cos(yc - ya)) / dts, -4, 4), ks);
+    }
+    let dYaw = pe.wy * lead, kx = 0, kz = 0, kvx = 0, kvz = 0, kw = 0;
+    pe.kicks = pe.kicks.filter(k => {
+      const age = (now - k.t) / 1000, w = 1 - sstep(lead, lead + 0.15, age), a = Math.min(age, lead);
+      kx += (k.vx * a + k.dx) * w; kz += (k.vz * a + k.dz) * w; dYaw += k.wy * a * w; kvx += k.vx * w; kvz += k.vz * w; kw += k.wy * w;
+      return w > 0;
+    });
+    mpV.set(0, 0, 1).applyQuaternion(pe.q).applyAxisAngle(THREE.Object3D.DEFAULT_UP, pe.wy * lead / 2);    // its heading half way on
+    pe.pos.x += (mpV.x * pe.v + pe.sx) * lead + kx; pe.pos.y += mpV.y * pe.v * lead; pe.pos.z += (mpV.z * pe.v + pe.sz) * lead + kz;
+    pe.q.premultiply(mpQa.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, dYaw));
     mpV.set(0, 0, 1).applyQuaternion(pe.q); const hl = Math.hypot(mpV.x, mpV.z) || 1; pe.fx = mpV.x / hl; pe.fz = mpV.z / hl;
+    pe.vx = pe.fx * pe.v + pe.sx + kvx; pe.vz = pe.fz * pe.v + pe.sz + kvz; pe.wy0 = pe.wy + kw;   // now (mpContacts)
     V.vis.position.copy(pe.pos); V.vis.quaternion.copy(pe.q);
     const tRest = V.REST - V.mass * 9.81 / 4 / V.K;
     for (const W of V.wheels) {
@@ -545,37 +579,24 @@ function mpFrame(dt) {
     MP.sendT = 0;
     const R = car.wheels[2];
     mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo, sk: mpSkidsOut() });
+    MP.sent.push({ t: now, x: rd2(car.pos.x), y: rd2(car.pos.y), z: rd2(car.pos.z) }); if (MP.sent.length > 30) MP.sent.shift();   // (mpLagEcho: as the server rounds them)
   }
 }
 
-// contact with the other players' cars: two circles per car, as with the bots; each side moves only its own car
-const mpN = new THREE.Vector3(), mpB = new THREE.Vector3(), mpQi = new THREE.Quaternion();
+// contact with the other players' cars (#322: ccSolve, as with the bots, where mpFrame put them: now): each side moves
+// only its own car, and keeps the push it gave the other (pe.kicks) till the other's own reply to it comes back
 function mpContacts(dt) {
   if (!MP.on || MP.spectator || rp.on || !MP.peers.size) return;
-  const pf = fwd, hlP = Math.max(0.6, (CAR_ZF - CAR_ZR) / 2 - 0.9), pc = (CAR_ZF + CAR_ZR) / 2, rP = Math.max(0.9, CAR_HW);
+  const now = performance.now();
   for (const pe of MP.peers.values()) {
     if (!pe.shown || pe.spectator || Math.abs(car.pos.y - pe.pos.y) > 1.6) continue;
-    const [hw, zF, zR] = pe.V.box, hlB = Math.max(0.6, (zF - zR) / 2 - 0.9), cb = (zF + zR) / 2, rB = Math.max(0.9, hw), reach = rP + rB - 0.15;
-    let best = null;
-    for (const sp of [-1, 1]) for (const sb of [-1, 1]) {
-      const dx = car.pos.x + pf.x * (pc + sp * hlP) - (pe.pos.x + pe.fx * (cb + sb * hlB)), dz = car.pos.z + pf.z * (pc + sp * hlP) - (pe.pos.z + pe.fz * (cb + sb * hlB)), dd = Math.hypot(dx, dz);
-      if (dd < reach && (!best || dd < best.dd)) best = { dd, dx, dz, sp };
-    }
-    if (!best) continue;
-    const nl = best.dd || 1e-3, nx = best.dx / nl, nz = best.dz / nl, pen = reach - best.dd;
-    const vn = -((car.vel.x - pe.fx * pe.v) * nx + (car.vel.z - pe.fz * pe.v) * nz);
-    car.pos.x += nx * pen * 0.5; car.pos.z += nz * pen * 0.5;
-    if (vn <= 0) continue;
-    const mp = VEH.mass, mb = pe.V.mass, j = vn * 1.25 * mb / (mp + mb);
-    car.vel.x += nx * j; car.vel.z += nz * j;
-    car.w.y += ((pf.x * (pc + best.sp * hlP)) * nz - (pf.z * (pc + best.sp * hlP)) * nx) * -j * 0.12;
-    if (vn > 1.5 && car.grace <= 0) {
-      mpQi.copy(car.q).invert(); mpN.set(nx, 0, nz).applyQuaternion(mpQi); mpB.set(-mpN.x * CAR_HW, 0.45, pc + best.sp * hlP - mpN.z * 0.9);
-      const zone = Math.abs(mpN.z) >= Math.abs(mpN.x) ? (mpN.z < 0 ? 'front' : 'rear') : (mpN.x < 0 ? 'left' : 'right');
-      addDamage(zone, (vn - 1.5) ** 2 * 0.012); carHit(mpB, mpN, vn, HIT.ball);
-      audio?.node.port.postMessage({ crash: Math.min(1, vn * 0.1) });
-      if (hitCooldown <= 0 && !car.wrecked) { hitCooldown = 0.6; flash(`Contact with ${pe.name} · ${zone} damage ${Math.round(car.dmg[zone] * 100)}%`, '#ff9a6a', 1.8); }
-    }
+    const [hw, zF, zR] = pe.V.box, A = ccOurs(CC.a), O = ccBody(CC.b, pe.pos.x, pe.pos.z, pe.fx, pe.fz, hw, zF, zR, pe.vx, pe.vz, pe.wy0 || 0, pe.V.mass, pe.V.I?.y);
+    const H = ccSolve(A, O); if (!H) continue;
+    ccOursBack(A);
+    pe.kicks.push({ t: now, vx: O.vx - pe.vx, vz: O.vz - pe.vz, wy: O.wy - (pe.wy0 || 0), dx: O.dx, dz: O.dz });
+    if (pe.kicks.length > 60) pe.kicks.shift();
+    pe.vx = O.vx; pe.vz = O.vz; pe.wy0 = O.wy; pe.pos.x += O.dx; pe.pos.z += O.dz;                  // (till mpFrame's next)
+    ccOurHit(H, pe.name);
   }
 }
 

@@ -303,7 +303,10 @@ as the minimap does, with where it went coloured by its pedals (orange gas, grey
 side) and white rings where it pulled the handbrake: at each metre of the line the latest pass (`aiMapRec`, a
 decision at a time), hover for the speed and pedals there; it stays after the drive, until a training or the next
 drive (in full screen, right of the charts). What it learnt is kept per course, car and size in the
-browser; **Save to file** downloads it (weights, generations, chart, as JSON) and **Load file** brings it back,
+browser, whole (#341, `scripts/patches/keep.py`): the weights, every generation's chart (not only the last 300), the
+last exam and the rivals, saved at each generation's end and again when the page is hidden or left, so a reload
+loses nothing. With the browser's storage full, the chart's oldest generations go first (2000 kept, then 300, then
+none); if even that won't fit, the lab says once that the training is no longer saved; **Save to file** downloads it (weights, generations, chart, as JSON) and **Load file** brings it back,
 here or in another browser (made with another car or course, it asks first, and its record doesn't count).
 **Save to server** keeps it on the server under a name, and **From server** lists everyone's (this car and
 course's first): load any, delete yours. `/api/autopilots` (signed in; `lib/autopilots/store.mjs`, one row each in

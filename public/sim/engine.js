@@ -6837,16 +6837,35 @@ function aiFresh() {
   if (AI.nOut > 2) AI.w[b + 2] = -1;                                  // the handbrake off, until it learns better
 }
 function aiLoad() {
-  AI.key = aiKey(); aiFresh();
+  AI.key = aiKey(); aiFresh(); AI.lastExam = AI.lastExamRace = null;
   try {
     const d = JSON.parse(localStorage.getItem(AI.key) || 'null');
+    if (d && d.w?.length === AI.np) {                                 // (#341) the last exam, the rivals
+      if (d.last && typeof d.last === 'object') AI.lastExam = d.last;
+      if (Array.isArray(d.rv)) AI.rvPool = d.rv.filter(w => Array.isArray(w) && w.length === AI.np).slice(-4).map(w => Float32Array.from(w));
+    }
     if (d && d.w?.length === AI.np) Object.assign(AI, { w: Float32Array.from(d.w), m: Float32Array.from(d.m || AI.m), v: Float32Array.from(d.v || AI.v), k: d.k || 0, gen: d.gen || 0,
       best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0, examKind: d.exam || 'line', bestSolo: d.bestSolo ?? null, bestAt: d.bestAt || null, ident: d.ident && typeof d.ident.id === 'string' ? d.ident : null });
   } catch (e) { }
 }
 function aiSave() {
   if (AI.preview) return;                                             // (a network previewed, #336: not this browser's)
-  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-300), exam: AI.examKind, bestSolo: AI.bestSolo, bestAt: AI.bestAt || null, ident: AI.ident || null })); } catch (e) { }
+  if (!AI.key || !AI.w) return false;                                 // (nothing loaded yet)
+  const KEEP = 20000;                                                 // generations of chart kept (each ~20 bytes)
+  const rec = { w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-KEEP), exam: AI.examKind, bestSolo: AI.bestSolo, bestAt: AI.bestAt || null, ident: AI.ident || null,
+    last: AI.lastExam || null, rv: AI.rvPool.map(w => [...w]) };   // (#341: the last exam and the rivals too, and the whole chart)
+  for (const n of [KEEP, 2000, 300, 0]) {                    // storage short: the chart's oldest generations go first
+    if (rec.hist.length > n) rec.hist = n ? rec.hist.slice(-n) : [];
+    else if (n < KEEP) continue;
+    try { localStorage.setItem(AI.key, JSON.stringify(rec)); AI.saveFail = false; return true; } catch (e) { }
+  }
+  if (!AI.saveFail && !AI_WK) flash('Browser storage is full: this training is no longer saved in this browser (Save to file keeps it)', '#ff8a7a', 5);
+  AI.saveFail = true;
+  return false;
+}
+if (!AI_WK) {
+  addEventListener('pagehide', () => aiSave());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) aiSave(); });
 }
 function aiNewGen() {
   AI.eps = []; AI.cands = []; AI.fits = new Float32Array(AI_CFG.pop); AI.ci = 0;
@@ -8318,7 +8337,7 @@ AI.el.querySelector('#aiSaveS').addEventListener('click', async e => {
 async function aiSaveServer(name, d = aiExport()) {
   name = String(name || '').trim();
   if (!name) throw new Error('Give it a name');
-  const r = await aiApi('', { method: 'POST', body: JSON.stringify({ name, training: d }) });
+  const r = await aiApi('', { method: 'POST', body: JSON.stringify({ name, training: { ...d, hist: (d.hist || []).slice(-300) } }) });
   const a = r?.autopilot, sw = d.best || d.w;
   if (a?.id && sw && AI.np === sw.length && aiNetSig(AI.best || AI.w) === aiNetSig(sw)) { AI.ident = { id: a.id, name: a.name || name, creator: a.ownerName || 'Driver', sig: aiNetSig(sw) }; aiSave(); }
   flash(`Saved on the server: ${name}`, '#9fd4ff', 2); if (AI.listOpen) aiServerList();

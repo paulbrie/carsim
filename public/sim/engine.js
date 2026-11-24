@@ -1208,8 +1208,7 @@ function stepCar(dt) {
     let den = Math.max(Math.abs(W.omega * R), Math.abs(vLong), 1.5);
     let s = (W.omega * R - vLong) / den;
     let Fx = Math.sign(s) * Fmax * (1 - Math.exp(-Math.abs(s) / S0));
-    const dF = Fmax / S0 * Math.exp(-Math.abs(s) / S0) * R / den;
-    W.omega = (car.Iw * W.omega + dt * (Td - R * Fx + R * dF * W.omega)) / (car.Iw + dt * R * dF);
+    W.omega = wheelSpin(W.omega, Td, vLong, R, Fmax, S0, dt);
     if (VEH.aids && car.aids && Tb > 0 && !(input.handbrake && !W.front) && Math.abs(vLong) > 2.5) {   // ABS: ease off before the wheel locks (inactive at walking pace)
       const lim = Math.max((SF.rigid ? 0.16 : 0.25) * Math.abs(vLong), 0.4), skid = -(W.sx || 0) * Math.sign(vLong);
       W.absF = clamp((W.absF ?? 1) + (skid > lim ? -40 : 20) * dt, 0.15, 1); Tb *= W.absF;
@@ -1295,6 +1294,24 @@ function stepCar(dt) {
   for (const W of car.wheels) W.spin += W.omega * dt;
 }
 
+// The wheel's spin at the end of a step (#327): w where Iw (w - w0) = dt (Td - R Fx(w)), Fx the tire's force at that spin.
+// Iw w + dt R Fx(w) only grows with w, and Fx stays within ±Fmax, so the answer lies in [lo, hi] below: Newton's
+// method from the start's spin, bisecting whenever a step would leave what is left of that bracket.
+function wheelSpin(w0, Td, vLong, R, Fmax, S0, dt) {
+  const I = car.Iw;
+  let lo = w0 + dt * (Td - R * Fmax) / I, hi = w0 + dt * (Td + R * Fmax) / I, w = clamp(w0, lo, hi);
+  for (let it = 0; it < 12; it++) {
+    const den = Math.max(Math.abs(w * R), Math.abs(vLong), 1.5), s = (w * R - vLong) / den, e = Math.exp(-Math.abs(s) / S0);
+    const g = I * (w - w0) - dt * (Td - R * Math.sign(s) * Fmax * (1 - e));
+    if (Math.abs(g) < 1e-6 * I) break;
+    if (g > 0) hi = w; else lo = w;
+    let n = w - g / (I + dt * R * Fmax / S0 * e * R / den);       // (the slope as if den held: exact below the 1.5 m/s floor)
+    if (!(n > lo && n < hi)) n = 0.5 * (lo + hi);
+    if (Math.abs(n - w) < 1e-7) { w = n; break; }
+    w = n;
+  }
+  return w;
+}
 function applyBrake(W, Tb, dt) {
   if (Tb <= 0) return;
   const d = Tb * dt / car.Iw;

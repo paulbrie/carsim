@@ -18,10 +18,11 @@ See README.md for the layout. Notes:
   also run by `scripts/maps/generate.mjs` and `test/circuit-gen.test.mjs`: keep it free of the DOM and THREE) `circuits.py`,
   car against car (the bots, the other players' cars, the autopilot's rival: `ccBody` / `ccSolve`) `contacts.py`,
   the Claude bridge's loader
-  (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, and the sim page's interface (`ui.css` and `ui.js` in
+  (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, the wheels' spin solved implicitly (`wheelSpin`, #327) `tires.py`,
+  and the sim page's interface (`ui.css` and `ui.js` in
   index.html, the page's title) `ui.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, ui, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -40,6 +41,8 @@ See README.md for the layout. Notes:
   until it restarts, while the pages are (#313: the lobby offered cars the running server refused). Only the lists
   of cars, grounds and weathers in `shared.mjs` are read again in development (`hub.setLists`, a few seconds after
   the file changes). A restart closes the open rooms and the Claude bridge's pairing: ask the super admin first.
+- The tire's force is solved with the wheel's spin (`wheelSpin`, `scripts/patches/tires.py`, #327): a change to the force's
+  curve (`Fx` from the slip in `stepCar`) must change it there too, or the wheels shake between slipping both ways at walking pace.
 - Bridges' earthworks (`scripts/patches/bridges.py`, after even.py): a bridged crossing keeps its two branches'
   heights apart (`bridgedCrossing`): any profile code that brings crossing branches to one height must skip it.
 - Grounds (#308, `grounds.py`): the world's hills come from the ground: `COUNTRY` (earth or road) builds them with

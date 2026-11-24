@@ -10,7 +10,7 @@ See README.md for the layout. Notes:
   camera `cameras.py`, the maps (a room's course, the `?edit=1` map editor) `maps.py`, car damage
   (crumpling, the bent frame, bots' dents, `bodyHit` for the multiplayer sync) `damage.py`, looking
   around the car (Shift/right-drag) `freelook.py`, breaking glass (panes, cracks, shards) `glass.py`,
-  the cars made from downloaded models (XJR, SL 63, 911 Turbo, Cayenne Turbo S, GT500, X5 M, GLE 63: specs, sounds, menus; and all-wheel drive's front/rear torque split, `split`, 4 to change it) `cars.py`
+  the cars made from downloaded models (XJR, SL 63, 911 Turbo, Cayenne Turbo S, GT500, X5 M, GLE 63, Arteon R: specs, sounds, menus; and all-wheel drive's front/rear torque split, `split`, 4 to change it) `cars.py`
   skid marks (ours and, in a race, the others' from their `sk`) `skids.py` and the grounds' landscapes (dunes for
   sand, countryside for earth and road; the road's width) `grounds.py`, the autopilot (a tiny network trained in
   the browser to drive a lap, I; in race rooms outside races) `autopilot.py`, pausing (P; tire pressure on Shift+P)

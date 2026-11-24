@@ -477,9 +477,10 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
-  Seven of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
+  Eight of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
   **Porsche 911 Turbo** (992), the **Porsche Cayenne Turbo S** (2009), the **Ford Mustang Shelby GT500**
-  (2020), the **BMW X5 M Competition** and the **Mercedes-AMG GLE 63 S Coupé**, are built from downloaded
+  (2020), the **BMW X5 M Competition**, the **Mercedes-AMG GLE 63 S Coupé** and the **Volkswagen Arteon R**
+  (#328: the 2.0 turbo four, 235 kW, 7-speed DSG, 4MOTION; its own engine sound, `i4t`), are built from downloaded
   models (`models/`, not in git) by `scripts/models/build-car.mjs`: into the sim's axes and metres,
   wheels, callipers and steering wheel split out, paint and glass found by name, lighter
   (meshoptimizer, textures ≤ 512 px), gzipped (1–6 MB). Their specs are the real cars' (power, torque,

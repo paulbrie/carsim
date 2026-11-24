@@ -210,4 +210,29 @@ export const CARS = {
     ],
     ratio: { all: 1 }, texMax: { all: 512 },
   },
+  arteonr: {
+    zip: ['models/volkswagen-arteon.zip'], file: 'source/arteon_lights_on.glb', kind: 'glb',
+    axes: { fwd: '-z', left: '-x' }, scale: 1,            // already the real car's 4.87 m
+    spin: /\/WHEELS\/|Brake (FL|FR) Rotor#|Brake Rear Rotators#/, stat: /Brake (FL|FR) Caliper#|Brake Rear Calipers#/,      // the rear pair: one mesh, split by corner
+    drop: [/ Airbags \[/, / Shadow \[/],                 // the folded curtain airbags (26k triangles each), the grille's shadow decal
+    steer: { match: /\/Cockpit - SW#/ },
+    parts: [[/DOOR FL\//, 'door_l'], [/DOOR FR\//, 'door_r'], [/DOOR RL\//, 'door_bl'], [/DOOR RR\//, 'door_br'], [/TRUNK LID\//, 'tailgate']],
+    mats: [
+      [/^Pyrite Silver Metallic/, { name: 'paint_body', color: 0x1b3a8c, metal: 0.6, rough: 0.3 }],      // Lapiz Blue, the R's colour
+      [/^Windows \[/, { name: 'window_glass' }],
+      [/^Windows Ext Tinted/, { name: 'window_tinted' }],
+      [/^Glass Clear/, { name: 'headlight_lens' }],
+      [/^Glass Red/, { name: 'rear_lens', color: 0x8a0808, alpha: 0.4, blend: true }],
+      [/^Glow Red/, { name: 'taillight_led', color: 0x7a0808 }],
+      [/^Glow DRL/, { name: 'drl_led', color: 0xffffff }],
+      [/^Tires/, { name: 'tire' }],
+      [/^Brake Rotor/, { name: 'disc', color: 0x6a6c70, metal: 0.85, rough: 0.45 }],
+      // stitching and the ambient light strips are cut-out textures: decal_* keeps their holes
+      [/^(Int SW )?Stitching (White|Black)/, { name: m => 'decal_stitch_' + (/White/.test(m) ? 'white' : 'black'), mask: true, blend: false }],
+      [/^Ambilight/, { name: 'decal_ambilight', mask: true, blend: false }],
+      [/^Int (Sun Visor|Roofliner)/, { name: m => /Visor/.test(m) ? 'int_sun_visor' : 'int_roofliner', color: 0x2e2e30, rough: 0.85 }],   // the R's black headlining (light grey in the source)
+    ],
+    loose: [[/ tire$/, 0.3]],
+    ratio: { all: 0.35 }, texMax: { all: 512 },
+  },
 };

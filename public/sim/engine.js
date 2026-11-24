@@ -4836,6 +4836,35 @@ const ROAD_CARS = {
     pressures: [{ psi: 20, kpa: 138, w: 0.355, defl: 0.034 }, { psi: 32, kpa: 221, w: 0.34, defl: 0.018 }, { psi: 40, kpa: 276, w: 0.33, defl: 0.008 }],
     sound: 'v8rs', cam: { back: 8.2, up: 2.9, hood: [0, 1.3, 0.5] },
   }),
+  arteonr: roadSpec({
+    name: 'Volkswagen Arteon R', short: 'Arteon R', blurb: '2.0 turbo four · 235 kW · 420 Nm · 4MOTION · 1,725 kg',
+    mass: 1725, frontWeight: 0.59, wb: 2.841, fo: 0.913, ro: 1.11, trackF: 1.57, trackR: 1.57, hpY: -0.05,
+    REST: 0.2, K: 50000, tireR: 0.33, tireW: 0.245, rimR: 0.254, H: 1.429, color: 0x1b3a8c, metallic: 0.6, Iw: 1.6,
+    rimColor: 0x2a2c2f, rimRough: 0.3, caliper: 0x1f3f9e,
+    top: [[0, 0.641], [0.05, 0.792], [0.1, 0.871], [0.15, 0.919], [0.2, 0.956], [0.25, 0.976], [0.3, 1.113], [0.35, 1.235], [0.4, 1.335], [0.45, 1.387], [0.5, 1.409], [0.55, 1.417], [0.6, 1.409], [0.65, 1.397], [0.7, 1.392], [0.75, 1.332], [0.8, 1.266], [0.85, 1.195], [0.9, 1.118], [0.95, 1.037], [1, 0.65]],
+    bot: [[0, 0.198], [0.05, 0.157], [0.1, 0.113], [0.15, 0.163], [0.2, 0.167], [0.25, 0.171], [0.3, 0.174], [0.35, 0.177], [0.4, 0.18], [0.45, 0.184], [0.5, 0.187], [0.55, 0.19], [0.6, 0.193], [0.65, 0.197], [0.7, 0.2], [0.75, 0.208], [0.8, 0.216], [0.85, 0.223], [0.9, 0.204], [0.95, 0.259], [1, 0.345]],
+    belt: [[0, 0.641], [0.1, 0.871], [0.2, 0.931], [0.3, 1.013], [0.4, 0.909], [0.5, 0.927], [0.6, 0.947], [0.7, 0.974], [0.8, 1.183], [0.9, 1.037], [1, 0.65]],
+    halfW: [[0, 0.463], [0.05, 0.807], [0.1, 0.909], [0.15, 0.918], [0.2, 0.922], [0.25, 0.924], [0.3, 0.92], [0.35, 0.922], [0.4, 0.921], [0.45, 0.919], [0.5, 0.916], [0.55, 0.91], [0.6, 0.903], [0.65, 0.9], [0.7, 0.916], [0.75, 0.918], [0.8, 0.914], [0.85, 0.905], [0.9, 0.858], [0.95, 0.791], [1, 0.514]],
+    greenW: 0.646, cab: { ws: 0.25, bk: 0.925 },
+    dlo: [[1.328, 0.939], [1.595, 0.891], [3.157, 0.958], [3.703, 1.043], [3.381, 1.116], [2.651, 1.179], [1.842, 1.164]],
+    panes: [[[1.328, 0.939], [1.595, 0.891], [3.157, 0.958], [3.703, 1.043], [3.381, 1.116], [2.651, 1.179], [1.842, 1.164]]],
+    windshield: [[-0.56, 1.177], [0.56, 1.177], [0.697, 2.833], [-0.697, 2.833]],
+    backlight: [[-0.697, 2.896], [0.697, 2.896], [0.401, 4.519], [-0.401, 4.519]],
+    mirror: { d: 1.411, h: 1.073, mat: 'paint' },
+    exhausts: [{ x: 0.5, y: 0.27, r: 0.045 }, { x: 0.61, y: 0.27, r: 0.045 }],
+    rimFace: rr => spokeFace(rr, 5, 0.12, { split: 0.05, hub: 0.07 }),
+    details({ project, both, rect, M }) {
+      // slim headlights joined by the light strip across the grille; tail lights across the hatch
+      both('front', [[0.42, 0.6], [0.88, 0.62], [0.9, 0.7], [0.44, 0.68]], M.lens, 0.006);
+      project('front', [[-0.5, 0.26], [0.5, 0.26], [0.56, 0.44], [-0.56, 0.44]], M.grille, 0.007);
+      both('rear', [[0.12, 0.8], [0.84, 0.8], [0.86, 0.9], [0.12, 0.9]], M.tail, 0.006);
+      project('rear', rect(-0.26, 0.48, 0.26, 0.6), M.plate, 0.008, { sub: 2 });
+    },
+    engine: { idle: 750, limiter: 6800, curve: [[700, 250], [1500, 340], [2100, 420], [5350, 420], [6000, 380], [6500, 345], [6800, 300]], gears: [3.19, 2.19, 1.52, 1.06, 0.84, 0.69, 0.58], fd: 4.47, rev: 2.7, eff: 0.88, stall: 2000, upLo: 1900, upHi: 6500, upGround: 0, dnLo: 1200, dnHi: 3300 },
+    cda: 0.72, brake: 4800, steerLock: 0.55, awd: true, awdFixed: true,
+    pressures: [{ psi: 22, kpa: 152, w: 0.26, defl: 0.026 }, { psi: 36, kpa: 248, w: 0.245, defl: 0.012 }, { psi: 42, kpa: 290, w: 0.24, defl: 0.007 }],
+    sound: 'i4t', cam: { back: 7.4, up: 2.4, hood: [0, 1.0, 0.5] },
+  }),
 };
 
 
@@ -4878,6 +4907,11 @@ const SOUNDS = {
   v8bm: { fire: [0, 1, 2, 3, 4, 5, 6, 7].map(k => k / 8), bank: [0, 1, 0, 1, 1, 0, 0, 1], hdr: [0.005, 0.0056], bankPipe: [0.0098, 0.0112], coll: 0.0026, tail: 0.019, muff: [460, 2900, 1400], body: [78, 6], honk: [400, 3], pres: 1600,
     sub: [120, 4], dual: 0.6, cylVar: 0.13, rasp: 0.22, raspF: 2400,
     level: 0.92, turbo: 0.7, bov: 0.3, limiter: 7200, exW: 0.085, drive: [1.4, 3.2], intake: 0.33, mech: 0.35, whine: 0.06, burble: 0.5 },
+  // VW's EA888 2.0 turbo four in the R: an even four-beat through a 4-2-1 manifold, buzzier than the sixes and eights,
+  // the turbo's whistle and the dump valve between shifts, the sports exhaust's crackle on the overrun
+  i4t: { fire: [0, 0.25, 0.5, 0.75], bank: [0, 1, 0, 1], hdr: [0.0052, 0.0056], coll: 0.0024, tail: 0.015, muff: [600, 3600, 1700], body: [100, 4], honk: [640, 4], pres: 1900,
+    sub: [140, 3], dual: 0.7, cylVar: 0.08, rasp: 0.35, raspF: 2700,
+    level: 0.95, turbo: 1, bov: 0.5, limiter: 6800, exW: 0.085, drive: [1.4, 3.0], intake: 0.45, mech: 0.5, whine: 0.06, burble: 0.55 },
   v8p: { fire: [0, 1, 2, 3, 4, 5, 6, 7].map(k => k / 8), bank: [0, 1, 0, 1, 1, 0, 0, 1], hdr: [0.0046, 0.0051], coll: 0.0023, tail: 0.016, muff: [650, 3800, 1700], body: [90, 5], honk: [480, 4], pres: 1700,
     level: 0.95, turbo: 0.7, bov: 0.2, limiter: 6800, exW: 0.08, drive: [1.4, 3.1], intake: 0.4, mech: 0.45, whine: 0.07, burble: 0.45 },
 };
@@ -4905,6 +4939,7 @@ const VEHICLE_LIST = {
   gt500: { name: ROAD_CARS.gt500.name, blurb: ROAD_CARS.gt500.blurb },
   x5m: { name: ROAD_CARS.x5m.name, blurb: ROAD_CARS.x5m.blurb },
   gle63: { name: ROAD_CARS.gle63.name, blurb: ROAD_CARS.gle63.blurb },
+  arteonr: { name: ROAD_CARS.arteonr.name, blurb: ROAD_CARS.arteonr.blurb },
 };
 const VEHICLES = { buggy: BUGGY };
 let VEH = BUGGY, VIS = buggy;
@@ -4953,6 +4988,7 @@ const MODELS = {
   gt500: { hubY: 0.354, zF: 1.366, zR: -1.366, paint: 0x12407c, eye: [0.38, 1.1, -0.34] },
   x5m: { hubY: 0.374, zF: 1.486, zR: -1.486, paint: 0x1c4f91, eye: [0.41, 1.4, -0.18] },
   gle63: { hubY: 0.406, zF: 1.459, zR: -1.459, paint: 0x7a1218, eye: [0.45, 1.42, -0.07] },
+  arteonr: { hubY: 0.33, zF: 1.421, zR: -1.421, paint: 0x1b3a8c, eye: [0.36, 1.12, -0.2] },
 };
 // Rewrite a GLB so its textures are data: URIs in the JSON instead of buffer views (which the loader would turn into blob: URLs).
 function inlineGlbImages(buf) {
@@ -5133,7 +5169,7 @@ function markVehicle() { for (const b of document.querySelectorAll('#vehBtns but
    They follow the racing line on rails with a speed profile from the corner radii and the surface grip,
    keep to lanes, pull out to pass, and bump the player's car physically.
    ===================================================================== */
-const BOT_CARS = ['rs6', 'supra', 'cayenne', 'bmw7', 'quattroporte', 'x7', 'navigator', 'p911', 'sl63', 'xjr', 'gt500', 'x5m', 'gle63', 'cayennets'], BOT_PAINT = [0xe0b010, 0x4a90c8, 0x6fae1c, 0x4b1f6f];
+const BOT_CARS = ['rs6', 'supra', 'cayenne', 'bmw7', 'quattroporte', 'x7', 'navigator', 'p911', 'sl63', 'xjr', 'gt500', 'x5m', 'gle63', 'cayennets', 'arteonr'], BOT_PAINT = [0xe0b010, 0x4a90c8, 0x6fae1c, 0x4b1f6f];
 const BOT_SKILL = [0.93, 0.97, 0.9, 1.0], BOT_LW = 2.5;
 const BOTS = { n: 0, list: [], hold: 0, path: null, pIdx: 0, order: [], el: null, T: 0 };
 if (!MP.on) try { BOTS.n = clamp(+(localStorage.getItem('sandbuggy.bots') || 0) | 0, 0, 4); } catch (e) { }

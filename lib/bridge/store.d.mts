@@ -13,4 +13,5 @@ export class Bridge {
   command(agentToken: string, o: { type: unknown; args: unknown }): Promise<{ ok: boolean; data?: unknown; error?: string; timeout?: boolean }>;
   events(agentToken: string, after?: number, wait?: number): Promise<{ events: BridgeEvent[]; seq: number }>;
 }
+export function bridgeOn(env?: Record<string, string | undefined>): boolean;
 export function bridge(): Bridge;

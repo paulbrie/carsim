@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Bridge, BridgeError, BRIDGE_LIMITS } from '../lib/bridge/store.mjs';
+import { Bridge, BridgeError, BRIDGE_LIMITS, bridgeOn } from '../lib/bridge/store.mjs';
 
 test('bridge: a page pairs, an agent claims its code, commands go down the stream and come back answered', async () => {
   let t = 1000;
@@ -47,4 +47,12 @@ test('bridge: codes expire, bad commands are refused, idle pairings end', async 
   t += BRIDGE_LIMITS.idleMs + 1;
   b.pair('u');                                                                           // (sweeps)
   assert.throws(() => b.status(agentToken), e => e.status === 401);
+});
+
+test('bridge: off in production unless CLAUDE_BRIDGE=on (#338)', () => {
+  assert.equal(bridgeOn({ NODE_ENV: 'development' }), true);
+  assert.equal(bridgeOn({}), true);
+  assert.equal(bridgeOn({ NODE_ENV: 'production' }), false);
+  assert.equal(bridgeOn({ NODE_ENV: 'production', CLAUDE_BRIDGE: 'on' }), true);
+  assert.equal(bridgeOn({ NODE_ENV: 'production', CLAUDE_BRIDGE: '1' }), false);
 });

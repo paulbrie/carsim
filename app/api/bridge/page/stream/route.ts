@@ -1,10 +1,11 @@
 import { adminSession } from '@/auth';
-import { bridge } from '@/lib/bridge/store.mjs';
+import { bridge, bridgeOn } from '@/lib/bridge/store.mjs';
 import { json } from '@/lib/bridge/http';
 
 export const dynamic = 'force-dynamic';
 // GET ?pageId=&t=<pageToken> (EventSource can't set headers): server-sent events: status, command, ended, ping.
 export async function GET(req: Request) {
+  if (!bridgeOn()) return json({ error: 'Not found.' }, 404);
   if (!(await adminSession())) return json({ error: 'Only the super admin can pair the sim with Claude.' }, 403);
   const q = new URL(req.url).searchParams, enc = new TextEncoder();
   let detach: (() => void) | null = null, ping: ReturnType<typeof setInterval> | null = null;

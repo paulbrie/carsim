@@ -430,6 +430,8 @@ the panel's log: `state` (car, lap, autopilot, race, the panels' text), `screens
 saved on the server, as Save to server does without its name prompt; `aiForget()`: Start over without its confirm), `reload`. No
 arbitrary JavaScript; the bridge's own panel and password fields are out of its reach. Write to it in the panel
 (`node scripts/bridge.mjs events` reads it). **Disconnect** ends it; a reload keeps it; a server restart ends it.
+Development only (#338): in production (`npm start`, `NODE_ENV=production`) there is no Claude button and
+`/api/bridge/*` answers 404 (`bridgeOn` in `lib/bridge/store.mjs`), unless the server has `CLAUDE_BRIDGE=on`.
 As MCP tools (`sim_pair`, `sim_state`, `sim_screenshot` (an image), `sim_command`, `sim_events`, `sim_status`):
 `scripts/bridge-mcp.mjs`, which `.mcp.json` starts for Claude Code in this project.
 Server: `lib/bridge/store.mjs` (in memory), `app/api/bridge/page/*` (the super admin's session and the pairing's
@@ -596,7 +598,8 @@ a domain's root (Railway). Google's redirect URI there:
    process's memory, so more replicas would split them.
 2. Variables: `AUTH_SECRET` (`openssl rand -base64 32`; the server won't start without it in production: every
    page would fail with Auth.js's `MissingSecret`), `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (and `AUTH_GUEST=1` only if
-   guests should be allowed). `PORT` is Railway's. Node 24 (`engines`).
+   guests should be allowed). `PORT` is Railway's. Node 24 (`engines`). The Claude bridge is off there
+   (`CLAUDE_BRIDGE=on` to have it).
    The maps, the best laps and the saved autopilots are in Postgres: add a **Postgres** service to the project and
    set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on the app (the private one: no TLS needed). The server applies
    the migrations when it starts and won't start without the database. Coming from a deploy that kept them as

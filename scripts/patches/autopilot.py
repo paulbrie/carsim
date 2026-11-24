@@ -2160,6 +2160,9 @@ rep("""function refreshChunks(px, pz, budget = Infinity) {
 """, """function refreshChunks(px, pz, budget = Infinity) {
   if (AI_WK) return;                                         // (nothing to draw in a worker)
 """)
+# the detailed models: not in a worker (nothing to draw, and its engine is a blob: models/… is no URL there, #349)
+rep("""  const D = MODELS[V.key]; if (!D || V.modelState) return; V.modelState = 'loading';""",
+    """  const D = MODELS[V.key]; if (!D || V.modelState || AI_WK) return; V.modelState = 'loading';""")
 rep("""function updateFar() {
 """, """function updateFar() {
   if (AI_WK) return;

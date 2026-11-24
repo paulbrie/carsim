@@ -5026,7 +5026,7 @@ function inlineGlbImages(buf) {
 const MODEL_GZ = {};
 const modelGz = key => MODEL_GZ[key] ??= fetch(`models/${key}.glb.gz`).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); });
 function loadModel(V) {
-  const D = MODELS[V.key]; if (!D || V.modelState) return; V.modelState = 'loading';
+  const D = MODELS[V.key]; if (!D || V.modelState || AI_WK) return; V.modelState = 'loading';
   (async () => {
     try {
       if (typeof DecompressionStream === 'undefined') throw new Error('this browser cannot unpack the model (needs Chrome 80+, Firefox 113+ or Safari 16.4+)');

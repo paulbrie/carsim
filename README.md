@@ -436,7 +436,7 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   can take more), **pace note ×**, **follow a racing line** (the smoothest path within the road, **room either
   side** set, instead of the centre), **look ahead by time** (0.3 / 0.7 / 1.4 / 2.4 / 4.8 s instead of 6 / 15 / 30 / 50 / 100 m: one
   steering for every speed), **tries start rolling** (at 85 % of the notes' speed, not from a standstill), and a
-  **recorded lap to follow** (`__sim.aiDemo(trace)`, a ghost's trace, e.g. your best lap's: the `trace` of its row in the database's `records`): its
+  **recorded lap to follow** (**lap to follow** in the lab's left column, below; `__sim.aiDemo(trace, { who, time, src })` for any ghost's trace): its
   line and speeds take the place of the racing line and the notes. **Exams are flying laps** (two laps in a row from the
   start line, the second timed, as Drive it's laps after the first and a driver's best are: at speed over the line, on
   the ground the first lap wore, with its knocks; from a standstill a lap is ~1.5 s slower, and one lap alone hides a
@@ -451,6 +451,22 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   wandered off from them. With an RS 6 on the figure-8 (road), from a
   36.1 s flying lap with the defaults to 33.6 s (realistic notes, look-ahead by time, rolling starts) and 32.26 s
   following the record lap (31.66 s, a driver's).
+- **A lap as its example** (#340, `scripts/patches/follow.py`): how to tell the network "not like that, like this". It
+  brakes where its pace note says the spot is slower than it is going, and the computed notes are cautious guesses;
+  a driver's lap says where to brake and how fast each metre can be taken. **lap to follow** (left column): *none*,
+  *my best lap here*, or in a race room *the ghost* picked in Best laps. Your best lap on each course with each car
+  is kept in this browser with its recording as you drive (`carsim.lap.<course>.<car>`: `{ time, trace, at }`), alone
+  or in a room: only a clean flying lap (`aiLapClean`: over the start line at least 0.8 of the speed over the finish,
+  so not the first lap from the line; no respawn; never stopped), never the network's. Following one, the lap's line
+  and speeds are the racing line and the notes (`aiDemo`, kept with whose it is and its time); a training under way
+  carries on with it and the best is driven again (its time is in `aiExamKind`). A ghost's lap from the grid has its
+  slow first metres replaced by the speed it ends at, eased down as the notes brake (`aiLapProfile`).
+  **The review**: after Drive it, *pedals around the course* is drawn against that lap (the one followed, or your best
+  lap when none is): its line in gold dashes, its speed under the pointer, and under the map (full screen: under the lap to follow) the time lost over the
+  lap and the three stretches that cost the most (shaded red and numbered: from where to where, the seconds, the
+  speeds, how much of it on the brake; `aiMapCmp`: more than 5 km/h slower, gaps under 10 m joined).
+  Not done: notes on a stretch of the map (faster / later here), and fitting the network to the driver's own steering
+  and pedals as a starting point (the ticket has the plan).
 - **When to stop:** once it laps, the chart shows each generation's lap time (faster higher, dashed the best),
   and training stops by itself after so many generations without a better lap (30 unless set otherwise, 0:
   never: "stop if no better lap in … gens" beside max gens in the Training row, #330), counted afresh at each Train or Train more (#337: after such a stop,
@@ -536,7 +552,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x && python3 scripts/patches/setup.py /tmp/x && python3 scripts/patches/net-laps.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x && python3 scripts/patches/setup.py /tmp/x && python3 scripts/patches/net-laps.py /tmp/x && python3 scripts/patches/preview.py /tmp/x && python3 scripts/patches/keep.py /tmp/x && python3 scripts/patches/follow.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Eight of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
@@ -699,6 +715,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `scripts/patches/contacts.py` | car against car (`ccSolve`: the bots, the other players' cars, the rival) |
 | `scripts/patches/live.py` | the course editor builds every change while it is open; faster earthworks and distance to the course |
 | `scripts/patches/tracks.py`, `app/api/tracks` | driving a map alone: the start menu's tracks |
+| `scripts/patches/follow.py` | a lap to follow: the driver's best lap kept, the lab's choice of the lap the network takes as its example, the review map against it |
 | `scripts/patches/setup.py` | the car's setup: the drive, the split and the tires' pressure, kept per car; the figures for the Car setup drawer (U, `ui.js`) |
 | `public/sim/circuit-gen.js`, `scripts/patches/circuits.py`, `scripts/maps/generate.mjs` | the circuit generator (the editor's GENERATE A CIRCUIT, MY CIRCUITS; course files from node; tested in `test/circuit-gen.test.mjs`) |
 | `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |

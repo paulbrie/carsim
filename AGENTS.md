@@ -22,9 +22,10 @@ See README.md for the layout. Notes:
   and the sim page's interface (`ui.css` and `ui.js` in
   index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, the car's setup (the drive, the split,
   the tires' pressure, kept per car: `SETUP`, #332) `setup.py`, a network's laps as best laps, marked with its name and maker (#333) `net-laps.py`, a saved network's preview (the networks page's Watch it drive, `?net=<id>`, #336) `preview.py`, a training kept whole in the browser (the chart, the last exam, the rivals; storage full: the chart shortened, then a warning, #341) `keep.py`,
+  a lap to follow (the driver's best lap kept, the lab's choice, the review against it, #340) `follow.py`,
   last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -163,6 +164,12 @@ See README.md for the layout. Notes:
   arrows are the car's).
   A drawer down the sim's left side is under the room's panel in a race room: `ui.js` tells the page (`drawer`), which
   moves its panel away (`onDrawer` in `components/race-room.tsx`); another drawer there must be counted in that message.
+- A lap to follow (#340, `follow.py`): the lap followed is `aiDemo`'s (per course and car, `sandbuggy.ai.demo.*`, sent to
+  the workers with the rest of `sandbuggy.ai.*`); set it with `aiFollow(id)` / `aiDemo(trace, meta)`, which clear the
+  line's and the notes' caches. The driver's own lap is `carsim.lap.<course>.<car>` (not `sandbuggy.ai.*`: a 7 kB trace
+  would go to every worker): kept in `finishLap` by `aiKeepLap`, only laps `aiLapClean` passes; anything else that ends
+  a lap for the driver must call it too, and anything that moves the car within a lap must stay visible to it on the
+  replay's tape (a jump, a stop). The review (`aiMapCmp`) reads `AI.map` and the lap's profile at the same line points.
 - Dev server: `npm run dev` on port 7001 (3000 is the admin). `next.config.ts` is read at start: a change to it
   (the `/drive` and `/lab` redirects) needs a restart.
 - The database (#318, README: The database): Postgres, `DATABASE_URL` in `.env.local`, the container from

@@ -41,7 +41,7 @@ function aiStopLine() {
   const S = AI.stopWhy;
   return `<b style="color:${S.err ? '#ff8a7a' : '#ffd88a'}">Training stopped at generation ${S.gen}: ${aiEsc(S.why)}</b>`
     + (S.auto && /no better lap/.test(S.why) ? ' · <span style="opacity:.8">the setting “stop after generations without a better lap” (0: never)</span>' : '')
-    + ` · ${AI.gen ? 'Train more goes on from here' : 'Train to start again'}`;
+    + ` · ${AI.gen ? `Train more goes on from here${S.auto && /no better lap/.test(S.why) && AI.stopAfter ? `, for up to ${AI.stopAfter} more generations without a better lap` : ''}` : 'Train to start again'}`;
 }
 function aiTrain(on) {
   if (on === AI.training) return;

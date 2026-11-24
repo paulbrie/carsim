@@ -85,7 +85,7 @@ const aiShape = (inputs, hb, h) => {
   const nIn = AI_INPUTS.filter(d => inputs.includes(d.id)).reduce((a, d) => a + d.names.length, 0), nOut = hb ? 3 : 2;
   return { nIn, nOut, np: h ? nIn * h + h + h * nOut + nOut : nIn * nOut + nOut };
 };
-const AI = { gens: 0, genEnd: 0, stopAfter: 30, sinceBest: 0, h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, nb: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
+const AI = { gens: 0, genEnd: 0, stopAfter: 30, sinceBest: 0, dry: 0, h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, nb: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
   hist: [], cands: null, eps: null, fits: null, ci: 0, ep: null, ctl: null, snapH: null, snapC: null, acc: 0, dst: null, el: null };
 const aiX = new Float32Array(32), aiY = new Float32Array(3), aiHid = new Float32Array(AI_SIZES[AI_SIZES.length - 1]);
 // what the network takes in and gives out (kept in this browser; each set is a training of its own)
@@ -584,9 +584,9 @@ function aiTick() {
     AI.exam = false;
     AI.fail = AI.last.why !== 'lap' ? dist % len : null;                 // half the next tries start 100 m before: practise where it goes wrong
     const lapT = AI.last.lap;
-    if (fit > AI.bestFit) { AI.bestFit = fit; AI.bestSolo = solo; AI.best = Float32Array.from(E.w); AI.bestLap = lapT; AI.sinceBest = 0; AI.bestAt = Date.now(); }
-    else if (AI.bestLap != null) AI.sinceBest++;                        // it laps: how long since a better one
-    if (AI.stopAfter && AI.bestLap != null && AI.sinceBest >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
+    if (fit > AI.bestFit) { AI.bestFit = fit; AI.bestSolo = solo; AI.best = Float32Array.from(E.w); AI.bestLap = lapT; AI.sinceBest = AI.dry = 0; AI.bestAt = Date.now(); }
+    else if (AI.bestLap != null) { AI.sinceBest++; AI.dry++; }          // it laps: how long since a better one (dry: in this training, #337)
+    if (AI.stopAfter && AI.bestLap != null && AI.dry >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
     if (AI.gens && AI.gen + 1 >= AI.genEnd) AI.autoStop = `${AI.gens} generation${AI.gens > 1 ? 's' : ''} done`;   // (gen counts this one just below)
     AI.hist.push([Math.round(fit), Math.round(AI.tryAvg), lapT]); AI.lastExam = AI.last; AI.lastExamRace = AI.lastRace;
     AI.gen++; aiRvKeep(); aiSave();
@@ -723,9 +723,9 @@ function aiParExams() {
     const { j, r } = x, lapT = r.last.lap;
     AI.last = r.last; AI.lastRace = r.race;
     AI.fail = r.last.why !== 'lap' ? r.dist % len : null;
-    if (r.fit > AI.bestFit) { AI.bestFit = r.fit; AI.bestSolo = r.solo; AI.best = Float32Array.from(j.w); AI.bestLap = lapT; AI.sinceBest = 0; AI.bestAt = Date.now(); }
-    else if (AI.bestLap != null) AI.sinceBest++;
-    if (AI.stopAfter && AI.bestLap != null && AI.sinceBest >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
+    if (r.fit > AI.bestFit) { AI.bestFit = r.fit; AI.bestSolo = r.solo; AI.best = Float32Array.from(j.w); AI.bestLap = lapT; AI.sinceBest = AI.dry = 0; AI.bestAt = Date.now(); }
+    else if (AI.bestLap != null) { AI.sinceBest++; AI.dry++; }
+    if (AI.stopAfter && AI.bestLap != null && AI.dry >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
     if (AI.gens && AI.gen + 1 >= AI.genEnd) AI.autoStop = `${AI.gens} generation${AI.gens > 1 ? 's' : ''} done`;
     AI.hist.push([Math.round(r.fit), Math.round(j.tryAvg), lapT]); AI.lastExam = AI.last; AI.lastExamRace = AI.lastRace;
     AI.gen++; aiRvKeep(); aiSave();
@@ -878,7 +878,7 @@ function aiTrainFrame(dt) {
 function aiTrain(on) {
   if (on === AI.training) return;
   AI.autoStop = false;
-  if (on) AI.genEnd = AI.gen + AI.gens;                                // so many more, from now
+  if (on) { AI.genEnd = AI.gen + AI.gens; AI.dry = 0; }               // so many more, from now; and as many without a better lap (#337)
   if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (on) {
     if (rp.on) stopReplay();
@@ -910,12 +910,12 @@ function aiReexam() {
   AI.examKind = aiExamKind();
   if (!AI.best) return;
   const x = aiExamRun(AI.best);
-  AI.bestFit = x.fit; AI.bestSolo = x.solo; AI.bestLap = AI.last.lap; AI.sinceBest = 0; aiSave();
+  AI.bestFit = x.fit; AI.bestSolo = x.solo; AI.bestLap = AI.last.lap; AI.sinceBest = AI.dry = 0; aiSave();
 }
 // training carries on from the best weights (after wandering off from them), not from where it got to
 function aiBackToBest() {
   if (!AI.best) return;
-  AI.w = Float32Array.from(AI.best); AI.m.fill(0); AI.sinceBest = 0;
+  AI.w = Float32Array.from(AI.best); AI.m.fill(0); AI.sinceBest = AI.dry = 0;
   AI.cands = null; AI.exam = false; AI.ep = null;
   aiSave(); aiShow(); flash('Training carries on from the best', '#9fd4ff', 1.5);
 }
@@ -1622,7 +1622,7 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div clas
     <div class="aiKpi" id="aiKpi"></div>
     <div class="st" id="aiStat"></div><div class="sub" id="aiRate"></div><div class="sub" id="aiRaceInfo"></div>
     <div id="aiLoad" style="display:none"></div>
-    <div class="grp"><div class="gh">Training</div><label class="qc" title="How many of this computer's cores train at once (the rest of these settings: This computer, under Inputs, outputs and penalties)">cores <select id="aiCoresQ">${Array.from({ length: aiCoresMax() }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select></label><label class="qc" title="Train at most this many generations, then stop (empty or 0: until you pause it, or it stops improving). The same as Tries, exams and when to stop's">max gens <input type="number" id="aiGensQ" min="0" max="100000" step="10" placeholder="∞" style="width:52px"></label><label class="qc" title="Once it laps: stop training when this many generations in a row bring no better lap (0 or empty: never). The same as Tries, exams and when to stop's" style="white-space:nowrap">stop if no better lap in <input type="number" id="aiStopQ" min="0" max="1000" step="5" placeholder="never" style="width:52px"> gens</label><button id="aiTrain">Train</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><label class="qc" title="How fast Watch plays the training, and Drive it and Race it drive: 1× real time, 2× or 4× (the same physics, more of it a frame)">speed <select id="aiSpeed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="aiBack" title="Carry on training from the best weights so far (the exam's best lap), not from where training wandered to">Back to the best</button><label class="qc" title="The network's size: inputs straight to the outputs (none), or a hidden layer of so many units between. Each size is a training of its own; a new one starts from this one's when both have a hidden layer (Start over: from nothing)">hidden <select id="aiHQ">${AI_SIZES.map(h => `<option value="${h}">${h || 'none'}</option>`).join('')}</select></label><button id="aiReset">Start over</button></div>
+    <div class="grp"><div class="gh">Training</div><label class="qc" title="How many of this computer's cores train at once (the rest of these settings: This computer, under Inputs, outputs and penalties)">cores <select id="aiCoresQ">${Array.from({ length: aiCoresMax() }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select></label><label class="qc" title="Train at most this many generations, then stop (empty or 0: until you pause it, or it stops improving). The same as Tries, exams and when to stop's">max gens <input type="number" id="aiGensQ" min="0" max="100000" step="10" placeholder="∞" style="width:52px"></label><label class="qc" title="Once it laps: stop training when this many generations in a row bring no better lap (0 or empty: never), counted afresh at each Train or Train more. The same as Tries, exams and when to stop's" style="white-space:nowrap">stop if no better lap in <input type="number" id="aiStopQ" min="0" max="1000" step="5" placeholder="never" style="width:52px"> gens</label><button id="aiTrain">Train</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><label class="qc" title="How fast Watch plays the training, and Drive it and Race it drive: 1× real time, 2× or 4× (the same physics, more of it a frame)">speed <select id="aiSpeed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="aiBack" title="Carry on training from the best weights so far (the exam's best lap), not from where training wandered to">Back to the best</button><label class="qc" title="The network's size: inputs straight to the outputs (none), or a hidden layer of so many units between. Each size is a training of its own; a new one starts from this one's when both have a hidden layer (Start over: from nothing)">hidden <select id="aiHQ">${AI_SIZES.map(h => `<option value="${h}">${h || 'none'}</option>`).join('')}</select></label><button id="aiReset">Start over</button></div>
     <div class="grp"><div class="gh">Its best, at the wheel</div><button id="aiDrive">Drive it</button><button id="aiRace" title="Drive it against a rival: another of this car alongside on the grid, driven by the best network too (as Train's rival below: a replay of its own laps, or a car that reacts; a car if none is set)">Race it</button></div>
     <div class="grp"><div class="gh">Keep it</div><button id="aiSaveF" title="Download this training (the weights, the generations, the chart) as a file">Save to file</button><button id="aiLoadF" title="Load a training saved to a file">Load file</button><button id="aiSaveS" title="Save this training on the server, under a name: you, or anyone, can load it there">Save to server</button><button id="aiLoadS" title="The autopilots saved on the server: load one (yours or anyone's), delete yours">From server</button></div>
     <div id="aiServer" style="display:none"></div>
@@ -1673,7 +1673,7 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div clas
       <label style="justify-content:space-between" title="Flying exams: so many timed laps in a row after the first, the slowest counting (and the knocks of each carried into the next): a network that is quick for a lap and then loses it scores its bad lap">flying laps an exam times <input type="number" id="aiExamLaps" min="1" max="5" step="1"></label>
       <label style="justify-content:space-between" title="A try ends (and loses the 100 m for ending badly) this far from the racing line. Wider gives it room for its own line, and to go astray">end a try this far from the line, m <input type="number" id="aiOff" min="3" max="30" step="1"></label>
       <label style="justify-content:space-between" title="Each Train (or Train more) runs this many generations, then stops (0: until you pause it)">train this many generations at a time <input type="number" id="aiGens" min="0" max="10000" step="10"></label>
-      <label style="justify-content:space-between" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop)">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label></div>
+      <label style="justify-content:space-between" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop). Counted afresh at each Train or Train more">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label></div>
     <div class="card"><div class="h3">This computer: cores and drawing</div>
       <label style="justify-content:space-between" title="Train on more of this computer's cores at once: this tab drives some of each generation's tries (the ones you see), and copies of the sim in the background (Web Workers, one a core) drive the others and the exams, at full speed each. The same physics and the same world (checked as each starts), so the same training, only faster. Each copy takes some memory (about 70 MB). Watch at 1× watches this tab's tries; the others go on at full speed">cores to train on <select id="aiCores">${Array.from({ length: aiCoresMax() }, (_, k) => `<option value="${k + 1}">${k + 1}${k ? '' : ' (this tab only)'}${k + 1 === aiCoresMax() ? ' (all)' : ''}</option>`).join('')}</select></label>
       <label title="Unticked: while it trains, the 3D world isn't drawn (the picture stops; the panel goes on), and the training gets that time: more tries a second in this tab. Watch at 1× always draws it"><input type="checkbox" id="aiDraw"> draw the 3D world while it trains</label>
@@ -1930,7 +1930,7 @@ function aiShow() {
   if (!AI.open) return;
   if (AI.el.style.top) AI.el.style.top = AI.el.style.maxHeight = '';     // (the drawer: the window's height, its CSS)
   const len = botPath().len, pct = f => Math.min(100, Math.round(f / len * 100));
-  const best = AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? `a full lap in ${fmt(AI.bestLap)}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `${Math.round(AI.bestFit)} m of ${Math.round(len)} m (${pct(AI.bestFit)} %)`;
+  const best = AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? `a full lap in ${fmt(AI.bestLap)}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter && AI.training ? `; stops after ${AI.stopAfter - AI.dry} more without one` : ''})</span>` : ''}` : `${Math.round(AI.bestFit)} m of ${Math.round(len)} m (${pct(AI.bestFit)} %)`;
   AI.el.querySelector('#aiSize').textContent = `${AI.h ? 'a tiny neural network' : 'the smallest network'}: ${AI.nIn} inputs ${AI.h ? `→ ${AI.h} hidden →` : 'straight to'} ${AI.nOut} outputs, ${AI.np} weights${AI.kp || AI.ks ? ` · ${[AI.kp && 'pedals', AI.ks && 'steering'].filter(Boolean).join(' and ')} like the keyboard` : ''}${AI.nb ? ' · no brake' : ''}`;
   AI.el.querySelector('#aiHQ').value = AI.h;
   AI.el.querySelectorAll('[data-in]').forEach(c => { c.checked = AI.inputs.includes(c.dataset.in); });

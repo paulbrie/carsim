@@ -20,7 +20,8 @@ car by car and track by track, is the leaderboard.
 | `/maps`, `/maps/<id>` | the super admin's maps and their editor |
 
 - **The scoreboard** (`lib/showcase/store.mjs`, read-only, kept 10 s): a human's lap is a best lap from a race room
-  (table `records`), a network's is a saved network's best exam lap (table `autopilots`, as its browser timed it). A
+  (table `records`), a network's is a saved network's best exam lap (table `autopilots`, as its browser timed it) or a
+  best lap a network drove in a race room (a record with `net`, #333), shown with its name and who made it. A
   network names its course by the sim's `courseKey()`; the same hash of a map's course says which map that is, as
   laid out now (`courseKey` there is the sim's, and `test/showcase.test.mjs` runs the sim's own against it). A lap on
   an earlier layout, or a network trained on a course that is no map's (the solo sim's own figure-8, a circuit of
@@ -490,7 +491,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x && python3 scripts/patches/net-laps.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Eight of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
@@ -535,6 +536,12 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   with the car you drive on this map and ground (the top 10 and yours, with the gap to the fastest; under
   the minimap, shorter, when the window is narrow). An edited map keeps its times, marked "earlier layout"
   (and without their splits).
+- **A network's laps count too** (#333): driving around the room (not in a race), a lap the autopilot drives (TNN lab →
+  Drive it) is a best lap of the network's own, per car, map and ground, never the driver's: a network saved on the
+  server goes by its name and its maker as the server has them (`tnn:<id>`, whoever drives it); one not saved, or
+  trained further since it was loaded or saved, is "Unsaved network" by whoever drove it (`tnn:local:<user>`). The
+  lists show it in cyan with its maker, its ghost can be raced, and the scoreboard counts it on the network's side.
+  Driving alone, its lap is the timer's BEST as ours is, with the network's name and maker under it.
 - **Ghost car** (the room panel's Ghost car: Off / Track record / Car record / My best, kept in the
   browser, `lib/client/ghost.ts`): a lap better than the driver's best brings its path (`trace`: 10
   samples a second of position, orientation and steering, from the replay tape), kept in

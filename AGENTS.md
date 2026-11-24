@@ -20,9 +20,10 @@ See README.md for the layout. Notes:
   the Claude bridge's loader
   (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, the wheels' spin solved implicitly (`wheelSpin`, #327) `tires.py`,
   and the sim page's interface (`ui.css` and `ui.js` in
-  index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, last in the chain
+  index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, a network's laps as best laps, marked with its name and maker (#333) `net-laps.py`,
+  last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, net-laps, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -43,6 +44,10 @@ See README.md for the layout. Notes:
   the file changes). A restart closes the open rooms and the Claude bridge's pairing: ask the super admin first.
 - The tire's force is solved with the wheel's spin (`wheelSpin`, `scripts/patches/tires.py`, #327): a change to the force's
   curve (`Fx` from the slip in `stepCar`) must change it there too, or the wheels shake between slipping both ways at walking pace.
+- A network's laps (#333) are best laps (`records`) of a driver of their own: `tnn:<autopilot id>` (a saved network, named and
+  credited as the server has it: the hub's `netLap` asks `nets`, the autopilots' store) or `tnn:local:<user id>` (one not saved),
+  with `net` ({ autopilot, name, creator, weights, h }). Anything that ranks or lists best laps tells the two apart by `net`
+  (humans' have none). The sim sends them with `net` (`aiNetMark`: `AI.ident` while the driving weights are the saved ones).
 - Bridges' earthworks (`scripts/patches/bridges.py`, after even.py): a bridged crossing keeps its two branches'
   heights apart (`bridgedCrossing`): any profile code that brings crossing branches to one height must skip it.
 - Grounds (#308, `grounds.py`): the world's hills come from the ground: `COUNTRY` (earth or road) builds them with

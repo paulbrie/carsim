@@ -9,7 +9,7 @@ import { NetDiagram, WeightGrid } from '@/components/net-diagram';
 import { TrackOutline } from '@/components/track-outline';
 import { BoardCard, GapBadge, SideTag, carName, groundLabel } from '@/components/showcase';
 import { withBase } from '@/lib/base-path';
-import { fmtLap, fmtLength, publicName } from '@/lib/format';
+import { fmtLap, fmtLength, netLabel, publicName } from '@/lib/format';
 import { INPUT_HINTS, netShape } from '@/lib/tnn';
 import { VEHICLES } from '@/lib/race/shared.mjs';
 import { showcase, type Board, type Duel, type Network, type Scoreboard, type Track } from '@/lib/showcase/store.mjs';
@@ -265,7 +265,7 @@ function Headline({ board, duel, track, net, full }: { board: Board; duel: Duel;
 
       <div className="mt-6 space-y-2.5">
         <Lap side="human" win={!tnnAhead} who={publicName(duel.human.name, full)} time={duel.human.time} />
-        <Lap side="tnn" win={tnnAhead} who={`${duel.tnn.weights} weights${duel.tnn.h ? `, hidden layer of ${duel.tnn.h}` : ', no hidden layer'}`} time={duel.tnn.time} />
+        <Lap side="tnn" win={tnnAhead} who={`${netLabel(duel.tnn, full)} · ${duel.tnn.weights} weights${duel.tnn.h ? `, hidden layer of ${duel.tnn.h}` : ', no hidden layer'}`} time={duel.tnn.time} />
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <GapBadge gap={duel.gap} />

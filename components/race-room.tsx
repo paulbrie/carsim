@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSubject } from 'subjecto/react';
 import { toast } from 'sonner';
-import { Check, ChevronLeft, Crown, Flag, Link2, LogOut, MessageSquare, PanelLeftClose, PanelLeftOpen, Timer, Trophy, WifiOff } from 'lucide-react';
+import { Brain, Check, ChevronLeft, Crown, Flag, Link2, LogOut, MessageSquare, PanelLeftClose, PanelLeftOpen, Timer, Trophy, WifiOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -265,12 +265,15 @@ function BestLaps({ room, meId, vehicle }: { room: RoomView; meId: string; vehic
           {shown.map(({ e, pos }) => (
             <li key={`${e.id}|${e.vehicle}`} className={cn('flex items-center gap-2.5 rounded-lg p-1.5', e.id === meId && 'bg-primary/10')}>
               <span className="w-5 text-right text-sm tabular-nums text-muted-foreground">{pos}</span>
-              <DriverAvatar name={e.name} image={e.image} className="size-7" />
+              {e.net ? <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-tnn/15 text-tnn"><Brain className="size-4" /></span>
+                : <DriverAvatar name={e.name} image={e.image} className="size-7" />}
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{e.name}{e.id === meId && <span className="text-muted-foreground"> (you)</span>}</span>
-                {(!forCar || e.mv !== here.v) && (
+                <span className={cn('block truncate text-sm font-medium', e.net && 'text-tnn')} title={e.net ? `A network's lap: ${e.net.name}, made by ${e.net.creator}${e.net.weights ? `, ${e.net.weights} weights` : ''}` : undefined}>
+                  {e.name}{e.id === meId && <span className="text-muted-foreground"> (you)</span>}
+                </span>
+                {(!forCar || e.mv !== here.v || e.net) && (
                   <span className="block truncate text-xs text-muted-foreground">
-                    {!forCar && vehicleName(e.vehicle)}{!forCar && e.mv !== here.v && ' · '}{e.mv !== here.v && 'earlier layout'}
+                    {[e.net && `network by ${e.net.creator}`, !forCar && vehicleName(e.vehicle), e.mv !== here.v && 'earlier layout'].filter(Boolean).join(' · ')}
                   </span>
                 )}
               </span>
@@ -300,7 +303,7 @@ function GhostControl({ records, meId, vehicle }: { records: Records | null; meI
       </SegmentedControl>
       {mode !== 'off' && (
         <p className="text-xs text-muted-foreground">
-          {g ? <>Racing {g.id === meId ? 'your' : `${g.name}’s`} {fmtTime(g.time)} in the {vehicleName(g.vehicle)}: it sets off when your lap starts.</>
+          {g ? <>Racing {g.id === meId ? 'your' : g.net ? `the network ${g.name}’s (by ${g.net.creator})` : `${g.name}’s`} {fmtTime(g.time)} in the {vehicleName(g.vehicle)}: it sets off when your lap starts.</>
             : 'No lap to race yet: a best lap set from now on brings its ghost.'}
         </p>
       )}

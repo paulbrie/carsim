@@ -6,7 +6,8 @@ export interface Network {
   weights: number; gen: number; bestLap: number | null; w: number[] | null;
 }
 export interface HumanLap { id: string; name: string; image: string | null; time: number; at: number }
-export interface NetworkLap { id: string; name: string; ownerName: string; time: number; weights: number; h: number; gen: number }
+/** A network's best lap: its exam lap (room: false) or one it drove in a race room (#333). saved: id is a saved network's. */
+export interface NetworkLap { id: string; name: string; ownerName: string; time: number; weights: number; h: number; gen: number | null; saved: boolean; room: boolean }
 export interface BoardRow { vehicle: string; human: HumanLap | null; tnn: NetworkLap | null }
 export interface Duel { vehicle: string; human: HumanLap; tnn: NetworkLap; gap: number }
 export interface Board {

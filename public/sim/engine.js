@@ -2635,9 +2635,9 @@ function buildCircuit() {
 // A lap only counts if the buggy drives through every gate, in order, between the posts.
 const lap = { next: 0, started: false, lapStart: 0, lapNo: 0, time: 0, last: null, lastValid: true, best: null, splits: [], bestSplits: [], lastGate: -1, msg: '', msgCol: '#fff', msgT: 0, prev: new THREE.Vector3(), laps: [], valid: [], invalid: false, missed: [], history: [] };
 function loadBest() {
-  lap.best = null; lap.bestSplits = []; lap.last = null; lap.laps = []; lap.valid = []; lap.lapNo = 0; lap.history = [];
+  lap.best = null; lap.bestSplits = []; lap.bestNet = null; lap.last = null; lap.laps = []; lap.valid = []; lap.lapNo = 0; lap.history = [];
   if (MP.on) mpApplyBest();
-  else try { const b = JSON.parse(localStorage.getItem('sandbuggy.best.' + courseKey()) || 'null'); if (b) { lap.best = b.time; lap.bestSplits = b.splits; } } catch (e) { }
+  else try { const b = JSON.parse(localStorage.getItem('sandbuggy.best.' + courseKey()) || 'null'); if (b) { lap.best = b.time; lap.bestSplits = b.splits; lap.bestNet = b.net?.name ? b.net : null; } } catch (e) { }
 }
 loadBest();
 const fmt = t => t == null ? '–:––.–––' : `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}`;
@@ -2674,9 +2674,11 @@ function finishLap(t, valid) {
   const lt = t - lap.lapStart; lap.last = lt; if (lap.lapNo > 0) rp.lastLap = { a: simTime - lt, b: simTime, time: lt, no: lap.lapNo }; lap.lastValid = valid; lap.laps.push(lt); lap.valid.push(valid);
   if (lap.lapNo > 0) { lap.history.push({ no: lap.lapNo, time: lt, valid, splits: lap.splits.slice() }); if (lap.history.length > 2) lap.history.shift(); }
   if (!valid) flash(`Lap ${lap.lapNo} invalid: missed ${lap.missed.map(gateName).join(', ')}`, '#ff6a5a', 3.5);
+  else if (MP.on && AI.drive) flash(`The network's lap ${lap.lapNo}  ${fmt(lt)}`, '#58d6e6', 3.5);
   else if (lap.best == null || lt < lap.best) {
     lap.best = lt; lap.bestSplits = lap.splits.slice();
-    if (!MP.on) try { localStorage.setItem('sandbuggy.best.' + courseKey(), JSON.stringify({ time: lt, splits: lap.bestSplits })); } catch (e) { }
+    if (AI.drive) { const m = aiNetMark(); lap.bestNet = { name: m.name, creator: m.creator }; } else lap.bestNet = null;
+    if (!MP.on) try { localStorage.setItem('sandbuggy.best.' + courseKey(), JSON.stringify({ time: lt, splits: lap.bestSplits, ...(lap.bestNet ? { net: lap.bestNet } : {}) })); } catch (e) { }
     flash(`New best lap  ${fmt(lt)}`, '#7dff9a', 3.5);
   } else flash(`Lap ${lap.lapNo}  ${fmt(lt)}  (+${(lt - lap.best).toFixed(3)})`, '#ffd27d', 3.5);
 }
@@ -2728,7 +2730,7 @@ function computeMapBounds() {
 const mapXY = (x, z) => [mapCv.width - (mapB.ox + (x - mapB.x0) * mapB.s), mapCv.height - (mapB.oz + (z - mapB.z0) * mapB.s)];
 function resetBest() {
   if (lap.best == null) { flash('No best lap to reset', '#ffd88a', 1.5); return; }
-  const old = lap.best; lap.best = null; lap.bestSplits = [];
+  const old = lap.best; lap.best = null; lap.bestSplits = []; lap.bestNet = null;
   try { localStorage.removeItem('sandbuggy.best.' + courseKey()); } catch (e) { }
   flash(`Best lap ${fmt(old)} cleared`, '#ffd88a', 2);
 }
@@ -2755,7 +2757,7 @@ let lapHudT = 0;
 function updateLapHud(dt) {
   if ((lapHudT += dt) < 0.05) return; lapHudT = 0;
   timerEl.innerHTML = `<div class="lt">${lap.started ? `LAP ${lap.lapNo}${MP.phase === 'racing' && !MP.finished ? ' / ' + MP.laps : ''}` : MP.hold ? 'ON THE GRID' : 'CROSS START'}${lap.invalid ? ' <span style="color:#ff6a5a">· INVALID</span>' : ''}</div><div class="cur" style="${lap.invalid ? 'color:#ffb0a6' : ''}">${fmt(lap.started ? lap.time : 0)}</div>
-    <div class="row"><span style="${lap.lastValid ? '' : 'color:#ff8a7a;text-decoration:line-through'}">LAST ${fmt(lap.last)}</span><span>BEST ${fmt(lap.best)}</span></div>${mpRecRow()}${segTable()}`;
+    <div class="row"><span style="${lap.lastValid ? '' : 'color:#ff8a7a;text-decoration:line-through'}">LAST ${fmt(lap.last)}</span><span>BEST ${fmt(lap.best)}</span></div>${lap.bestNet ? `<div style="color:#58d6e6;font-size:11px;text-align:right;max-width:240px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Set by the network ${mpEsc(lap.bestNet.name)}, made by ${mpEsc(lap.bestNet.creator)}">by the network ${mpEsc(lap.bestNet.name)} (${mpEsc(lap.bestNet.creator)})</div>` : ''}${mpRecRow()}${segTable()}`;
   document.getElementById('nav').style.top = (timerEl.offsetHeight + 24) + 'px';
   drawDamage();
   toastEl.textContent = lap.msgT > 0 ? lap.msg : ''; toastEl.style.color = lap.msgCol; toastEl.style.opacity = lap.msgT > 0 ? Math.min(1, lap.msgT * 2) : 0;
@@ -5751,7 +5753,13 @@ function mpProgress() {
 
 // called by finishLap, before it moves on: lap lap.lapNo is done (a best lap, maybe; in a race, one of its laps)
 function mpLap(t, valid) {
-  if (!MP.on || MP.spectator || lap.lapNo < 1 || AI.drive) return;   // the autopilot's laps aren't ours
+  if (!MP.on || MP.spectator || lap.lapNo < 1) return;
+  if (AI.drive) {                                                     // the network's (#333): a best lap of its own, never a race lap
+    if (MP.phase === 'countdown' || MP.phase === 'racing') return;
+    const m = aiNetMark();
+    mpPost({ t: 'lap', lap: lap.lapNo, time: t - lap.lapStart, valid, splits: lap.splits, net: { id: m.id, weights: m.weights, h: m.h }, ...(valid ? { trace: mpTrace(lap.lapStart, t) } : {}) });
+    return;
+  }
   const time = t - lap.lapStart, trace = valid && (lap.best == null || time < lap.best) ? mpTrace(lap.lapStart, t) : null;   // lap.best: still the one before
   mpPost({ t: 'lap', lap: lap.lapNo, time, valid, splits: lap.splits, ...(trace ? { trace } : {}) });
   if (MP.phase !== 'racing' || MP.finished) return;
@@ -5915,7 +5923,7 @@ function mpMessage(m) {
 function mpApplyBest() {
   const R = MP.records;
   if (!R || !Array.isArray(R.list)) return;
-  MP.recs = []; MP.carRecs = []; lap.best = null; lap.bestSplits = [];
+  MP.recs = []; MP.carRecs = []; lap.best = null; lap.bestSplits = []; lap.bestNet = null;
   if (`${R.map}@${R.v}` !== MP.courseKey || R.ground !== mpGroundNow()) return;      // not this course's (yet)
   const mine = R.list.find(e => e.id === MP.myId && e.vehicle === VEH.key);
   if (mine) { lap.best = mine.time; lap.bestSplits = mine.mv === R.v && Array.isArray(mine.splits) ? mine.splits : []; }
@@ -5923,6 +5931,8 @@ function mpApplyBest() {
   for (const e of R.list) if ((e.vehicle === 'buggy' || ROAD_CARS[e.vehicle]) && !seen.has(e.vehicle)) { seen.add(e.vehicle); MP.recs.push(e); }
   MP.carRecs = R.list.filter(e => e.vehicle === VEH.key);
 }
+// a best lap's driver as the lists show it: a network's (#333) in cyan, its maker in the tooltip
+const mpWho = e => e.net ? `<span style="color:#58d6e6" title="A network's lap: ${mpEsc(e.net.name)}, made by ${mpEsc(e.net.creator)}">${mpEsc(e.name)}</span>` : mpEsc(e.name);
 const mpEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 // the best laps' lists fold away (a click on their title): the timer's ('cars') and the one beside it ('room'), kept in
 // this browser; their titles take the pointer (the panels let it through to the drive). So do the timer's lap details
@@ -5949,7 +5959,7 @@ function mpRecRow() {
   if (ours >= MP_REC_ROWS) rows.push([all[ours], true]);
   if (ours < 0) rows.push([null, true]);
   const row = ([e, our]) => `<tr style="${our ? 'color:#ffd27d;font-weight:700' : ''}"><td>${mpEsc(e ? (ROAD_CARS[e.vehicle] || BUGGY).short : VEH.short)}</td>`
-    + `<td>${e ? fmt(e.time) : '–'}</td><td style="text-align:left;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e ? mpEsc(e.name) : 'no lap yet'}</td></tr>`;
+    + `<td>${e ? fmt(e.time) : '–'}</td><td style="text-align:left;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e ? mpWho(e) : 'no lap yet'}</td></tr>`;
   return `<table class="seg"><tr>${mpFoldHead('cars', 'th', '')}<th></th><th></th></tr>${rows.map(row).join('')}</table>`;
 }
 
@@ -6081,7 +6091,7 @@ function mpBestFrame(dt) {
   const rows = all.slice(0, n).map((e, i) => [e, i]);
   if (me >= n) rows.push([all[me], me]);
   const lead = all[0]?.time, old = e => e.mv != null && e.mv !== MP.records.v;
-  const row = ([e, i]) => `<tr class="${e.id === MP.myId ? 'me' : ''}"><td class="p">${i + 1}</td><td class="n">${mpEsc(e.name)}${e.id === MP.myId ? ' (you)' : ''}${old(e) ? ' *' : ''}</td>`
+  const row = ([e, i]) => `<tr class="${e.id === MP.myId ? 'me' : ''}"><td class="p">${i + 1}</td><td class="n">${mpWho(e)}${e.id === MP.myId ? ' (you)' : ''}${old(e) ? ' *' : ''}</td>`
     + `<td>${fmt(e.time)}</td><td class="g">${i ? '+' + (e.time - lead).toFixed(3) : ''}</td></tr>`;
   const html = MP_FOLD.room ? mpFoldHead('room', 'div', 'lt') : `${mpFoldHead('room', 'div', 'lt')}<div class="sub">${mpEsc(VEH.short)} · ${mpEsc(groundName())}</div>`
     + (!here ? '<div class="none">Loading…</div>' : !all.length ? `<div class="none">No lap yet with the ${mpEsc(VEH.short)} here. A lap counts when it passes every gate.</div>`
@@ -6693,9 +6703,17 @@ function aiInput(dt) {
 const aiSig = () => AI.hb || AI.kp || AI.ks || AI.nb || AI.inputs.join() !== AI_DEFAULT_INPUTS.join() ? '.' + AI.inputs.join('+') + (AI.hb ? '+hb' : '') + (AI.kp ? '+kp' : '') + (AI.ks ? '+ks' : '') + (AI.nb ? '+nobrake' : '') : '';
 const aiKey = () => `sandbuggy.ai.${courseKey()}.${VEH.key}.${AI.h}${aiSig()}`;
 const aiGauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+// the network that drives (Drive it: the best weights) as the server has it (#333): AI.ident { id, name, creator, sig } is
+// the saved network it was loaded from or saved as, sig its driving weights' signature then; once training has changed
+// them it is an unsaved network, its maker whoever drives it
+function aiNetSig(w) { let h = 2166136261; for (const x of new Uint32Array(Float32Array.from(w).buffer)) h = Math.imul(h ^ x, 16777619); return (h >>> 0).toString(36); }
+function aiNetMark() {
+  const w = AI.best || AI.w, I = AI.ident, saved = !!(I && w && I.sig === aiNetSig(w));
+  return { id: saved ? I.id : null, name: saved ? I.name : 'Unsaved network', creator: saved ? I.creator : 'you', weights: AI.np, h: AI.h };
+}
 function aiFresh() {
   const n = AI.np = aiShape(AI.inputs, AI.hb, AI.h).np, b = n - AI.nOut;
-  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null, examKind: aiExamKind(), rvPool: [], bestSolo: null, bestAt: null });
+  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null, examKind: aiExamKind(), rvPool: [], bestSolo: null, bestAt: null, ident: null });
   for (let i = 0; i < n; i++) AI.w[i] = aiGauss() * 0.1;
   AI.w[b + 1] = 0.5;                                                  // a little throttle to begin with, or nothing moves
   if (AI.nOut > 2) AI.w[b + 2] = -1;                                  // the handbrake off, until it learns better
@@ -6705,11 +6723,11 @@ function aiLoad() {
   try {
     const d = JSON.parse(localStorage.getItem(AI.key) || 'null');
     if (d && d.w?.length === AI.np) Object.assign(AI, { w: Float32Array.from(d.w), m: Float32Array.from(d.m || AI.m), v: Float32Array.from(d.v || AI.v), k: d.k || 0, gen: d.gen || 0,
-      best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0, examKind: d.exam || 'line', bestSolo: d.bestSolo ?? null, bestAt: d.bestAt || null });
+      best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0, examKind: d.exam || 'line', bestSolo: d.bestSolo ?? null, bestAt: d.bestAt || null, ident: d.ident && typeof d.ident.id === 'string' ? d.ident : null });
   } catch (e) { }
 }
 function aiSave() {
-  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-300), exam: AI.examKind, bestSolo: AI.bestSolo, bestAt: AI.bestAt || null })); } catch (e) { }
+  try { localStorage.setItem(AI.key, JSON.stringify({ w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-300), exam: AI.examKind, bestSolo: AI.bestSolo, bestAt: AI.bestAt || null, ident: AI.ident || null })); } catch (e) { }
 }
 function aiNewGen() {
   AI.eps = []; AI.cands = []; AI.fits = new Float32Array(AI_CFG.pop); AI.ci = 0;
@@ -8140,6 +8158,7 @@ function aiImport(d, what = 'Training') {
   Object.assign(AI, { w: Float32Array.from(d.w), best: Float32Array.from(d.best || d.w), gen: d.gen | 0, bestFit: other.length ? 0 : Number.isFinite(d.bestFit) ? d.bestFit : 0,
     bestLap: other.length ? null : d.bestLap ?? null, hist: other.length ? [] : Array.isArray(d.hist) ? d.hist : [], sinceBest: 0,
     m: ad ? Float32Array.from(ad.m) : new Float32Array(n), v: ad ? Float32Array.from(ad.v) : new Float32Array(n), k: ad ? ad.k | 0 : 0 });
+  AI.ident = typeof d.id === 'string' && d.name ? { id: d.id, name: String(d.name), creator: String(d.ownerName || 'Driver'), sig: aiNetSig(AI.best || AI.w) } : null;
   aiSave(); aiShow();
   flash(`${what} loaded: ${AI.np} weights, generation ${AI.gen}`, '#9fd4ff', 2);
   return true;
@@ -8179,6 +8198,8 @@ async function aiSaveServer(name, d = aiExport()) {
   name = String(name || '').trim();
   if (!name) throw new Error('Give it a name');
   const r = await aiApi('', { method: 'POST', body: JSON.stringify({ name, training: d }) });
+  const a = r?.autopilot, sw = d.best || d.w;
+  if (a?.id && sw && AI.np === sw.length && aiNetSig(AI.best || AI.w) === aiNetSig(sw)) { AI.ident = { id: a.id, name: a.name || name, creator: a.ownerName || 'Driver', sig: aiNetSig(sw) }; aiSave(); }
   flash(`Saved on the server: ${name}`, '#9fd4ff', 2); if (AI.listOpen) aiServerList();
   return r;
 }

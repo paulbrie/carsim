@@ -336,3 +336,33 @@ test('a waiting room follows its map\'s saves within a second; a race keeps the 
   gone = true; tick(1000);                                             // deleted: back on the figure-8
   assert.equal(room().map.id, 'figure-8');
 });
+
+test('a network\'s laps are best laps of their own, named and credited as the server has the network (#333)', async () => {
+  const { RecordStore } = await import('../lib/race/records.mjs');
+  let t = 1_000_000;
+  const nets = { info: async id => id === 'abcdefabcdef' ? { name: 'Swift', ownerName: 'Cleo', weights: 42, h: 4 } : null };
+  const hub = new RaceHub({ now: () => t, records: new RecordStore(null, { now: () => t }), nets });
+  const inbox = []; const c = hub.connect({ id: 'u1', name: 'Ann' }, m => inbox.push(m));
+  const list = () => inbox.filter(m => m.t === 'records').at(-1).list;
+  const settle = () => new Promise(r => setImmediate(r));
+  c.message({ t: 'create' });
+  t += 31_000; c.message({ t: 'lap', lap: 1, time: 30, valid: true });                                  // Ann's own
+  t += 29_000; c.message({ t: 'lap', lap: 2, time: 28.5, valid: true, net: { id: 'abcdefabcdef', weights: 1 } });   // a saved network
+  await settle();
+  t += 29_000; c.message({ t: 'lap', lap: 3, time: 28, valid: true, net: { id: null, weights: 16, h: 0 } });     // her unsaved one
+  await settle();
+  t += 29_000; c.message({ t: 'lap', lap: 4, time: 27, valid: true, net: { id: 'nosuchnet123' } });             // gone: unsaved
+  await settle();
+  const L = list();
+  assert.deepEqual(L.map(e => [e.id, e.name, e.time, e.net?.creator ?? null]), [
+    ['tnn:local:u1', 'Unsaved network', 27, 'Ann'], ['tnn:abcdefabcdef', 'Swift', 28.5, 'Cleo'], ['u1', 'Ann', 30, null]]);
+  assert.deepEqual(L[1].net, { autopilot: 'abcdefabcdef', name: 'Swift', creator: 'Cleo', weights: 42, h: 4 });
+  assert.equal(L[0].net.weights, 0);                                                               // (the last lap's net said no size)
+  // too quick for the clock: refused, as a human's
+  t += 5_000; c.message({ t: 'lap', lap: 5, time: 26, valid: true, net: {} }); await settle();
+  assert.equal(list()[0].time, 27);
+  // not in a race
+  c.message({ t: 'start' }); t += LIMITS.countdownMs + 100; hub.tick();
+  t += 60_000; c.message({ t: 'lap', lap: 1, time: 20, valid: true, net: {} }); await settle();
+  assert.equal(list()[0].time, 27);
+});

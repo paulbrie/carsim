@@ -82,3 +82,23 @@ test('the scoreboard is kept for a few seconds, and a map with no course is the 
   assert.deepEqual(list.map(m => [m.id, m.wp.length]), [['figure-8', 16], ['new', 5]]);
   assert.deepEqual(list[0].wp, DEFAULT_WP);
 });
+
+test('a network\'s laps in the race rooms are network laps on the scoreboard, named and credited (#333)', async () => {
+  let t = 1_000_000;
+  const maps = new MapStore(T.db, { now: () => t }), recs = await new RecordStore(T.db, { now: () => t }).load(), pilots = new AutopilotStore(T.db, { now: () => t });
+  const lake = await maps.create({ name: 'Lake', course: course(6) });
+  const key = courseKey((await maps.get(lake.id)).course);
+  const saved = await pilots.create({ name: 'Swift', training: training({ course: key, bestLap: 33 }), owner: 'c', ownerName: 'Cleo Park' });
+  const lap = (vehicle, id, name, time, net = null) => recs.submit({ map: lake.id, mv: lake.updatedAt, ground: 'road', vehicle, user: { id, name }, time, net });
+  lap('rs6', 'a', 'Ann Lee', 31);
+  lap('rs6', `tnn:${saved.id}`, 'Swift', 30.5, { autopilot: saved.id, name: 'Swift', creator: 'Cleo Park', weights: 6, h: 0 });   // quicker than its exam
+  lap('x7', 'tnn:local:a', 'Unsaved network', 40, { autopilot: null, name: 'Unsaved network', creator: 'Ann Lee', weights: 16, h: 4 });
+  await recs.flush();
+  // read back as the server reads them
+  const again = await new RecordStore(T.db).load();
+  assert.deepEqual(again.list(lake.id, 'road').map(e => [e.id, e.net?.creator ?? null]), [[`tnn:${saved.id}`, 'Cleo Park'], ['a', null], ['tnn:local:a', 'Ann Lee']]);
+  const b = await new Showcase(T.db, { now: () => t, ttlMs: 0 }).board(), road = b.boards[0];
+  assert.deepEqual(road.rows.map(r => [r.vehicle, r.human?.name ?? null, r.tnn && [r.tnn.name, r.tnn.ownerName, r.tnn.time, r.tnn.saved, r.tnn.room]]),
+    [['rs6', 'Ann Lee', ['Swift', 'Cleo Park', 30.5, true, true]], ['x7', null, ['Unsaved network', 'Ann Lee', 40, false, true]]]);
+  assert.equal(road.tnn.id, saved.id);                                                         // the saved network's own id
+});

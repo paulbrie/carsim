@@ -14,6 +14,7 @@ import { LIMITS } from './lib/race/shared.mjs';
 import { verifyTicket } from './lib/race/ticket.mjs';
 import { mapStore } from './lib/maps/store.mjs';
 import { MapIndex } from './lib/maps/live.mjs';
+import { autopilotStore } from './lib/autopilots/store.mjs';
 import { recordStore } from './lib/race/records.mjs';
 import { chatStore } from './lib/race/chat.mjs';
 import { closeDb, getDb, pingDb } from './lib/db/index.mjs';
@@ -64,7 +65,10 @@ const handle = app.getRequestHandler();
 await app.prepare();
 const nextUpgrade = app.getUpgradeHandler();
 
-const hub = new RaceHub({ maps, records, chat });
+// a network's lap (#333) is named and credited as its saved autopilot is
+const autopilots = autopilotStore();
+const nets = { info: async id => { const a = await autopilots.get(id); return a && { name: a.name, ownerName: a.ownerName, weights: a.weights, h: a.h }; } };
+const hub = new RaceHub({ maps, records, chat, nets });
 const started = Date.now();
 // In development the lists of cars, grounds and weathers are read again when shared.mjs changes: this process
 // outlives many edits, and a car added since it started was one the lobby showed and a room ignored (#313).

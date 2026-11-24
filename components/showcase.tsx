@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Brain, User } from 'lucide-react';
 import { TrackOutline } from '@/components/track-outline';
 import { cn } from '@/lib/utils';
-import { fmtGap, fmtLap, fmtLength, publicName } from '@/lib/format';
+import { fmtGap, fmtLap, fmtLength, netLabel, publicName } from '@/lib/format';
 import { GROUNDS, VEHICLES } from '@/lib/race/shared.mjs';
 import type { Board, BoardRow, Track } from '@/lib/showcase/store.mjs';
 
@@ -81,7 +81,7 @@ function Row({ r, lead, full }: { r: BoardRow; lead: number; full: boolean }) {
     <tr className="border-t border-white/5">
       <th scope="row" className="max-w-40 truncate py-2.5 pr-2 pl-5 text-left align-top font-medium">{carName(r.vehicle)}</th>
       {cell(r.human?.time, r.human && publicName(r.human.name, full), 'human')}
-      {cell(r.tnn?.time, r.tnn && `${r.tnn.weights} weights`, 'tnn')}
+      {cell(r.tnn?.time, r.tnn && netLabel(r.tnn, full), 'tnn')}
       <td className={cn('num hidden py-2.5 pr-5 pl-2 text-right align-top text-xs sm:table-cell', gap == null ? 'text-muted-foreground/50' : gap < 0 ? 'text-tnn' : 'text-human')}>{gap == null ? '—' : fmtGap(gap)}</td>
     </tr>
   );

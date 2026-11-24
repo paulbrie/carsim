@@ -7,7 +7,7 @@ import { SiteFooter } from '@/components/site-footer';
 import { BoardCard, GapBadge, carName, groundLabel } from '@/components/showcase';
 import { TrackOutline } from '@/components/track-outline';
 import { withBase } from '@/lib/base-path';
-import { fmtLap, publicName } from '@/lib/format';
+import { fmtLap, netLabel, publicName } from '@/lib/format';
 import { showcase, type Scoreboard } from '@/lib/showcase/store.mjs';
 
 export const metadata = { title: 'Leaderboard', description: 'Humans against tiny neural networks: the best lap of each, car by car, on every track.' };
@@ -53,7 +53,7 @@ export default async function Leaderboard() {
                     </div>
                     <div className="num text-right text-sm">
                       <p className={tnnAhead ? 'text-muted-foreground' : 'font-semibold text-human'} title={`Human: ${publicName(d.human.name, !!user)}`}>{fmtLap(d.human.time)}</p>
-                      <p className={tnnAhead ? 'font-semibold text-tnn' : 'text-muted-foreground'} title={`Network: ${d.tnn.weights} weights`}>{fmtLap(d.tnn.time)}</p>
+                      <p className={tnnAhead ? 'font-semibold text-tnn' : 'text-muted-foreground'} title={`Network: ${netLabel(d.tnn, !!user)}, ${d.tnn.weights} weights`}>{fmtLap(d.tnn.time)}</p>
                     </div>
                   </li>
                 );

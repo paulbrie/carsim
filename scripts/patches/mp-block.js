@@ -8,7 +8,8 @@
           hit {id, h} · repair {id} · hits {all: {id: [h, …]}} (the others' damage: every hit so far, then each new one)
           records {map, v, ground, list} (the best laps on the room's map and ground, #304)
           ghost {key, course, ground, vehicle, name, time, trace} (a best lap's path to race against; key null: none, #310)
-     out: ready · s {p, q, v, st, sp, prog, lap, sk} (20 Hz; sk: the four wheels' skid marks, 4 bits each, #306)
+     out: ready · s {p, q, v, st, sp, prog, lap, sk, ts} (20 Hz; sk: the four wheels' skid marks, 4 bits each, #306; ts: when, on
+          this page's clock, ms: the others draw us on it, #345)
           lap {lap, time, valid, splits, trace?} (every lap, raced or not: the server keeps the best valid ones; trace: the
           path of a lap better than our best, for its ghost) · finish {time, missed}
           hit {h} (our car struck: carHit's record, see bodyHit) · repair (our car as built again)
@@ -17,9 +18,10 @@
    With ?edit=1 (the super admin's map editor, app/maps/[id]) the page opens on the course editor,
    with the map from window.__simCourse, nothing saved in this browser:
      in:  get {id}            out: ready · course {id, course, sig} (the answer to get) · sig {sig} (when the course changes) · save (Ctrl/Cmd+S)
-   Other cars are interpolated 120 ms behind their latest position, carried on from there to where they are now (by
-   their speed and turn, over that and the trip here: MP.lag) and pushed against like the bots (ccSolve; each side
-   moves only its own car).
+   Other cars are interpolated 120 ms behind their latest position, on their own clock (#345: the states come in bunched
+   by the server's 50 ms ticks and the network), along a curve through them (mpSpline), carried on from there to where
+   they are now (by their speed and turn, over that and the trip here: MP.lag) and pushed against like the bots
+   (ccSolve; each side moves only its own car).
    ===================================================================== */
 const PEER_DELAY = 120, PEER_STALE = 3000;
 Object.assign(MP, { lag: 60, sent: [] });           // lag: ms from our state sent to it back in a snap (the others' states are as old)
@@ -158,8 +160,15 @@ function mpSnap(cars) {
   for (const c of cars) {
     if (c[0] === MP.myId) { mpLagEcho(c, now); continue; }
     const pe = MP.peers.get(c[0]); if (!pe) continue;
-    pe.buf.push({ t: now, p: [c[1], c[2], c[3]], q: [c[4], c[5], c[6], c[7]], v: c[8], st: c[9], w: c[10], sk: c[11] || 0 });
-    if (pe.buf.length > 40) pe.buf.splice(0, pe.buf.length - 40);
+    // each state on its sender's clock (#345: c[12], ms; from a server without it, ours as it comes in, as before), and how
+    // far behind ours that clock is: the shortest trip seen lately (offT: down fast, up slowly; mpFrame eases pe.off to it)
+    const ts = c[12] > 0 ? c[12] : now, o = now - ts, B = pe.buf; pe.clk = c[12] > 0;
+    if (pe.off == null || Math.abs(o - pe.offT) > 1500) { pe.off = pe.offT = o; B.length = 0; }   // the first, or its page reloaded
+    else pe.offT += (o - pe.offT) * (o < pe.offT ? 0.25 : 0.01);
+    if (B.length && ts <= B[B.length - 1].t) continue;
+    pe.rx = now;
+    B.push({ t: ts, p: [c[1], c[2], c[3]], q: [c[4], c[5], c[6], c[7]], v: c[8], st: c[9], w: c[10], sk: c[11] || 0 });
+    if (B.length > 40) B.splice(0, B.length - 40);
   }
 }
 
@@ -516,6 +525,22 @@ function mpPeerSkids(pe, sk) {
 }
 
 const mpQa = new THREE.Quaternion(), mpQb = new THREE.Quaternion(), mpV = new THREE.Vector3();
+// where another car is between two of its states A and C (f: 0 to 1, a little more: carried on), on a curve through
+// them and their neighbours P and D (Catmull-Rom on the states' times) that keeps its speed from one to the next, not
+// straight lines that change it at each state (#345); a jump (R, back to a gate) is a jump, not a slide
+const mpFar = (X, Y) => Math.hypot(Y.p[0] - X.p[0], Y.p[1] - X.p[1], Y.p[2] - X.p[2]) > 2 + 0.1 * Math.abs(Y.t - X.t);
+function mpSpline(o, P, A, C, D, f) {
+  if (C !== A && mpFar(A, C)) { const S = f < 0.5 ? A : C; o.set(S.p[0], S.p[1], S.p[2]); return; }
+  const h = C.t - A.t, a = P !== A && C.t > P.t && !mpFar(P, A) ? h / (C.t - P.t) : 0, c = D !== C && D.t > A.t && !mpFar(C, D) ? h / (D.t - A.t) : 0;
+  const f2 = f * f, f3 = f2 * f, h00 = 2 * f3 - 3 * f2 + 1, h10 = f3 - 2 * f2 + f, h01 = 3 * f2 - 2 * f3, h11 = f3 - f2;
+  for (let x = 0; x < 3; x++) {
+    const mA = a ? (C.p[x] - P.p[x]) * a : C.p[x] - A.p[x], mC = c ? (D.p[x] - A.p[x]) * c : C.p[x] - A.p[x];
+    mpS[x] = f > 1 ? C.p[x] + mC * (f - 1) : h00 * A.p[x] + h10 * mA + h01 * C.p[x] + h11 * mC;
+  }
+  o.set(mpS[0], mpS[1], mpS[2]);
+}
+const mpS = [0, 0, 0];
+
 function mpFrame(dt) {
   if (!MP.on) { if (MP.edit) mpEditFrame(dt); return; }
   const now = performance.now();
@@ -533,18 +558,22 @@ function mpFrame(dt) {
   // their rate (its slide across that and the turn from their last states, smoothed), so they are drawn and touched
   // where they are, not where they were 0.2 s ago; and with the pushes we gave them (mpContacts: pe.kicks) till their own
   // reply to those comes back (lead after the push)
-  const rt = now - PEER_DELAY, lead = (PEER_DELAY + MP.lag) / 1000, ks = 1 - Math.exp(-dt / 0.12);
+  const lead = (PEER_DELAY + MP.lag) / 1000, ks = 1 - Math.exp(-dt / 0.12);
   for (const pe of MP.peers.values()) {
     const B = pe.buf, V = pe.V;
-    const show = B.length > 0 && now - B[B.length - 1].t < PEER_STALE && !(pe.spectator && !MP.spectator && MP.phase !== 'lobby' && MP.phase !== 'results');
+    const show = B.length > 0 && now - pe.rx < PEER_STALE && !(pe.spectator && !MP.spectator && MP.phase !== 'lobby' && MP.phase !== 'results');
     if (show !== pe.shown) { pe.shown = show; V.vis.visible = show; if (pe.label) pe.label.visible = show; }
     if (!show) { mpPeerSkids(pe, 0); continue; }
-    while (B.length > 2 && B[1].t <= rt) B.shift();
-    const A = B[0], C = B[1] || A, f = C.t > A.t ? clamp((rt - A.t) / (C.t - A.t), 0, 1.25) : 0;
-    pe.pos.set(lerp(A.p[0], C.p[0], f), lerp(A.p[1], C.p[1], f), lerp(A.p[2], C.p[2], f));
+    // the time drawn, on its clock (#345); the offset to ours eased, its time running 2% faster or slower at most, or set at once if it moved a lot
+    const dOff = pe.offT - pe.off; pe.off += Math.abs(dOff) > 100 ? dOff : clamp(dOff, -20 * dt, 20 * dt);
+    const rt = now - pe.off - PEER_DELAY;
+    while (B.length > 3 && B[2].t <= rt) B.shift();                    // (one state kept before A: the curve's P)
+    const k = B.length > 1 && B[1].t <= rt ? 1 : 0, A = B[k], C = B[k + 1] || A, f = C.t > A.t ? clamp((rt - A.t) / (C.t - A.t), 0, 1.25) : 0;
+    if (pe.clk) mpSpline(pe.pos, B[k - 1] || A, A, C, B[k + 2] || C, f);
+    else pe.pos.set(lerp(A.p[0], C.p[0], f), lerp(A.p[1], C.p[1], f), lerp(A.p[2], C.p[2], f));   // (times as they came: a curve would make it worse)
     pe.q.copy(mpQa.fromArray(A.q)).slerp(mpQb.fromArray(C.q), Math.min(f, 1));
     pe.v = lerp(A.v, C.v, Math.min(f, 1)); pe.steer = lerp(A.st, C.st, Math.min(f, 1)); pe.spin += (C.w || 0) * dt;
-    if (C !== A && C.t - A.t > 0.025e3) {
+    if (C !== A && C.t - A.t > 0.025e3 && !mpFar(A, C)) {                 // (not across a jump: no slide of 2 km/s)
       const dts = (C.t - A.t) / 1000, qa = mpQa.fromArray(A.q), qc = mpQb.fromArray(C.q);
       mpV.set(0, 0, 1).applyQuaternion(qa); const ya = Math.atan2(mpV.x, mpV.z); mpV.set(0, 0, 1).applyQuaternion(qc); const yc = Math.atan2(mpV.x, mpV.z);
       const hl = Math.hypot(mpV.x, mpV.z) || 1, fx = mpV.x / hl, fz = mpV.z / hl, vx = (C.p[0] - A.p[0]) / dts, vz = (C.p[2] - A.p[2]) / dts, sl = vx * -fz + vz * fx;
@@ -578,7 +607,7 @@ function mpFrame(dt) {
   if ((MP.sendT += dt) >= 0.05 && !rp.on && !ed.on) {
     MP.sendT = 0;
     const R = car.wheels[2];
-    mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo, sk: mpSkidsOut() });
+    mpPost({ t: 's', p: car.pos.toArray(), q: car.q.toArray(), v: car.vel.dot(fwd), st: car.steer, sp: R?.omega || 0, prog: mpProgress(), lap: lap.lapNo, sk: mpSkidsOut(), ts: Math.round(now) });
     MP.sent.push({ t: now, x: rd2(car.pos.x), y: rd2(car.pos.y), z: rd2(car.pos.z) }); if (MP.sent.length > 30) MP.sent.shift();   // (mpLagEcho: as the server rounds them)
   }
 }

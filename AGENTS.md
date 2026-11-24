@@ -128,7 +128,8 @@ See README.md for the layout. Notes:
   move) and put the velocities, yaw rates and moves it returns back on them; a new kind of car-to-car touch should
   use it too. In a race the others' `pe.pos` / `pe.q` are where they are now (carried on from 120 ms in the past by
   their speed and turn, `MP.lag` more for the trip), not where they were: anything that wants their last reported
-  state reads `pe.buf`.
+  state reads `pe.buf`. Its states' `t` are on the other's clock (#345, the `ts` of `s`, the snap's 13th field), not ours:
+  `pe.off` (ours minus theirs) converts, and `pe.rx` is when the last one came in.
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
   every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
   `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).

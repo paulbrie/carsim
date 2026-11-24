@@ -590,7 +590,15 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   drawn and touched where it had been ~0.2 s before (~5 m at 90 km/h): a car rear-ending another bounced off a car
   that wasn't there yet, 8 m short, while the one ahead never felt it, and a car swerving into another drove
   through it, the other shoved a moment later by nothing (both in a test of two sims with 70 ms between them; now
-  both feel the same touch in the same frame, drawn within ~0.3–0.7 m of where the other really is). Laps and the finish come from the
+  both feel the same touch in the same frame, drawn within ~0.3–0.7 m of where the other really is).
+  The 120 ms are on the other's own clock (#345: each state carries `ts`, when its sim sent it, which the server passes
+  on): stamped as they came in, the states arrive bunched by the server's 50 ms ticks and the network (50, 50, 50, then
+  100 ms apart for states 66 ms apart), and a car at 30 m/s was drawn at 13 to 60 m/s from one frame to the next: it
+  jerked. Now the offset between the clocks follows the shortest trip seen (changing the time drawn by 2% at most), and
+  the car goes along a curve through its states (Catmull-Rom, `mpSpline`) that keeps its speed from one to the next:
+  29 to 31 m/s in the same test (the sim, its frames stepped on a virtual clock, fed states bunched as the pipeline
+  does). From a server that doesn't pass `ts` on, the states are timed as they come and joined by straight lines, as
+  before. Laps and the finish come from the
   sim's own gate timing; the server keeps the order and the clock (a finish time far from the
   server's own measure is replaced by it), adds 5 s per gate missed, and ends the race when all
   have finished or left, or 60 s after the winner.

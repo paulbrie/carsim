@@ -50,8 +50,9 @@ export interface Records { map: string; v: number; ground: string; list: BestLap
 
 /** a hit a car took, in its body space: [cx, cy, cz, dx, dy, dz, speed m/s, kind 0 post | 1 ball | 2 wall] (the sim's carHit) */
 export type CarHit = [number, number, number, number, number, number, number, number];
-/** one car in a 'snap': id, x, y, z, qx, qy, qz, qw, speed, steer, wheel spin, skid marks (4 bits a wheel, 0-15: how dark) */
-export type CarSnap = [string, number, number, number, number, number, number, number, number, number, number, number];
+/** one car in a 'snap': id, x, y, z, qx, qy, qz, qw, speed, steer, wheel spin, skid marks (4 bits a wheel, 0-15: how dark),
+ *  when (ms on the sender's own clock, #345; 0: its sim didn't say) */
+export type CarSnap = [string, number, number, number, number, number, number, number, number, number, number, number, number];
 
 export type ServerMsg =
   | { t: 'hello'; me: Me; limits: Record<string, number> }

@@ -20,10 +20,11 @@ See README.md for the layout. Notes:
   the Claude bridge's loader
   (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, the wheels' spin solved implicitly (`wheelSpin`, #327) `tires.py`,
   and the sim page's interface (`ui.css` and `ui.js` in
-  index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, a network's laps as best laps, marked with its name and maker (#333) `net-laps.py`, a saved network's preview (the networks page's Watch it drive, `?net=<id>`, #336) `preview.py`,
+  index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, the car's setup (the drive, the split,
+  the tires' pressure, kept per car: `SETUP`, #332) `setup.py`, a network's laps as best laps, marked with its name and maker (#333) `net-laps.py`, a saved network's preview (the networks page's Watch it drive, `?net=<id>`, #336) `preview.py`,
   last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, net-laps, preview, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -154,6 +155,14 @@ See README.md for the layout. Notes:
   Public pages (`/`, `/leaderboard`, `/networks`) are seen without signing in: names through `publicName`, nothing
   from the database that a visitor should not see. `courseKey` in `lib/showcase/store.mjs` is the sim's: change
   one, change the other (`test/showcase.test.mjs` compares them).
+- The car's setup (#332, `setup.py`, the Car setup drawer in `ui.js`): change the drive, the split or the pressure through
+  `setSplit` / `setDrive` / `setPressure` (they keep it for the car and restart a training under way), not by writing
+  `car.split`, `car.awd` or `car.pIdx`; a car's own values are its spec's (`split`, `awd`, `pIdx`). `tireFigures` repeats
+  `stepCar`'s sums for the tire on the ground (patch, sinking, rolling drag, grip): change them there, change them here,
+  or the drawer explains a tire the sim doesn't have. The drawer's buttons and slider blur once used (Space and the
+  arrows are the car's).
+  A drawer down the sim's left side is under the room's panel in a race room: `ui.js` tells the page (`drawer`), which
+  moves its panel away (`onDrawer` in `components/race-room.tsx`); another drawer there must be counted in that message.
 - Dev server: `npm run dev` on port 7001 (3000 is the admin). `next.config.ts` is read at start: a change to it
   (the `/drive` and `/lab` redirects) needs a restart.
 - The database (#318, README: The database): Postgres, `DATABASE_URL` in `.env.local`, the container from

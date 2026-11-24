@@ -11,10 +11,11 @@ import { paintOf } from '@/components/race-controls';
 import type { RoomView } from '@/lib/race/types';
 import type { SimCourse } from '@/lib/client/maps';
 
-export interface SimHandle { focus(): void }
+export interface SimHandle { focus(): void; closeDrawers(): void }
 
 // onChatKey: Enter in the sim, to write in the chat (#325)
-export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; course: SimCourse; onReady?: () => void; onChatKey?: () => void }>(function SimFrame({ room, meId, course, onReady, onChatKey }, handle) {
+// onDrawer: one of the sim's drawers (the car's setup, the lab) opened down its left side, or the last one closed (#332)
+export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; course: SimCourse; onReady?: () => void; onChatKey?: () => void; onDrawer?: (open: boolean) => void }>(function SimFrame({ room, meId, course, onReady, onChatKey, onDrawer }, handle) {
   const frame = useRef<HTMLIFrameElement>(null);
   const live = useRef(false);
   const [ready, setReady] = useState(false);
@@ -38,6 +39,7 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
 
   useImperativeHandle(handle, () => ({
     focus() { frame.current?.focus(); post({ t: 'focus' }); },
+    closeDrawers() { post({ t: 'drawers', close: true }); },
   }), [post]);
 
   // from the sim
@@ -53,10 +55,11 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
       }
       else if (m.t === 's' || m.t === 'lap' || m.t === 'finish' || m.t === 'hit' || m.t === 'repair') send(m);
       else if (m.t === 'chatKey') onChatKey?.();
+      else if (m.t === 'drawer') onDrawer?.(m.open === true);
     };
     addEventListener('message', onMessage);
     return () => removeEventListener('message', onMessage);
-  }, [onReady, onChatKey, post]);
+  }, [onReady, onChatKey, onDrawer, post]);
 
   // the other cars, straight from the socket
   useEffect(() => {

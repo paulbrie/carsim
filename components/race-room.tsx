@@ -63,6 +63,18 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
     if (phase === 'lobby') setPanel(true);
   }, [phase]);
 
+  // the sim's drawers (the car's setup, the lab) run down the left side, where this panel is: it steps aside for them
+  // and comes back after them; opened over one, it closes it (#332)
+  const panelNow = useRef(panel); panelNow.current = panel;
+  const panelBack = useRef(false);
+  const [drawer, setDrawer] = useState(false);
+  const onDrawer = useCallback((open: boolean) => {
+    setDrawer(open);
+    if (open) { panelBack.current = panelNow.current; setPanel(false); }
+    else { if (panelBack.current) setPanel(true); panelBack.current = false; }
+  }, []);
+  useEffect(() => { if (panel && drawer) { panelBack.current = false; sim.current?.closeDrawers(); } }, [panel, drawer]);
+
   const course = useRoomCourse(room?.id === roomId ? room.map : undefined, msg => toast.error(msg));
   const maps = useMaps(isHost);
 
@@ -95,7 +107,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
-      {course && <SimFrame ref={sim} room={room} meId={me.id} course={course} onReady={onSimReady} onChatKey={onChatKey} />}
+      {course && <SimFrame ref={sim} room={room} meId={me.id} course={course} onReady={onSimReady} onChatKey={onChatKey} onDrawer={onDrawer} />}
 
       {(phase === 'racing' || phase === 'countdown') && <StandingsPanel room={room} meId={me.id} />}
 

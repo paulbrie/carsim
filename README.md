@@ -252,6 +252,35 @@ has none): the X7 sends 40/60 to the rear, so it can be pushed into a slide. **4
 (`sandbuggy.split`). The autopilot's workers get the tab's split, and an uneven one is part of its exam
 (`aiExamKind`): a training made at another split is examined again.
 
+## Car setup (U) (#332)
+
+**Car setup** in the rail, or **U**, slides a drawer in from the left (as the lab's; one of the two at a time) with
+what a driver may change on the car, and what each choice means:
+
+- **Drive**: a car driving all four wheels gets a slider for the front / rear share of the torque, any 5 % from
+  100 / 0 to 0 / 100, with the car's own marked and one click away (the 4 key still goes round 50, 40, 30 and 20 %
+  front); the buggy also chooses rear-wheel or four-wheel drive; a rear-drive car says it has nothing to set. A
+  sentence says what that split does to the car, with the weight its front axle carries.
+- **Tires**: the car's three pressures (Shift+P as before), and a table of the tire model's own figures for each of
+  them on the ground under the car: the contact patch, how deep the tire sinks, what rolling costs at 60 km/h, how
+  much lower the car sits. The sentence under it is made from those figures. On asphalt it says what is true of
+  the sim today: the tire grips the same at every pressure there (the model is the sand's: pressure decides how the
+  tire sinks), only its radius changes.
+- **The car from above**, front to the left: the torque down each shaft, and in each wheel the grip that tire is
+  spending as you drive, on driving or braking (orange) and on cornering (white); a tire at its limit turns red.
+
+The setup is the sim's (`scripts/patches/setup.py`: `SETUP`, `__sim.setup` — `get()`, `split(front)`, `drive(awd)`,
+`pressure(i)`, `figures(i)`); the drawer is its view (`public/sim/ui.js`, `#uiSetup` in `ui.css`). It is kept per car
+in this browser (`sandbuggy.split`, and `sandbuggy.setup` for the pressure and the buggy's drive; only what differs
+from the car's own) and put back whenever that car is picked, alone, in the lab or in a race room. A training under
+way starts again when the setup changes (its workers have the car as it was), and another pressure or the buggy's
+other drive is part of the lab's exam like an uneven split: the best is examined again. `tireFigures` repeats
+`stepCar`'s sums for a wheel at rest: change one, change the other (`test/setup.test.mjs` checks the terms).
+
+In a race room the room's own panel is down the same side, over the sim. The sim's page tells the room's when one of
+its drawers (this one, the lab's) opens or the last one closes (`{ t: 'drawer', open }`, `ui.js`): the panel steps
+aside and comes back after it; opened over a drawer, it has the sim close it (`{ t: 'drawers', close: true }`).
+
 ## Grounds
 
 Each ground has its own landscape (`scripts/patches/grounds.py`). **Sand**: the dunes, slip faces and
@@ -500,7 +529,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   `public/sim/index.html`, `public/sim/engine.js` and `public/sim/models/*.glb.gz`, with three.js
   0.160 served from `public/sim/vendor` instead of a CDN. Its multiplayer hooks are in one block
   (`MULTIPLAYER` in `engine.js`); `scripts/patches/` re-applies them to a new drop of the sim:
-  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x && python3 scripts/patches/net-laps.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
+  `node scripts/extract-engine.mjs new.html /tmp/x && python3 scripts/patches/mp-hooks.py /tmp/x/engine.js scripts/patches/mp-block.js && python3 scripts/patches/track-shape.py /tmp/x && python3 scripts/patches/gates.py /tmp/x && python3 scripts/patches/cameras.py /tmp/x && python3 scripts/patches/maps.py /tmp/x && python3 scripts/patches/road-level.py /tmp/x && python3 scripts/patches/damage.py /tmp/x && python3 scripts/patches/freelook.py /tmp/x && python3 scripts/patches/glass.py /tmp/x && python3 scripts/patches/weather.py /tmp/x && python3 scripts/patches/cars.py /tmp/x && python3 scripts/patches/even.py /tmp/x && python3 scripts/patches/bridges.py /tmp/x && python3 scripts/patches/grade.py /tmp/x && python3 scripts/patches/skids.py /tmp/x && python3 scripts/patches/grounds.py /tmp/x && python3 scripts/patches/autopilot.py /tmp/x && python3 scripts/patches/pause.py /tmp/x && python3 scripts/patches/circuits.py /tmp/x && python3 scripts/patches/contacts.py /tmp/x && python3 scripts/patches/bridge.py /tmp/x && python3 scripts/patches/lab-stops.py /tmp/x && python3 scripts/patches/tires.py /tmp/x && python3 scripts/patches/live.py /tmp/x && python3 scripts/patches/tracks.py /tmp/x && python3 scripts/patches/setup.py /tmp/x && python3 scripts/patches/net-laps.py /tmp/x` (ui.py, which only adds to index.html, before live.py).
   Gates are 6 m tall (banner foot ~5 m) and fade to 25% when the camera comes within 6–15 m of one.
   The detailed models' driver's-seat camera sits 0.3 m ahead of (and 5 cm above) the driver's eyes.
   Eight of the detailed cars, the **Jaguar XJR** (X308), the **Mercedes-AMG SL 63**, the
@@ -662,7 +691,8 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `scripts/patches/pause.py` | pausing the drive (P, the Pause button); tire pressure on Shift+P |
 | `scripts/patches/contacts.py` | car against car (`ccSolve`: the bots, the other players' cars, the rival) |
 | `scripts/patches/live.py` | the course editor builds every change while it is open; faster earthworks and distance to the course |
-| `scripts/patches/tracks.py`, `app/api/tracks` | driving a map alone: the start menu's tracks (last in the chain) |
+| `scripts/patches/tracks.py`, `app/api/tracks` | driving a map alone: the start menu's tracks |
+| `scripts/patches/setup.py` | the car's setup: the drive, the split and the tires' pressure, kept per car; the figures for the Car setup drawer (U, `ui.js`) |
 | `public/sim/circuit-gen.js`, `scripts/patches/circuits.py`, `scripts/maps/generate.mjs` | the circuit generator (the editor's GENERATE A CIRCUIT, MY CIRCUITS; course files from node; tested in `test/circuit-gen.test.mjs`) |
 | `scripts/models/` | detailed car models from downloads (`cars.mjs`: what to take from each, `build-car.mjs`) |
 

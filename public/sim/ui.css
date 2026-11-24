@@ -214,3 +214,89 @@ body #brPanel { background: var(--ui-bg-solid); border-radius: var(--ui-r); }
   #uiRail button kbd { padding: 2px 4px; }
   #uiRail hr { margin: 2px 6px; }
 }
+
+/* ---------------------------------------------------------------- the car's setup (ui.js, #332) */
+/* a drawer down the left side, as the lab's (one of the two at a time): the car's read-out moves beside it */
+:root { --ui-setup-w: min(372px, calc(100vw - 24px)); }
+#uiSetup { position: fixed; left: 0; top: 0; bottom: 0; width: var(--ui-setup-w); box-sizing: border-box; overflow-y: auto; scrollbar-width: thin; padding: 16px 18px 16px 20px; border-width: 0 1px 0 0; border-radius: 0 18px 18px 0; background: var(--ui-bg-solid); box-shadow: 18px 0 48px -18px rgba(0, 0, 0, .8); -webkit-backdrop-filter: none; backdrop-filter: none; pointer-events: auto; z-index: 16; font: 400 12.5px/1.5 var(--ui-sans); color: var(--ui-fg);
+  transform: translateX(-102%); visibility: hidden; transition: transform .32s cubic-bezier(.2, .8, .2, 1), visibility 0s .32s; }
+#uiSetup.open { transform: none; visibility: visible; transition: transform .32s cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-reduced-motion: reduce) { #uiSetup, #uiSetup.open { transition: none; } }
+body.mp #uiSetup { bottom: 62px; border-width: 0 1px 1px 0; }      /* (a room's own button sits in that corner, over the sim) */
+body.ui-setup #hud { left: calc(var(--ui-setup-w) + 12px); top: auto; bottom: 12px; }
+#uiSetup [hidden] { display: none !important; }
+#uiSetup header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+#uiSetup header > div { flex: 1; min-width: 0; }
+#uiSetup .lt { font: 800 15px/1.1 var(--ui-display); font-stretch: 112%; letter-spacing: .02em; text-transform: uppercase; color: var(--ui-human); }
+#uiSetup .sub { margin-top: 4px; color: var(--ui-mut); }
+#uiSetup button { all: unset; box-sizing: border-box; cursor: pointer; }
+#uiSetup button:focus-visible, #uiSetup input:focus-visible { outline: 2px solid var(--ui-human); outline-offset: 2px; }
+#uiSetup .x { padding: 7px 9px; border-radius: 8px; font: 600 12px/1 var(--ui-sans); color: var(--ui-mut); background: rgba(255, 255, 255, .06); }
+#uiSetup .x:hover { background: rgba(255, 255, 255, .12); color: var(--ui-fg); }
+
+/* the car from above, its front to the left: the torque down each shaft, the grip each tire spends */
+#uiSetup .car { display: block; width: 100%; height: auto; margin: 6px 0 2px; --f: .5; --r: .5; }
+#uiSetup .car .body { fill: rgba(255, 255, 255, .045); stroke: rgba(255, 255, 255, .22); stroke-width: 1.5; }
+#uiSetup .car .cab { fill: rgba(255, 255, 255, .04); stroke: rgba(255, 255, 255, .1); }
+#uiSetup .car .ax, #uiSetup .car .sh { stroke: var(--ui-human); stroke-linecap: round; transition: stroke-width .2s, opacity .2s; }
+#uiSetup .car .f { stroke-width: calc(1.5px + 7px * var(--f)); opacity: calc(.22 + .78 * var(--f)); }
+#uiSetup .car .r { stroke-width: calc(1.5px + 7px * var(--r)); opacity: calc(.22 + .78 * var(--r)); }
+#uiSetup .car .diff { fill: #14161c; stroke: var(--ui-human); stroke-width: 2; }
+#uiSetup .car text { stroke: none; opacity: 1; }
+#uiSetup .car .pct { font: 700 16px/1 var(--ui-mono); letter-spacing: -.02em; fill: var(--ui-fg); }
+#uiSetup .car .lab { font: 500 8.5px/1 var(--ui-mono); letter-spacing: .16em; text-transform: uppercase; fill: var(--ui-mut); }
+#uiSetup .car .nose { fill: none; stroke: var(--ui-mut); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+#uiSetup .car .wh .t { fill: #14161c; stroke: rgba(255, 255, 255, .38); stroke-width: 1.5; transition: stroke .12s; }
+#uiSetup .car .wh .d { fill: var(--ui-human); }
+#uiSetup .car .wh .c { fill: #e9ebf0; }
+#uiSetup .car .wh.lim .t { stroke: #ff5a4d; fill: rgba(255, 90, 77, .2); }
+#uiSetup .car .wh.air .t { stroke-dasharray: 3 3; }
+#uiSetup .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 2px 0 0; font: 500 10.5px/1.4 var(--ui-mono); color: var(--ui-mut); }
+#uiSetup .legend span { display: inline-flex; align-items: center; gap: 6px; }
+#uiSetup .legend i { width: 14px; height: 4px; border-radius: 2px; background: var(--ui-human); }
+#uiSetup .legend i.c { background: #e9ebf0; }
+#uiSetup .legend i.l { height: 8px; width: 12px; background: rgba(255, 90, 77, .2); border: 1.5px solid #ff5a4d; border-radius: 3px; }
+#uiSetup .note { margin: 6px 0 0; color: var(--ui-mut); font-size: 12px; }
+
+#uiSetup section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ui-line); }
+#uiSetup h4 { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 9px; font: 500 10.5px/1.4 var(--ui-mono); letter-spacing: .18em; text-transform: uppercase; color: var(--ui-mut); }
+#uiSetup h4 b { font: 700 15px/1 var(--ui-mono); letter-spacing: -.01em; text-transform: none; color: var(--ui-fg); }
+#uiSetup .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+#uiSetup .seg button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 6px 7px; border-radius: 10px; border: 1px solid var(--ui-line); background: rgba(255, 255, 255, .04); text-align: center; }
+#uiSetup .seg button:hover { background: rgba(255, 255, 255, .09); }
+#uiSetup .seg button b { font: 700 15px/1.1 var(--ui-mono); letter-spacing: -.01em; }
+#uiSetup .seg button b i { font: 500 10.5px/1 var(--ui-mono); font-style: normal; color: var(--ui-mut); }
+#uiSetup .seg button small { font: 500 10.5px/1.2 var(--ui-sans); color: var(--ui-mut); }
+#uiSetup .seg button.on { background: rgba(255, 122, 51, .16); border-color: var(--ui-human); box-shadow: 0 0 0 1px var(--ui-human) inset; }
+#uiSetup .seg button.on small { color: #ffd9c4; }
+#uiSetup .seg + .split { margin-top: 12px; }
+#uiSetup .ends { display: flex; justify-content: space-between; font: 500 12px/1 var(--ui-sans); color: var(--ui-mut); }
+#uiSetup .ends b { font: 700 13px/1 var(--ui-mono); color: var(--ui-fg); }
+#uiSetup .range { position: relative; margin: 7px 0 5px; height: 22px; }
+#uiSetup .range input { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 22px; margin: 0; background: none; cursor: pointer; --at: 50%; }
+#uiSetup .range input::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, rgba(255, 255, 255, .16) var(--at), rgba(255, 122, 51, .75) var(--at)); }
+#uiSetup .range input::-moz-range-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, rgba(255, 255, 255, .16) var(--at), rgba(255, 122, 51, .75) var(--at)); }
+#uiSetup .range input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%; background: #fff; border: 3px solid var(--ui-human); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+#uiSetup .range input::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid var(--ui-human); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+#uiSetup .range i { position: absolute; top: 0; width: 2px; height: 22px; margin-left: -1px; border-radius: 1px; background: rgba(255, 255, 255, .45); pointer-events: none; }
+#uiSetup .ownRow { display: flex; justify-content: space-between; align-items: center; min-height: 20px; font-size: 11.5px; color: var(--ui-mut); }
+#uiSetup .link { color: var(--ui-human); font-weight: 600; padding: 2px 0; }
+#uiSetup .link:hover { text-decoration: underline; }
+#uiSetup .say { margin: 9px 0 0; color: #d6d9e0; }
+#uiSetup .fig { width: 100%; margin-top: 10px; border-collapse: collapse; font: 500 11.5px/1.3 var(--ui-mono); }
+#uiSetup .fig th { padding: 4px 4px; text-align: right; font: 500 11px/1.3 var(--ui-sans); color: var(--ui-mut); white-space: nowrap; }
+#uiSetup .fig th:first-child { text-align: left; padding-left: 0; }
+#uiSetup .fig td { padding: 4px 4px; text-align: right; color: var(--ui-mut); white-space: nowrap; }
+#uiSetup .fig tr + tr { border-top: 1px solid rgba(255, 255, 255, .06); }
+#uiSetup .fig .on { color: var(--ui-fg); background: rgba(255, 122, 51, .12); }
+#uiSetup .fig th.on { color: #ffd9c4; }
+#uiSetup .cap { margin: 6px 0 0; font-size: 11px; line-height: 1.4; color: var(--ui-mut); }
+#uiSetup footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ui-line); font-size: 11.5px; line-height: 1.45; color: var(--ui-mut); }
+#uiSetup footer .k { display: block; margin-top: 8px; }
+#uiSetup kbd { font: 600 10.5px/1 var(--ui-mono); color: var(--ui-fg); background: rgba(255, 255, 255, .08); border: 1px solid var(--ui-line); border-radius: 5px; padding: 3px 5px; margin: 0 3px 0 8px; }
+#uiSetup kbd:first-child, #uiSetup kbd + kbd { margin-left: 0; }
+@media (max-height: 800px) {
+  #uiSetup .car { width: 78%; margin: 2px auto 0; }
+  #uiSetup .note { display: none; }
+  #uiSetup section { margin-top: 10px; padding-top: 10px; }
+}

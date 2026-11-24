@@ -1226,7 +1226,7 @@ function stepCar(dt) {
     const Fr = Rc * Math.tanh(vLong / 0.4);
     addForceAt(v2.copy(wf).multiplyScalar(Fx - Fr).addScaledVector(side, Fy), Pc);
 
-    W.slip = s; W.sx = W.omega * R - vLong; W.fx = Fx; W.fm = Fmax; W.td = Td;
+    W.slip = s; W.sx = W.omega * R - vLong; W.fx = Fx; W.fy = Fy; W.fm = Fmax; W.td = Td;
     W.slipSpeed = Math.abs(W.omega * R - vLong) + 0.6 * Math.abs(vLat);
     W.slide = Math.max(0, Math.hypot(W.omega * R - vLong, vLat) - 1 - 0.1 * Math.abs(vLong));   // past the creep of a gripping tire
 
@@ -1508,14 +1508,13 @@ let camMode = 0, audio = null, muted = false;
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.repeat) return;
-  if (e.code === 'KeyP' && e.shiftKey) car.pIdx = (car.pIdx + 1) % PRESSURES.length;
+  if (e.code === 'KeyP' && e.shiftKey) { setPressure((car.pIdx + 1) % PRESSURES.length); flash(`Tires: ${PRESSURES[car.pIdx].psi} psi${car.pIdx === VEH.pIdx ? ' (its own)' : ''} · Shift+P changes it`, '#fff', 1.8); }
   else if (e.code === 'KeyP') { simPause(); return; }
   if (e.code === 'Digit4') {
     if (VEH.awdFixed && car.awd) {                                      // permanent all-wheel drive: the next split
-      car.split = SPLITS[(SPLITS.indexOf(car.split) + 1) % SPLITS.length];
-      try { const m = JSON.parse(localStorage.getItem('sandbuggy.split') || '{}'); if (car.split === (VEH.split ?? 0.5)) delete m[VEH.key]; else m[VEH.key] = car.split; localStorage.setItem('sandbuggy.split', JSON.stringify(m)); } catch (err) { }
+      setSplit(SPLITS[(SPLITS.indexOf(car.split) + 1) % SPLITS.length]);
       flash(`All-wheel drive: ${Math.round(car.split * 100)}/${Math.round((1 - car.split) * 100)} front/rear${car.split === (VEH.split ?? 0.5) ? ' (its own)' : ''} · 4 changes it`, '#fff', 1.8);
-    } else if (VEH.awdFixed) flash('Rear-wheel drive only', '#fff', 1.5); else car.awd = !car.awd;
+    } else if (VEH.awdFixed) flash('Rear-wheel drive only', '#fff', 1.5); else { setDrive(!car.awd); flash(car.awd ? 'Four-wheel drive' : 'Rear-wheel drive', '#fff', 1.5); }
   }
   if (MP.on && mpKeyBlocked(e)) return;
   if (e.code === 'KeyE') { if (rp.on) stopReplay(); toggleEditor(!ed.on); return; }
@@ -1957,7 +1956,7 @@ function updateHud(dt) {
   const E = car.eng, rpmPct = clamp(E.rpm / ENG.limiter, 0, 1) * 100;
   hud.innerHTML = `<div class="big">${kmh.toFixed(0)} <span style="font-size:15px">km/h</span> <span style="font-size:20px;margin-left:10px">${E.reverse ? 'R' : E.gear}</span></div>
     <div style="margin:2px 0 4px"><span class="bar" style="width:${rpmPct * 1.9}px;background:${rpmPct > 90 ? '#ff5a3c' : '#ffcf6b'}"></span> ${(E.rpm / 1000).toFixed(1)}k rpm</div>
-    ${VEH.short} · ${car.awd ? (VEH === BUGGY ? '4WD' : 'AWD' + (car.split !== 0.5 ? ` ${Math.round(car.split * 100)}/${Math.round((1 - car.split) * 100)}` : '')) : (VEH === BUGGY ? '2WD rear' : 'RWD')} · tires ${P.psi} psi${VEH.aids ? ` · TC/ABS ${car.aids ? 'on' : 'off'}` : ''} · ${fps.toFixed(0)} fps
+    ${VEH.short} · ${car.awd ? (VEH === BUGGY ? '4WD' : 'AWD') + (car.split !== 0.5 ? ` ${Math.round(car.split * 100)}/${Math.round((1 - car.split) * 100)}` : '') : (VEH === BUGGY ? '2WD rear' : 'RWD')} · tires ${P.psi} psi${VEH.aids ? ` · TC/ABS ${car.aids ? 'on' : 'off'}` : ''} · ${fps.toFixed(0)} fps
     <table><tr><td></td><td>sinkage</td><td></td><td>slip</td><td></td></tr>${rows}</table>`;
 }
 
@@ -5110,11 +5109,56 @@ function togglePaintPanel(show) {
 }
 document.getElementById('paintBtn').addEventListener('click', e => { e.currentTarget.blur(); togglePaintPanel(); });
 // all-wheel drive's split (the front's share) for a vehicle: this browser's choice for it (4), else its own
-const SPLITS = [0.5, 0.4, 0.3, 0.2];
+const SPLITS = [0.5, 0.4, 0.3, 0.2];                                 // (the 4 key's round; the Car setup drawer sets any 5 %)
 function carSplit(V) {
-  try { const v = JSON.parse(localStorage.getItem('sandbuggy.split') || '{}')[V.key]; if (SPLITS.includes(v)) return v; } catch (e) { }
+  try { const v = JSON.parse(localStorage.getItem('sandbuggy.split') || '{}')[V.key]; if (typeof v === 'number' && v >= 0 && v <= 1) return v; } catch (e) { }
   return V.split ?? 0.5;
 }
+// ---------- the car's setup (#332): the drive, the split, the tires' pressure; this browser's choice for each car ----------
+const setupOf = V => { try { return (JSON.parse(localStorage.getItem('sandbuggy.setup') || '{}') || {})[V.key] || {}; } catch (e) { return {}; } };
+const carPressure = V => { const p = setupOf(V).p; return Number.isInteger(p) && V.pressures[p] ? p : V.pIdx; };
+const carDrive = V => V.awdFixed ? V.awd : !!(setupOf(V).awd ?? V.awd);
+function setupKeep(store, fn) { try { const m = JSON.parse(localStorage.getItem(store) || '{}') || {}; fn(m); localStorage.setItem(store, JSON.stringify(m)); } catch (e) { } }
+function setupKeepOwn(k, v, own) { setupKeep('sandbuggy.setup', m => { const o = m[VEH.key] || {}; if (v === own) delete o[k]; else o[k] = v; if (Object.keys(o).length) m[VEH.key] = o; else delete m[VEH.key]; }); }
+// a training under way has the car as it was (its workers too): it starts again with the car as it is
+const setupChanged = () => { if (AI.training) { aiTrain(false); aiTrain(true); } return true; };
+function setSplit(v) {                                               // the front's share of the torque, 0 to 1 in steps of 5 %
+  if (!car.awd || !(v >= 0 && v <= 1)) return false;
+  v = Math.round(v * 20) / 20; if (v === car.split) return true;
+  car.split = v; setupKeep('sandbuggy.split', m => { if (v === (VEH.split ?? 0.5)) delete m[VEH.key]; else m[VEH.key] = v; });
+  return setupChanged();
+}
+function setDrive(awd) {                                             // the front axle driven or not (not on the cars built one way)
+  awd = !!awd; if (VEH.awdFixed) return false; if (awd === car.awd) return true;
+  car.awd = awd; setupKeepOwn('awd', awd, !!VEH.awd);
+  return setupChanged();
+}
+function setPressure(i) {                                            // one of the car's pressures
+  if (!PRESSURES[i]) return false; if (i === car.pIdx) return true;
+  car.pIdx = i; setupKeepOwn('p', i, VEH.pIdx);
+  return setupChanged();
+}
+// what the tire model makes of a pressure: one wheel carrying its share of the car at rest, on the ground under the
+// car as built (c: how packed, 0 fresh). The same sums as stepCar's: change them there, change them here.
+function tireFigures(i = car.pIdx, c = 0) {
+  const P = PRESSURES[i], n = car.wheels.length || 4, load = car.mass * G / n, R = car.R - P.defl;
+  const SF = surfAtCell(cellIndex(car.pos.x, car.pos.z)), kEff = SF.k * (1 + SF.kComp * c);
+  const pg = P.kpa * 1000 * 0.8 + 12000, b = P.w, len = Math.min(load / pg / b, 0.3), pEff = load / (b * Math.max(len, 0.05));
+  const sink = SF.rigid ? 0 : Math.min(pEff / kEff, 0.28);
+  const drag = SF.rc * b * kEff * sink * sink * 0.5 + 0.02 * load + load * 0.6 * (sink / R) ** 2;      // (rolling through it, per wheel)
+  const grip = load * (SF.tanPhi + SF.tanPhiComp * c) + SF.coh * b * Math.max(len, 0.15);
+  return { psi: P.psi, kpa: P.kpa, width: b, length: len, sink, drag: drag * n, grip: grip / load, radius: R, squash: P.defl, load, ground: SF.name, rigid: !!SF.rigid };
+}
+const SETUP = {
+  get() {
+    const zs = car.wheels.map(w => w.hp.z), zf = Math.max(...zs), zr = Math.min(...zs);
+    let kw = 0; for (let r = ENG.idle; r <= ENG.limiter; r += 100) kw = Math.max(kw, engineTorque(r) * r * TAU / 60000);
+    return { key: VEH.key, name: VEH.name, awd: car.awd, awdFixed: !!VEH.awdFixed, split: car.split, ownSplit: VEH.split ?? 0.5, ownAwd: !!VEH.awd,
+      p: car.pIdx, ownP: VEH.pIdx, pressures: PRESSURES.map(P => ({ psi: P.psi, kpa: P.kpa })), frontWeight: zf > zr ? -zr / (zf - zr) : 0.5, power: kw, mass: car.mass };
+  },
+  split: setSplit, drive: setDrive, pressure: setPressure, figures: tireFigures,
+};
+car.pIdx = carPressure(VEH); car.awd = carDrive(VEH); car.split = carSplit(VEH);     // (the car the sim starts on)
 function switchVehicle(key) {
   if (!VEHICLE_LIST[key]) return;
   const V = VEHICLES[key] || (VEHICLES[key] = makeRoadVehicle(key));
@@ -5127,7 +5171,7 @@ function switchVehicle(key) {
   VEH = V; VIS = V.vis; VIS.visible = true;
   Object.assign(car, { mass: V.mass, R: V.R, REST: V.REST, K: V.K, CB: V.CB, CR: V.CR, Iw: V.Iw, wheels: V.wheels, hull: V.hull });
   car.I.copy(V.I);
-  ENG = V.eng; PRESSURES = V.pressures; car.pIdx = V.pIdx; car.awd = V.awd; car.split = carSplit(V);
+  ENG = V.eng; PRESSURES = V.pressures; car.pIdx = carPressure(V); car.awd = carDrive(V); car.split = carSplit(V);
   [CAR_HW, CAR_ZF, CAR_ZR] = V.box;
   car.hullC = new Uint8Array(car.hull.length);
   for (const W of car.wheels) { W.toe = 0; W.camber = 0; W.omega = 0; W.t = car.REST; W.comp = 0; W.contact = false; }
@@ -6384,7 +6428,7 @@ if (MP.on) {
   addEventListener('keydown', e => { if (e.code === 'Enter' && !e.repeat && !car.wrecked && !ed.on) { e.stopImmediatePropagation(); e.preventDefault(); keysUp(); mpPost({ t: 'chatKey' }); } }, true);
   addEventListener('blur', keysUp);
   const help = document.getElementById('help');
-  help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>Shift/right-drag</b> look around &nbsp; <b>P</b> pause &nbsp; <b>Shift+P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD (AWD cars: front/rear split) &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>I</b> TNN lab (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>Enter</b> chat &nbsp; <b>H</b> hide this';
+  help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>Shift/right-drag</b> look around &nbsp; <b>P</b> pause &nbsp; <b>Shift+P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD (AWD cars: front/rear split) &nbsp; <b>U</b> car setup (drive, tires) &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>I</b> TNN lab (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>Enter</b> chat &nbsp; <b>H</b> hide this';
   addEventListener('message', e => { if (e.origin === location.origin && e.source === parent) mpMessage(e.data); });
 }
 if (MP.edit) {
@@ -6930,6 +6974,7 @@ function aiExamKind() {
   return [AI_CFG.flying ? (AI_CFG.examLaps > 1 ? 'flying2x' + AI_CFG.examLaps : 'flying2') : 'line', AI_CFG.pace, AI_CFG.gCorner, AI_CFG.gBrake, AI_CFG.gAccel, AI_CFG.racingLine ? AI_CFG.lineW : '-',
     AI_CFG.lookTime ? 't' : 'm', AI_CFG.off + (AI_CFG.onRoad ? 'road' : ''), aiDemoNow() ? 'demo' : '', JSON.stringify(AI_PEN), ...(aiRaceExam() ? ['race:' + AI_CFG.rival + (aiRivalKey() !== VEH.key ? ':' + aiRivalKey() + ':' + (AI.rv?.brain?.lap ?? '') : '')] : []),
     ...(car.awd && car.split !== 0.5 ? ['split' + car.split] : []),
+    ...(car.pIdx !== VEH.pIdx ? ['psi' + PRESSURES[car.pIdx].psi] : []), ...(car.awd !== !!VEH.awd ? ['awd' + +car.awd] : []),   // (#332)
     ...(AI.nOut > 2 && (AI_CFG.hbTurn || AI_CFG.hbNoBrake) ? ['hb' + (AI_CFG.hbTurn ? 'turn' + AI_CFG.hbLock : '') + (AI_CFG.hbNoBrake ? 'nobrake' : '')] : [])].join(' ');   // (the handbrake's rules)   // (all-wheel drive split unevenly: another car to drive)
 }
 // with a rival (AI_CFG.rival), each exam is also a race: a lap from the grid alongside it (the latest of the rivals, at its
@@ -8590,6 +8635,7 @@ setTimeout(() => {
   // for tests and the console: step the physics without drawing (headless browsers draw at a frame a second)
   Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
+  Object.assign(window.__sim, { setup: SETUP });                                  // (the Car setup drawer, ui.js)
   Object.assign(window.__sim, { renderer });                                      // for the Claude bridge's screenshots (bridge.js)
   Object.assign(window.__sim, { aiDemo, aiSaveServer, aiForget, aiPool: AI_POOL, aiGT, aiGroundBack });   // (aiGT, aiGroundBack: tests)
   if (AI_WK) Object.assign(self, { __aiwServe: aiWorkerServe, __aiwHash: aiGroundHash });   // (a worker's engine: ready for its jobs)

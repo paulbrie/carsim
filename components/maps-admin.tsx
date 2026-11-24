@@ -69,7 +69,7 @@ export function MapsAdmin({ initial, user }: { initial: MapSummary[]; user: { na
       <div className="relative mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14">
         <p className="eyebrow text-primary">Super admin</p>
         <h1 className="display mt-3 text-4xl sm:text-5xl">Maps</h1>
-        <p className="mt-3 max-w-xl text-pretty text-muted-foreground">The tracks every room races and every network trains on. An edit reaches a room when its next race starts.</p>
+        <p className="mt-3 max-w-xl text-pretty text-muted-foreground">The tracks every room races and every network trains on. An edit reaches the rooms at once (a race under way: when it ends).</p>
       </div>
       <main className="relative mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[380px_1fr]">
         <Card className="self-start">
@@ -100,7 +100,7 @@ export function MapsAdmin({ initial, user }: { initial: MapSummary[]; user: { na
         <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Maps</CardTitle>
-            <CardDescription>Saved on the server. An edit reaches a room when its next race starts.</CardDescription>
+            <CardDescription>Saved on the server. An edit reaches the rooms at once (a race under way: when it ends).</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -152,7 +152,7 @@ export function MapsAdmin({ initial, user }: { initial: MapSummary[]; user: { na
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete {doomed?.name}?</DialogTitle>
-            <DialogDescription>Rooms racing it go back to the figure-8 at their next race. This can&apos;t be undone (Export it from the editor first to keep a copy).</DialogDescription>
+            <DialogDescription>Rooms on it go back to the figure-8 (a race under way: when it ends). This can&apos;t be undone (Export it from the editor first to keep a copy).</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDoomed(null)}>Keep it</Button>

@@ -430,9 +430,10 @@ guests never are). Only the super admin can create, edit and delete maps; anyone
   strokes (up to ~18 m); banked 8°, levelled, no grade over 8% (the cuttings' ends ~10%).
 - **In a room** the host picks the map (lobby, or New race). The page loads its course and hands it
   to the sim as `window.__simCourse` before the iframe boots; a change goes as a `course` message and
-  the sim rebuilds the world. The room's ground still applies over the map's. A room reads its map
-  again when a race starts, so an edit saved meanwhile is what everyone races (the sims reload it on
-  the grid); a deleted map falls back to the figure-8.
+  the sim rebuilds the world. The room's ground still applies over the map's. A waiting room (lobby,
+  results) follows its map's saves within a second (#324), and a room reads its map again when a race
+  starts, so an edit saved meanwhile is what everyone races (the sims reload it on the grid); a race under
+  way keeps the version it started on. A deleted map falls back to the figure-8.
 
 ## How it fits together
 

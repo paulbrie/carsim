@@ -314,3 +314,25 @@ test('ghosts: a best lap\'s path kept with it, checked, given to who asks, only 
   const warn = console.warn; console.warn = () => { };
   try { assert.equal((await ghost(vehicle)).trace, null); } finally { console.warn = warn; }
 });
+
+test('a waiting room follows its map\'s saves within a second; a race keeps the version it started on (#324)', () => {
+  let t = 1_000_000, v = 1, gone = false;
+  const maps = { info: id => id === 'figure-8' ? { id, name: 'Figure-8', v: 0 } : id === 'gen' && !gone ? { id, name: 'Generated', v } : null };
+  const hub = new RaceHub({ now: () => t, maps });
+  const inbox = []; const c = hub.connect({ id: 'a', name: 'Ann' }, m => inbox.push(m));
+  const room = () => inbox.filter(m => m.t === 'room').at(-1).room;
+  const tick = ms => { for (let k = 0; k < ms / LIMITS.tickMs; k++) { t += LIMITS.tickMs; hub.tick(); } };
+  c.message({ t: 'create', map: 'gen' });
+  assert.deepEqual(room().map, { id: 'gen', name: 'Generated', v: 1 });
+  v = 2; tick(1000);                                                   // saved in the map editor meanwhile
+  assert.equal(room().map.v, 2);
+  assert.equal(inbox.filter(m => m.t === 'records').at(-1).v, 2);
+  c.message({ t: 'start' }); tick(LIMITS.countdownMs + 100);
+  assert.equal(room().phase, 'racing');
+  v = 3; tick(2000);                                                   // not in the middle of a race
+  assert.equal(room().map.v, 2);
+  c.message({ t: 'finish', time: 60 }); tick(LIMITS.finishWindowMs + 100);
+  assert.equal(room().phase, 'results'); assert.equal(room().map.v, 3);
+  gone = true; tick(1000);                                             // deleted: back on the figure-8
+  assert.equal(room().map.id, 'figure-8');
+});

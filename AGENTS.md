@@ -57,6 +57,10 @@ See README.md for the layout. Notes:
 - Ground shaped along the course (banking, levelling, bridge ramps) must take its height between
   course points (`alongCourse`), not at the nearest one: they are ~1 m apart, and nearest-point
   heights make ridges across every slope (#292).
+- The chat (#325): `lib/race/chat.mjs` (main room in the database, mutes) and the hub's `chat` / `chatDel` / `chatMute`
+  messages; a race room's chat is `room.chat`. Only the server decides who is the admin (the signed ticket's `admin`):
+  the page's delete and mute buttons are only a view. In a race, Enter in the sim posts `chatKey` to the page
+  (`mp-block.js`): keep Enter free for it there (a wrecked car's Enter still repairs).
 - Best laps (#304): in a race (`?mp=1`) the timer's BEST comes from the server (`mpApplyBest`, from the
   room's `records`), not localStorage; anything that rebuilds the course or changes the car or ground must
   leave `loadBest` / `mpApplyBest` to set it. The server only takes a lap no longer than the time since the

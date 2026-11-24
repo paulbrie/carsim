@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSubject } from 'subjecto/react';
 import { toast } from 'sonner';
-import { Check, ChevronLeft, Crown, Flag, Link2, LogOut, PanelLeftClose, PanelLeftOpen, Timer, Trophy, WifiOff } from 'lucide-react';
+import { Check, ChevronLeft, Crown, Flag, Link2, LogOut, MessageSquare, PanelLeftClose, PanelLeftOpen, Timer, Trophy, WifiOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -17,6 +17,7 @@ import { SimFrame, type SimHandle } from '@/components/sim-frame';
 import { PHASE_LABEL } from '@/components/lobby';
 import { GroundControl, LapsControl, TrackPicker, WeatherControl, PaintPicker, StatusBadge, VehiclePicker, fmtTime, groundName, paintOf, vehicleName } from '@/components/race-controls';
 import { BrandMark } from '@/components/brand';
+import { ChatBox, ChatOverlay, useUnread, type ChatBoxHandle } from '@/components/chat';
 import { cn } from '@/lib/utils';
 import { withBase } from '@/lib/base-path';
 import { LIMITS } from '@/lib/race/shared.mjs';
@@ -31,9 +32,14 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
   const [me] = useSubject(me$);
   const [room] = useSubject(room$);
   const [panel, setPanel] = useState(true);
-  const [tab, setTab] = useState<'race' | 'car' | 'laps'>('race');
+  const [tab, setTab] = useState<'race' | 'car' | 'laps' | 'chat'>('race');
   const [simReady, setSimReady] = useState(false);
   const sim = useRef<SimHandle>(null);
+  // the chat (#325): a tab of the panel; over the track when the panel is away (Enter in the sim opens its line)
+  const [chatOpen, setChatOpen] = useState(false);
+  const chatBox = useRef<ChatBoxHandle>(null);
+  const chatShown = panel && tab === 'chat';
+  const unread = useUnread('room', chatShown, me?.id) + useUnread('main', chatShown, me?.id);
 
   useEffect(() => {
     connect(); joinRoom(roomId);
@@ -61,6 +67,11 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
   const maps = useMaps(isHost);
 
   const onSimReady = useCallback(() => setSimReady(true), []);
+  const panelRef = useRef(panel); panelRef.current = panel;
+  const onChatKey = useCallback(() => {
+    if (panelRef.current) { setTab('chat'); setTimeout(() => chatBox.current?.focus(), 0); } else setChatOpen(true);
+  }, []);
+  const backToCar = useCallback(() => { setChatOpen(false); sim.current?.focus(); }, []);
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(`${location.origin}${withBase(`/race/${roomId}`)}`); toast.success('Invite link copied'); }
     catch { toast.message(`Room code: ${roomId}`); }
@@ -84,7 +95,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
-      {course && <SimFrame ref={sim} room={room} meId={me.id} course={course} onReady={onSimReady} />}
+      {course && <SimFrame ref={sim} room={room} meId={me.id} course={course} onReady={onSimReady} onChatKey={onChatKey} />}
 
       {(phase === 'racing' || phase === 'countdown') && <StandingsPanel room={room} meId={me.id} />}
 
@@ -112,9 +123,17 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
               <SegmentedControlItem value="race" className="seg-item flex-1 text-center">Race</SegmentedControlItem>
               <SegmentedControlItem value="car" className="seg-item flex-1 text-center">Your car</SegmentedControlItem>
               <SegmentedControlItem value="laps" className="seg-item flex-1 text-center">Best laps</SegmentedControlItem>
+              <SegmentedControlItem value="chat" className="seg-item flex-1 text-center" aria-label={unread ? `Chat, ${unread} new` : 'Chat'}>
+                Chat{unread > 0 && <span className="num ml-1 rounded-full bg-primary px-1.5 text-[0.7rem] text-primary-foreground">{unread}</span>}
+              </SegmentedControlItem>
             </SegmentedControl>
           </div>
 
+          {tab === 'chat' ? (
+            <div className="flex min-h-0 flex-1 p-4">
+              <ChatBox ref={chatBox} channels={['room', 'main']} meId={me.id} admin={me.admin} className="flex-1" onEscape={() => sim.current?.focus()} />
+            </div>
+          ) : (
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-5 p-4">
               {tab === 'race' && (
@@ -153,6 +172,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
               {tab === 'laps' && <BestLaps room={room} meId={me.id} vehicle={mine?.vehicle} />}
             </div>
           </ScrollArea>
+          )}
 
           <div className="space-y-2 border-t border-white/8 p-4">
             <RoomActions room={room} mine={mine} isHost={isHost} />
@@ -165,9 +185,15 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
         </aside>
       ) : (
         <div className="absolute bottom-3 left-3 flex flex-col-reverse items-start gap-2">
-          <Button variant="glass" size="lg" className="bg-background/70 px-3 shadow-lg" onClick={() => setPanel(true)}>
-            <PanelLeftOpen /> <span className="num tracking-widest">{room.id}</span> Room
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="glass" size="lg" className="bg-background/70 px-3 shadow-lg" onClick={() => { setChatOpen(false); setPanel(true); }}>
+              <PanelLeftOpen /> <span className="num tracking-widest">{room.id}</span> Room
+            </Button>
+            <Button variant="glass" size="lg" className="bg-background/70 px-3 shadow-lg" title="Chat (Enter)" aria-label={unread ? `Chat, ${unread} new` : 'Chat'} onClick={() => setChatOpen(o => !o)}>
+              <MessageSquare />{unread > 0 && <span className="num rounded-full bg-primary px-1.5 text-[0.7rem] text-primary-foreground">{unread}</span>}
+            </Button>
+          </div>
+          <ChatOverlay meId={me.id} open={chatOpen} onClose={backToCar} />
           {status !== 'open' && <Badge variant="destructive" className="gap-1"><WifiOff className="size-3" /> Reconnecting</Badge>}
         </div>
       )}

@@ -2,7 +2,15 @@
 
 export type Phase = 'lobby' | 'countdown' | 'racing' | 'results';
 
-export interface Me { id: string; name: string; image: string | null }
+/** admin: the super admin, who moderates the chat */
+export interface Me { id: string; name: string; image: string | null; admin?: boolean }
+
+/** the chat (#325): the main room, everyone connected; a race room's, its drivers */
+export type ChatChannel = 'main' | 'room';
+/** a chat message: uid, name, image: who wrote it; at: when (ms) */
+export interface ChatMsg { id: string; at: number; uid: string; name: string; image: string | null; text: string }
+/** a driver the super admin muted, until (ms) */
+export interface ChatMute { id: string; name: string; until: number; by: string }
 
 export interface RoomSummary {
   id: string; name: string; host: string; players: number; max: number; phase: Phase; ground: string; laps: number; map: string;
@@ -55,6 +63,9 @@ export type ServerMsg =
   | ({ t: 'ghost' } & GhostLap)
   | { t: 'standings'; standings: Standing[]; elapsed: number; finishWindowLeft: number | null }
   | { t: 'gone'; id: string }
+  | { t: 'chat'; ch: ChatChannel; all?: boolean; msgs: ChatMsg[] }
+  | { t: 'chatDel'; ch: ChatChannel; id: string }
+  | { t: 'chatMutes'; list: ChatMute[] }
   | { t: 'left' }
   | { t: 'replaced' }
   | { t: 'pong'; c: number; s: number }

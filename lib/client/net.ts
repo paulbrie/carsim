@@ -5,7 +5,7 @@
 // damage (onDamage), kept here too (damageLog) for a sim that loads after it came.
 import { Subject } from 'subjecto';
 import { withBase } from '@/lib/base-path';
-import type { CarHit, CarSnap, GhostLap, Me, Records, RoomSummary, RoomView, ServerMsg, Standing } from '@/lib/race/types';
+import type { CarHit, CarSnap, ChatChannel, ChatMsg, ChatMute, GhostLap, Me, Records, RoomSummary, RoomView, ServerMsg, Standing } from '@/lib/race/types';
 
 export type NetStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'replaced' | 'unauthorized';
 
@@ -19,6 +19,10 @@ export const records$ = new Subject<Records | null>(null);
 /** the last best lap's path we asked for (lib/client/ghost.ts) */
 export const ghost$ = new Subject<GhostLap | null>(null);
 export const errors$ = new Subject<{ code: string; msg: string; at: number } | null>(null);
+/** the chat (#325): the main room's messages and the race room's, oldest first; the mutes (the super admin's) */
+export const chat$: Record<ChatChannel, Subject<ChatMsg[]>> = { main: new Subject<ChatMsg[]>([]), room: new Subject<ChatMsg[]>([]) };
+export const chatMutes$ = new Subject<ChatMute[]>([]);
+const CHAT_KEEP = 200;
 
 type SnapListener = (cars: CarSnap[]) => void;
 const snapListeners = new Set<SnapListener>();
@@ -101,7 +105,10 @@ function handle(m: ServerMsg) {
     case 'hit': case 'repair': case 'hits': onDamageMsg(m); break;
     case 'records': { const { t: _, ...r } = m; records$.next(r); break; }
     case 'ghost': { const { t: _, ...g } = m; ghost$.next(g); break; }
-    case 'left': damage.clear(); room$.next(null); records$.next(null); break;
+    case 'chat': { const s = chat$[m.ch]; if (!s) break; const list = m.all ? m.msgs : [...s.getValue(), ...m.msgs]; s.next(list.slice(-CHAT_KEEP)); break; }
+    case 'chatDel': { const s = chat$[m.ch]; if (s) s.next(s.getValue().filter(x => x.id !== m.id)); break; }
+    case 'chatMutes': chatMutes$.next(m.list); break;
+    case 'left': damage.clear(); room$.next(null); records$.next(null); chat$.room.next([]); break;
     case 'replaced': status$.next('replaced'); wanted = false; ws?.close(); break;
     case 'error': errors$.next({ code: m.code, msg: m.msg, at: Date.now() }); break;
   }
@@ -119,7 +126,7 @@ export function joinRoom(id: string) {
 }
 export function leaveRoom() {
   if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
-  wantedRoom = null; send({ t: 'leave' }); room$.next(null); records$.next(null);
+  wantedRoom = null; send({ t: 'leave' }); room$.next(null); records$.next(null); chat$.room.next([]);
 }
 /** leave unless the same page mounts again at once (React's dev double effects), which re-joins */
 export function leaveRoomSoon() {
@@ -130,6 +137,9 @@ export function leaveRoomSoon() {
 export function setWantedRoom(id: string | null) { wantedRoom = id; }
 /** a 'replaced' tab taking its seat back */
 export function reclaim() { status$.next('idle'); connect(); }
+
+/** a chat message to the main room or our race room; false if not connected */
+export const sendChat = (ch: ChatChannel, text: string) => send({ t: 'chat', ch, text });
 
 /** errors from now on (a Subject hands a new subscriber its current value, here the last error) */
 export function onError(fn: (e: { code: string; msg: string }) => void) {

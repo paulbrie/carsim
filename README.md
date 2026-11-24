@@ -515,13 +515,23 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
 - **Damage:** the sim posts `hit {h}` / `repair`; `server.mjs` relays them (`lib/race/hub.mjs`,
   `hit`, `repair`, and `hits` with everyone's so far on joining); `lib/client/net.ts` keeps the room's
   log for a sim that loads later, and `SimFrame` hands it over.
+- **Chat** (#325, `lib/race/chat.mjs`, `components/chat.tsx`): two rooms on the same socket. **Everyone** (`main`):
+  every driver connected, in the lobby (its Chat panel) and in the race rooms; its last 200 messages are in the
+  database (`chat_messages`), sent to each page as it connects. **This race** (`room`): the room's drivers; it
+  lives in the room (the last 100), a late joiner gets it, and it goes with the room. In a race room the chat is the
+  panel's Chat tab (both rooms, a count of new messages on the tab), and over the track when the panel is away: new
+  messages show for 12 s above the Room button, and **Enter** in the sim opens a line to write on (to this race or
+  everyone; Enter sends, Esc drives on; the keys held are let go, so the car doesn't run on). A message is one
+  line of at most 500 characters (no control or text-direction characters); a driver may send 5 at once, then one
+  every 2 s. The super admin (`admin` in the socket's ticket) deletes a message (the bin on it) and mutes its
+  driver for 24 h (`chat_mutes`; their messages are refused, they are told until when; the same button unmutes).
 - **Sign-in to socket:** `/api/ws-ticket` (behind Auth.js) signs a one-minute ticket with
   `AUTH_SECRET`; `server.mjs` checks it, and the page's origin, on the upgrade.
 
 ## The database
 
 Everything the server keeps is in **Postgres** (ticket #318): the maps (`maps`), the best laps with their ghost paths
-(`records`) and the saved autopilots (`autopilots`). `DATABASE_URL` says where; the server won't start without it.
+(`records`), the saved autopilots (`autopilots`) and the chat's main room and mutes (`chat_messages`, `chat_mutes`; #325). `DATABASE_URL` says where; the server won't start without it.
 Rooms and races, and the Claude bridge's pairings, are live state in the process's memory; what the sim keeps for
 itself (single-player best laps, your own circuits, paint, weather…) stays in the browser.
 
@@ -584,6 +594,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `lib/race/hub.mjs` | rooms and races (transport-free, tested in `test/hub.test.mjs`) |
 | `lib/race/shared.mjs` | cars, paints, grounds, limits shared by server, UI and sim |
 | `lib/race/ticket.mjs` | WebSocket tickets (HMAC) |
+| `lib/race/chat.mjs`, `components/chat.tsx` | the chat: the main room and the mutes in the database, the race rooms' in the hub; the lobby's and the race room's chat (tested in `test/chat.test.mjs`) |
 | `lib/race/records.mjs` | the best laps and their ghosts, in the database and in the race server's memory (tested in `test/records.test.mjs`, `test/hub.test.mjs`) |
 | `lib/db/`, `migrations/`, `drizzle.config.mjs`, `docker-compose.yml` | the database: the pool, the tables (`schema.mjs`), the migrations and their runner, the one-time import of the old files |
 | `lib/maps/live.mjs` | the race server's list of the maps, kept current by the database's NOTIFY |

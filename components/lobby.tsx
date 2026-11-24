@@ -12,7 +12,8 @@ import { GroundControl, LapsControl, StatusBadge, TrackPicker, WeatherControl, g
 import { cn } from '@/lib/utils';
 import { withBase } from '@/lib/base-path';
 import { useMaps } from '@/lib/client/maps';
-import { connect, onError, room$, rooms$, send, setWantedRoom, status$ } from '@/lib/client/net';
+import { connect, me$, onError, room$, rooms$, send, setWantedRoom, status$ } from '@/lib/client/net';
+import { ChatBox } from '@/components/chat';
 import type { Phase } from '@/lib/race/types';
 
 export const PHASE_LABEL: Record<Phase, string> = { lobby: 'Waiting', countdown: 'Starting', racing: 'Racing', results: 'Results' };
@@ -22,6 +23,7 @@ export function Lobby({ user }: { user: { name: string; image: string | null; ad
   const [status] = useSubject(status$);
   const [rooms] = useSubject(rooms$);
   const [room] = useSubject(room$);
+  const [me] = useSubject(me$);
   const [name, setName] = useState('');
   const [ground, setGround] = useState('sand');
   const [weather, setWeather] = useState('clear');
@@ -73,6 +75,7 @@ export function Lobby({ user }: { user: { name: string; image: string | null; ad
         </div>
 
         <div className="mt-10 grid items-start gap-6 lg:grid-cols-[minmax(0,440px)_1fr]">
+          <div className="space-y-6">
           <form onSubmit={create} className="panel space-y-6 p-5 sm:p-6" aria-labelledby="new-race">
             <div>
               <h2 id="new-race" className="heading text-xl">Start a race</h2>
@@ -95,6 +98,16 @@ export function Lobby({ user }: { user: { name: string; image: string | null; ad
               <Flag /> {status === 'open' ? 'Open the room' : 'Connecting…'}
             </Button>
           </form>
+
+          {/* the main chat room (#325): everyone on the race server, in the lobby and in the race rooms */}
+          <section className="panel flex h-[440px] flex-col p-4 sm:p-5" aria-labelledby="chat-heading">
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 id="chat-heading" className="heading text-xl">Chat</h2>
+              <p className="text-xs text-muted-foreground">Everyone, in the lobby and the races</p>
+            </div>
+            <ChatBox channels={['main']} meId={me?.id} admin={me?.admin} className="flex-1" />
+          </section>
+          </div>
 
           <section className="min-w-0 space-y-4" aria-labelledby="open-rooms">
             <div className="flex items-baseline justify-between">

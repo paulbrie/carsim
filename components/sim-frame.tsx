@@ -13,7 +13,8 @@ import type { SimCourse } from '@/lib/client/maps';
 
 export interface SimHandle { focus(): void }
 
-export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; course: SimCourse; onReady?: () => void }>(function SimFrame({ room, meId, course, onReady }, handle) {
+// onChatKey: Enter in the sim, to write in the chat (#325)
+export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; course: SimCourse; onReady?: () => void; onChatKey?: () => void }>(function SimFrame({ room, meId, course, onReady, onChatKey }, handle) {
   const frame = useRef<HTMLIFrameElement>(null);
   const live = useRef(false);
   const [ready, setReady] = useState(false);
@@ -51,10 +52,11 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
         post({ t: 'hits', all: damageLog() });          // and the others' as they are
       }
       else if (m.t === 's' || m.t === 'lap' || m.t === 'finish' || m.t === 'hit' || m.t === 'repair') send(m);
+      else if (m.t === 'chatKey') onChatKey?.();
     };
     addEventListener('message', onMessage);
     return () => removeEventListener('message', onMessage);
-  }, [onReady, post]);
+  }, [onReady, onChatKey, post]);
 
   // the other cars, straight from the socket
   useEffect(() => {

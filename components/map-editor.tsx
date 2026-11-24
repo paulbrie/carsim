@@ -128,7 +128,7 @@ export function MapEditor({ id, name: initialName, builtin }: { id: string; name
       <div className="relative min-h-0 flex-1">
         {loaded && (
           <iframe ref={frame} src={withBase('/sim/index.html?edit=1')} title="Map editor: the sim's course editor"
-            className="absolute inset-0 size-full border-0 bg-[#e7d3ad]" allow="autoplay; fullscreen" />
+            className="absolute inset-0 size-full border-0 bg-background" allow="autoplay; fullscreen" />
         )}
       </div>
 

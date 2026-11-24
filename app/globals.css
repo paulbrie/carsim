@@ -4,6 +4,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* fonts (SIL OFL, public/fonts): the sim's own pages use the same files (public/sim/ui.css) */
+@font-face { font-family: "Archivo"; src: url("../public/fonts/archivo.woff2") format("woff2"); font-weight: 100 900; font-stretch: 62% 125%; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("../public/fonts/geist.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap;
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: "Geist"; src: url("../public/fonts/geist-ext.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap;
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family: "Geist Mono"; src: url("../public/fonts/geist-mono.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);
@@ -45,89 +54,123 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    --font-display: "Archivo", var(--font-sans);
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --color-human: var(--human);
+    --color-tnn: var(--tnn);
+    --color-win: var(--win);
+    --color-surface: var(--surface);
+    --color-line: var(--line);
 }
 
-:root {
-    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-    /* warm sand-and-dusk palette, the sim's orange as the accent */
-    --background: oklch(0.165 0.012 60);
-    --foreground: oklch(0.975 0.008 80);
-    --card: oklch(0.21 0.014 60);
-    --card-foreground: oklch(0.975 0.008 80);
-    --popover: oklch(0.22 0.014 60);
-    --popover-foreground: oklch(0.975 0.008 80);
-    --primary: oklch(0.72 0.18 50);
-    --primary-foreground: oklch(0.18 0.03 50);
-    --secondary: oklch(0.28 0.014 60);
-    --secondary-foreground: oklch(0.975 0.008 80);
-    --muted: oklch(0.28 0.014 60);
-    --muted-foreground: oklch(0.74 0.02 70);
-    --accent: oklch(0.3 0.02 60);
-    --accent-foreground: oklch(0.975 0.008 80);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.72 0.18 50);
-    --chart-1: oklch(0.72 0.18 50);
-    --chart-2: oklch(0.7 0.12 230);
-    --chart-3: oklch(0.75 0.15 140);
-    --chart-4: oklch(0.8 0.15 90);
-    --chart-5: oklch(0.6 0.15 300);
-    --sidebar: oklch(0.21 0.014 60);
-    --sidebar-foreground: oklch(0.975 0.008 80);
-    --sidebar-primary: oklch(0.72 0.18 50);
-    --sidebar-primary-foreground: oklch(0.18 0.03 50);
-    --sidebar-accent: oklch(0.28 0.014 60);
-    --sidebar-accent-foreground: oklch(0.975 0.008 80);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.72 0.18 50);
+/* Carsim (#320): one dark theme. Graphite, with the two sides of the duel as the two signals:
+   humans in orange (also the app's primary: what you press to drive), tiny neural networks in cyan. */
+:root, .dark {
+    --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --background: oklch(0.155 0.012 260);
+    --foreground: oklch(0.965 0.004 260);
+    --surface: oklch(0.185 0.014 260);
+    --card: oklch(0.2 0.015 260);
+    --card-foreground: oklch(0.965 0.004 260);
+    --popover: oklch(0.215 0.016 260);
+    --popover-foreground: oklch(0.965 0.004 260);
+    --primary: oklch(0.72 0.19 44);
+    --primary-foreground: oklch(0.16 0.03 44);
+    --secondary: oklch(0.265 0.016 260);
+    --secondary-foreground: oklch(0.965 0.004 260);
+    --muted: oklch(0.245 0.015 260);
+    --muted-foreground: oklch(0.72 0.018 260);
+    --accent: oklch(0.285 0.018 260);
+    --accent-foreground: oklch(0.965 0.004 260);
+    --destructive: oklch(0.7 0.19 22);
+    --border: oklch(1 0 0 / 9%);
+    --line: oklch(1 0 0 / 6%);
+    --input: oklch(1 0 0 / 14%);
+    --ring: oklch(0.72 0.19 44);
+    --human: oklch(0.74 0.18 48);
+    --tnn: oklch(0.83 0.125 200);
+    --win: oklch(0.82 0.17 152);
+    --chart-1: var(--human);
+    --chart-2: var(--tnn);
+    --chart-3: oklch(0.82 0.17 152);
+    --chart-4: oklch(0.84 0.15 90);
+    --chart-5: oklch(0.68 0.16 300);
+    --radius: 0.75rem;
+    --sidebar: var(--card);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--secondary);
+    --sidebar-accent-foreground: var(--foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
-  body {
-    @apply bg-background text-foreground;
-    }
+  }
   html {
     @apply font-sans;
-    }
+    color-scheme: dark;
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: oklch(0.72 0.19 44 / 0.35);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+/* type: Archivo wide and heavy for what should be seen first, Geist to read, Geist Mono for every time and number */
+@layer components {
+  .display {
+    font-family: var(--font-display);
+    font-stretch: 118%;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 0.98;
+  }
+  .heading {
+    font-family: var(--font-display);
+    font-stretch: 108%;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.1;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  /* a panel: the cards of every page */
+  .panel {
+    @apply rounded-2xl border bg-card/80;
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 5%), 0 20px 40px -24px oklch(0 0 0 / 60%);
+  }
+  /* the page's backdrop: a faint grid, as on timing paper, fading out */
+  .grid-fade {
+    background-image: linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, black 30%, transparent 75%);
+  }
+  .glow-human { box-shadow: 0 0 0 1px oklch(0.74 0.18 48 / 35%), 0 0 40px -8px oklch(0.74 0.18 48 / 45%); }
+  .glow-tnn { box-shadow: 0 0 0 1px oklch(0.83 0.125 200 / 35%), 0 0 40px -8px oklch(0.83 0.125 200 / 40%); }
 }
 /* ui-sdk parts (unstyled by design): the segmented controls and the paint picker */
 @layer components {
@@ -143,16 +186,6 @@
   }
   .seg-item {
     @apply cursor-pointer rounded-md px-3 py-1.5 font-medium text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring data-checked:text-foreground data-disabled:cursor-not-allowed data-disabled:opacity-60;
-  }
-  .sel-trigger {
-    @apply inline-flex h-9 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border bg-muted/40 px-3 text-left text-sm font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring data-disabled:cursor-not-allowed data-disabled:opacity-60;
-  }
-  .sel-content {
-    @apply min-w-(--anchor-width) overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg;
-    max-height: min(320px, var(--available-height));
-  }
-  .sel-item {
-    @apply flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-selected:font-medium;
   }
   .cp-area {
     @apply relative h-24 w-full cursor-crosshair rounded-md touch-none;
@@ -173,3 +206,10 @@
     background: var(--color-picker-color);
   }
 }
+
+/* a network's strongest lines carry a signal (components/net-diagram.tsx) */
+@keyframes net-flow { to { stroke-dashoffset: -21; } }
+.net-pulse { stroke-dasharray: 18 3; animation: net-flow 1.4s linear infinite; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.rise-1 { animation-delay: 0.08s; } .rise-2 { animation-delay: 0.16s; } .rise-3 { animation-delay: 0.26s; } .rise-4 { animation-delay: 0.38s; }

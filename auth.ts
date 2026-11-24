@@ -35,7 +35,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt', maxAge: 30 * 24 * 3600 },
   trustHost: true,                         // behind Railway's proxy, or the box's nginx
   basePath: withBase('/api/auth'),
-  pages: { signIn: withBase('/') },
+  pages: { signIn: withBase('/signin') },
   callbacks: {
     jwt({ token, account, user, profile }) {
       // a stable id per account: "google:<sub>", or "guest:<uuid>" for this guest session

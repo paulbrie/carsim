@@ -1,11 +1,41 @@
-# Sand Buggy Rally
+# Carsim
 
-Real-time multiplayer racing on the **Sand Buggy** vehicle sim: sign in with Google, open a room,
-pick one of eleven cars and a paint, and race up to eight drivers on sand, earth or road, around the figure-8 or a
-map the super admin made.
+**Human drivers against tiny neural networks**, on the same simulated cars and tracks (https://carsim.paulbrie.com).
+A person can just drive, drive and build networks, or just build networks: both sides use the same vehicle sim.
+Drive alone with no account; sign in with Google to race up to eight drivers in a room (fifteen cars, sand, earth or
+road, the figure-8 or a map the super admin made) and to save a network on the server. The best lap of each side,
+car by car and track by track, is the leaderboard.
+
+## The pages (#320)
+
+| | |
+|---|---|
+| `/` | the home page, public: the closest duel on the board, the three ways in, the scoreboard, how a network drives and learns, the simulator, the findings (`app/page.tsx`) |
+| `/drive`, `/lab` | the sim alone (`/sim/index.html`), and the same with the TNN lab opening once a car and ground are picked (`?lab=1`); redirects in `next.config.ts`; no account needed |
+| `/leaderboard`, `/networks` | public: humans vs networks on every track; every saved network drawn from its weights |
+| `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
+| `/lobby`, `/race/<code>` | race rooms (signed in) |
+| `/maps`, `/maps/<id>` | the super admin's maps and their editor |
+
+- **The scoreboard** (`lib/showcase/store.mjs`, read-only, kept 10 s): a human's lap is a best lap from a race room
+  (table `records`), a network's is a saved network's best exam lap (table `autopilots`, as its browser timed it). A
+  network names its course by the sim's `courseKey()`; the same hash of a map's course says which map that is, as
+  laid out now (`courseKey` there is the sim's, and `test/showcase.test.mjs` runs the sim's own against it). A lap on
+  an earlier layout, or a network trained on a course that is no map's (the solo sim's own figure-8, a circuit of
+  one's own), is on no board; the network still shows in `/networks`.
+- **Names on public pages**: a visitor who is not signed in sees "Paul B." (`publicName`, `lib/format.ts`); signed in,
+  the full name.
+- **The look**: one dark theme, tokens in `app/globals.css` (`--human` orange, also the primary; `--tnn` cyan; classes
+  `.display`, `.heading`, `.eyebrow`, `.num`, `.panel`). Type: Archivo (wide, for headings), Geist, Geist Mono, self-hosted
+  from `public/fonts` (SIL OFL). `components/brand.tsx` is the logo, `components/site-nav.tsx` the bar on every page.
+  `components/track-outline.tsx` draws a track from its waypoints, `components/net-diagram.tsx` a network from its weights.
+- **The sim's own page** has the same look from `public/sim/ui.css` and `public/sim/ui.js` (`scripts/patches/ui.py`, last
+  in the chain, only adds them to `index.html`): the rail of buttons under the minimap (stand-ins for the sim's own
+  buttons, each with its key), the keys sheet (H), the start menu's frame and **Car and ground** to open it again, the
+  way home. Nothing in `engine.js` depends on them.
 
 - **Next.js 16** (App Router) + **Tailwind 4** + **shadcn/ui** (radix-nova) for the pages
-- **UI SDK** (`@ui-sdk/react`) for what shadcn lacks: the paint colour picker, the segmented controls and the map picker
+- **UI SDK** (`@ui-sdk/react`) for what shadcn lacks: the paint colour picker and the segmented controls
 - **subjecto** for client state (the socket's rooms, room, standings: `lib/client/net.ts`)
 - **Auth.js** (next-auth v5) with Google; a name-only guest sign-in for development
 - **One Node.js process** (`server.mjs`): Next, the race WebSocket at `/ws`, and `/api/health`, on `$PORT`: made for Railway
@@ -169,7 +199,7 @@ wheels' marks (`sk`, 4 bits a wheel), relayed by the server.
 
 ## Pause
 
-**P**, or **⏸ Pause** left of Replay (in a room, left of the Autopilot button), stops the physics: the car, the lap's
+**P**, or **Pause** in the rail, stops the physics: the car, the lap's
 clock and the engine's sound stand still while the camera, looking around (Shift/right-drag) and the panels go on;
 **P** or **▶ Resume** drives on (`scripts/patches/pause.py`, `__sim.paused`). Not in a race (the countdown and the race:
 the room's clock doesn't stop; a race starting ends a pause), in the editor or a replay, nor while the autopilot trains
@@ -201,9 +231,9 @@ the edge lines and 1.5 m shoulders; on the road the bridges' decks, ramps and cu
 Switching between sand and the other two rebuilds the world (other hills), as switching the road on or
 off already did.
 
-## Autopilot: a tiny network that learns to drive (I)
+## The TNN lab (the autopilot): a tiny network that learns to drive (I)
 
-**I** or the **🧠 Autopilot** button opens the Autopilot panel (single player, and in a race room in the lobby
+**I** or **TNN lab** in the rail opens the lab's panel (in the code and below, the autopilot) (single player, and in a race room in the lobby
 or after your finish, not on the grid or in a race: a race starting stops it; while it trains there the others
 see none of it, and its laps are never your best laps); **Train** has a neural network learn to drive a lap of this course with this
 car, in the browser, on the sim's own physics (`scripts/patches/autopilot.py`); **Drive it** hands the car to
@@ -358,7 +388,7 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
 
 ## Claude bridge: a Claude session working in your sim
 
-For the super admin (as trafficsim's bridge, cut to the sim): **🤝 Claude** (under the Autopilot button) →
+For the super admin (as trafficsim's bridge, cut to the sim): **Claude** (in the rail) →
 **Connect** shows a 6-digit code (10 minutes); a Claude session claims it with `node scripts/bridge.mjs claim
 <code>` and then works in that page, in the browser it runs in (yours, with its frame rate), every command shown in
 the panel's log: `state` (car, lap, autopilot, race, the panels' text), `screenshot` (the 3D view), `text`, `click`,
@@ -523,6 +553,11 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 
 | | |
 |---|---|
+| `app/page.tsx`, `app/leaderboard/`, `app/networks/`, `app/signin/`, `components/showcase.tsx` | the public pages |
+| `lib/showcase/store.mjs`, `lib/tnn.ts`, `lib/format.ts` | the scoreboard from the database; a network's shape and links for drawing; lap times and names |
+| `components/site-nav.tsx`, `components/site-footer.tsx`, `components/brand.tsx`, `components/track-outline.tsx`, `components/net-diagram.tsx` | the bar, the footer (credits), the logo, a track and a network drawn |
+| `public/sim/ui.css`, `public/sim/ui.js`, `scripts/patches/ui.py` | the sim page's interface over the sim's own |
+| `public/fonts/`, `public/showcase/`, `app/icon.svg`, `app/opengraph-image.tsx` | the type, the home page's pictures of the sim, the icon and the share image |
 | `server.mjs` | HTTP server: Next, `/ws`, `/api/health`, heartbeat, graceful shutdown |
 | `lib/race/hub.mjs` | rooms and races (transport-free, tested in `test/hub.test.mjs`) |
 | `lib/race/shared.mjs` | cars, paints, grounds, limits shared by server, UI and sim |
@@ -539,7 +574,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `lib/client/net.ts` | the browser's socket, subjecto Subjects |
 | `components/race-room.tsx` | the race page: panel, best laps, standings, results |
 | `components/sim-frame.tsx` | the sim iframe and its postMessage bridge |
-| `components/race-controls.tsx` | car, paint (UI SDK colour picker), map (UI SDK select), ground and laps (UI SDK segmented controls) |
+| `components/race-controls.tsx` | car, paint (UI SDK colour picker), the track picker, ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |
 | `public/sim/` | the engine |
 | `scripts/patches/autopilot.py` | the autopilot: a tiny network trained in the browser to drive a lap (I) |

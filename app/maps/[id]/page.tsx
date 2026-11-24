@@ -3,14 +3,14 @@ import { auth } from '@/auth';
 import { MapEditor } from '@/components/map-editor';
 import { mapStore } from '@/lib/maps/store.mjs';
 
-export const metadata = { title: 'Map editor · Sand Buggy Rally' };
+export const metadata = { title: 'Map editor' };
 export const dynamic = 'force-dynamic';
 
 // The sim's course editor on one map, saved to the server. Super admin only.
 export default async function MapEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
-  if (!session?.user) redirect(`/?next=${encodeURIComponent(`/maps/${id}`)}`);
+  if (!session?.user) redirect(`/signin?next=${encodeURIComponent(`/maps/${id}`)}`);
   if (!session.user.admin) redirect('/lobby');
   const map = await mapStore().get(id);
   if (!map) notFound();

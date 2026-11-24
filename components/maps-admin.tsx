@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ChevronLeft, Copy, FileUp, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Copy, FileUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,9 +11,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Brand } from '@/components/brand';
-import { UserMenu } from '@/components/user-menu';
-import { MapControl } from '@/components/race-controls';
+import { SiteNav } from '@/components/site-nav';
+import { TrackPicker } from '@/components/race-controls';
+import { TrackOutline } from '@/components/track-outline';
 import { api, fetchMaps } from '@/lib/client/maps';
 import type { MapSummary } from '@/lib/maps/store.mjs';
 
@@ -62,18 +62,16 @@ export function MapsAdmin({ initial, user }: { initial: MapSummary[]; user: { na
   };
 
   return (
-    <div className="min-h-dvh">
-      <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild><Link href="/lobby"><ChevronLeft /> Lobby</Link></Button>
-            <Brand />
-          </div>
-          <UserMenu user={user} />
-        </div>
-      </header>
+    <div className="relative min-h-dvh overflow-x-clip">
+      <div aria-hidden className="grid-fade pointer-events-none absolute inset-0 h-[640px]" />
+      <SiteNav user={user} active="maps" />
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[360px_1fr]">
+      <div className="relative mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14">
+        <p className="eyebrow text-primary">Super admin</p>
+        <h1 className="display mt-3 text-4xl sm:text-5xl">Maps</h1>
+        <p className="mt-3 max-w-xl text-pretty text-muted-foreground">The tracks every room races and every network trains on. An edit reaches a room when its next race starts.</p>
+      </div>
+      <main className="relative mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[380px_1fr]">
         <Card className="self-start">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Plus className="size-4" /> New map</CardTitle>
@@ -86,8 +84,8 @@ export function MapsAdmin({ initial, user }: { initial: MapSummary[]; user: { na
                 <Input id="map-name" value={name} onChange={e => setName(e.target.value)} maxLength={40} placeholder="Canyon run" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="map-from">Start from</Label>
-                <MapControl id="map-from" value={{ id: from, name: maps.find(m => m.id === from)?.name ?? 'Figure-8' }} maps={maps} onChange={setFrom} />
+                <Label>Start from</Label>
+                <TrackPicker compact value={{ id: from, name: maps.find(m => m.id === from)?.name ?? 'Figure-8' }} maps={maps} onChange={setFrom} />
               </div>
               <Button type="submit" className="w-full" disabled={busy || !name.trim()}><Pencil /> Create and edit</Button>
               <Button type="button" variant="outline" className="w-full" disabled={busy} onClick={() => file.current?.click()}>
@@ -120,11 +118,16 @@ export function MapsAdmin({ initial, user }: { initial: MapSummary[]; user: { na
                 {maps.map(m => (
                   <TableRow key={m.id}>
                     <TableCell className="max-w-56">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">{m.name}</span>
-                        {m.builtin && <Badge variant="secondary">built in</Badge>}
+                      <div className="flex items-center gap-3">
+                        <TrackOutline wp={m.wp} width={56} height={40} stroke={2} className="h-10 w-14 shrink-0 text-foreground" />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-medium">{m.name}</span>
+                            {m.builtin && <Badge variant="secondary">built in</Badge>}
+                          </div>
+                          <div className="num text-xs text-muted-foreground">{m.id}</div>
+                        </div>
                       </div>
-                      <div className="font-mono text-xs text-muted-foreground">{m.id}</div>
                     </TableCell>
                     <TableCell className="hidden text-right tabular-nums sm:table-cell">{m.waypoints}</TableCell>
                     <TableCell className="hidden text-right tabular-nums md:table-cell">{m.bank ? `${m.bank}°` : 'off'}</TableCell>

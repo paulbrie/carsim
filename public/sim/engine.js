@@ -6000,7 +6000,7 @@ if (MP.on) {
   dentablesOf(BUGGY); MP.buggyTpl = buggy.clone(true);       // the others' buggies: copies of ours as built (its body meshes marked to dent)
   carHitHook = mpSendHit; carRepairHook = () => { if (!AI.training) mpPost({ t: 'repair' }); };
   const help = document.getElementById('help');
-  help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>Shift/right-drag</b> look around &nbsp; <b>P</b> pause &nbsp; <b>Shift+P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD (AWD cars: front/rear split) &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>I</b> autopilot (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide this';
+  help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>Shift/right-drag</b> look around &nbsp; <b>P</b> pause &nbsp; <b>Shift+P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD (AWD cars: front/rear split) &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>I</b> TNN lab (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>H</b> hide this';
   addEventListener('message', e => { if (e.origin === location.origin && e.source === parent) mpMessage(e.data); });
 }
 if (MP.edit) {
@@ -7608,7 +7608,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel.big small{font-size:11.5px} #aiPanel.big .aiHelp{display:none}
 </style>`);
 AI.el = document.createElement('div'); AI.el.id = 'aiPanel'; AI.el.className = 'panel';
-AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"></div></div>
+AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div class="sub" id="aiSize"></div></div>
   <button id="aiBig" class="ic" title="Full screen: the network, the charts and every setting, explained (Esc: back)">⤢</button></div>
   <div class="aiBody">
   <section class="aiLeft">
@@ -7898,7 +7898,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiBtn:hover,#aiBtn.on{background:rgba(255,90,0,.85)}
   body.mp-race #aiBtn{display:none!important}
 </style>`);
-AI.btn = document.createElement('button'); AI.btn.id = 'aiBtn'; AI.btn.textContent = '🧠 Autopilot';
+AI.btn = document.createElement('button'); AI.btn.id = 'aiBtn'; AI.btn.textContent = '🧠 TNN lab';
 AI.btn.title = 'A tiny neural network learns to drive a lap of this course, with this car (I)';
 document.body.appendChild(AI.btn);
 AI.btn.addEventListener('click', e => { e.currentTarget.blur(); aiToggle(); });

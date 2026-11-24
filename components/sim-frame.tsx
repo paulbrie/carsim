@@ -102,6 +102,6 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
 
   return (
     <iframe ref={frame} src={src} title="Race simulation: click here, then drive with W A S D or the arrow keys"
-      className="absolute inset-0 size-full border-0 bg-[#e7d3ad]" allow="autoplay; fullscreen" />
+      className="absolute inset-0 size-full border-0 bg-background" allow="autoplay; fullscreen" />
   );
 });

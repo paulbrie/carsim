@@ -1,10 +1,8 @@
 'use client';
-// Room settings and car choice: ui-sdk's SegmentedControl, Select and ColorPicker (shadcn has none
-// of them here), styled in app/globals.css (.seg*, .sel-*, .cp-*).
+// Room settings and car choice: ui-sdk's SegmentedControl and ColorPicker (shadcn has none
+// of them here), styled in app/globals.css (.seg*, .cp-*); the track picker's cards.
 import { useEffect, useState } from 'react';
 import { SegmentedControl, SegmentedControlIndicator, SegmentedControlItem } from '@ui-sdk/react/segmented-control';
-import { Select, SelectContent, SelectItem, SelectItemIndicator, SelectTrigger, SelectValue } from '@ui-sdk/react/select';
-import { Check, ChevronDown } from 'lucide-react';
 import {
   ColorPicker, ColorPickerArea, ColorPickerAreaThumb, ColorPickerSlider, ColorPickerSliderThumb, ColorPickerSwatches, ColorPickerSwatchItem,
 } from '@ui-sdk/react/color-picker';
@@ -13,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { GROUNDS, PAINTS, VEHICLES, WEATHERS } from '@/lib/race/shared.mjs';
 import type { NetStatus } from '@/lib/client/net';
 import type { MapSummary } from '@/lib/maps/store.mjs';
+import { TrackOutline } from '@/components/track-outline';
 
 export const LAP_CHOICES = [1, 2, 3, 5, 10];
 export const vehicleName = (key: string) => VEHICLES.find(v => v.key === key)?.name ?? key;
@@ -35,35 +34,23 @@ export function GroundControl({ value, onChange, disabled, id }: { value: string
   );
 }
 
-/** The course: the maps the super admin made (the room's own shows even before the list has loaded). */
-export function MapControl({ value, maps, onChange, disabled, id }: { value: { id: string; name: string }; maps: MapSummary[]; onChange: (id: string) => void; disabled?: boolean; id?: string }) {
-  const items = maps.map(m => ({ value: m.id, label: m.name }));
-  if (!items.some(i => i.value === value.id)) items.unshift({ value: value.id, label: value.name });
-  // the Select's hidden form field doesn't hydrate cleanly (its inline style is serialised differently
-  // on the server), so it renders in the browser only, after a look-alike
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  if (!mounted) return (
-    <button type="button" id={id} aria-label="Map" disabled className="sel-trigger">
-      <span className="truncate">{value.name}</span>
-      <ChevronDown aria-hidden className="ml-auto size-4 shrink-0 opacity-60" />
-    </button>
-  );
+/** The course, as cards: each track drawn (the room's own shows by name even before the list has loaded). */
+export function TrackPicker({ value, maps, onChange, disabled, compact }: { value: { id: string; name: string }; maps: MapSummary[]; onChange: (id: string) => void; disabled?: boolean; compact?: boolean }) {
+  const items: { id: string; name: string; wp?: [number, number][] }[] = maps.some(m => m.id === value.id) ? maps : [{ id: value.id, name: value.name }, ...maps];
   return (
-    <Select items={items} value={value.id} disabled={disabled} onValueChange={(v: string | null) => { if (v && v !== value.id) onChange(v); }}>
-      <SelectTrigger id={id} aria-label="Map" className="sel-trigger">
-        <SelectValue className="truncate" />
-        <ChevronDown aria-hidden className="ml-auto size-4 shrink-0 opacity-60" />
-      </SelectTrigger>
-      <SelectContent className="sel-content">
-        {items.map(i => (
-          <SelectItem key={i.value} value={i.value} className="sel-item">
-            <span className="truncate">{i.label}</span>
-            <SelectItemIndicator className="ml-auto"><Check className="size-4" /></SelectItemIndicator>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div role="radiogroup" aria-label="Track" className={cn('grid gap-2', compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3')}>
+      {items.map(m => {
+        const on = m.id === value.id;
+        return (
+          <button key={m.id} type="button" role="radio" aria-checked={on} disabled={disabled} onClick={() => { if (!on) onChange(m.id); }}
+            className={cn('group flex flex-col items-center gap-1 rounded-xl border px-2 pt-2 pb-2.5 text-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed',
+              on ? 'border-primary/70 bg-primary/10 text-foreground' : 'border-white/8 bg-white/3 text-muted-foreground hover:border-white/20 hover:text-foreground disabled:opacity-50 disabled:hover:border-white/8')}>
+            {m.wp ? <TrackOutline wp={m.wp} width={96} height={compact ? 48 : 60} stroke={2.6} className={cn('w-full', compact ? 'h-12' : 'h-15')} /> : <span className={compact ? 'h-12' : 'h-15'} />}
+            <span className="w-full truncate text-sm font-medium">{m.name}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -133,7 +120,7 @@ export function StatusBadge({ status }: { status: NetStatus }) {
   };
   const [label, dot] = map[status];
   return (
-    <Badge variant="outline" className="gap-1.5 font-normal" aria-live="polite">
+    <Badge variant="outline" className="h-7 gap-1.5 border-white/10 bg-white/4 px-2.5 font-normal text-muted-foreground" aria-live="polite">
       <span aria-hidden className={cn('size-2 rounded-full', dot)} /> {label}
     </Badge>
   );

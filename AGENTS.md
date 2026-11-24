@@ -17,9 +17,10 @@ See README.md for the layout. Notes:
   `pause.py`, the course editor's GENERATE A CIRCUIT and MY CIRCUITS (the generator itself: `public/sim/circuit-gen.js`,
   also run by `scripts/maps/generate.mjs` and `test/circuit-gen.test.mjs`: keep it free of the DOM and THREE) `circuits.py`,
   the Claude bridge's loader
-  (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, last in the chain
+  (`bridge.js` in index.html, the renderer on `__sim`) `bridge.py`, and the sim page's interface (`ui.css` and `ui.js` in
+  index.html, the page's title) `ui.py`, last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, bridge, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, bridge, ui, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -103,7 +104,19 @@ See README.md for the layout. Notes:
   component; its parts are unstyled, styles live in `app/globals.css` (`.seg*`, `.cp-*`).
 - shadcn components import `cn` from `@/lib/utils` (the CLI wrote `from "cn"`, an unrelated npm
   package: rewrite it if you add components).
-- Dev server: `npm run dev` on port 7001 (3000 is the admin).
+- The interface (#320, README: The pages). The app: one dark theme, tokens and type classes in `app/globals.css`
+  (`--human` orange is also the primary, `--tnn` cyan; `.display` / `.heading` / `.eyebrow` / `.num` / `.panel`); every
+  page starts with `SiteNav`; a time is `.num`. Humans are orange and networks cyan everywhere: don't use them for
+  anything else. The sim's own page: `public/sim/ui.css` restyles what the sim builds (every rule starts at `body`:
+  the sim's `<style>` blocks come later in the page and would win by order), `public/sim/ui.js` adds the rail. The
+  sim's buttons listed in `ITEMS` there are moved off the screen and shown as stand-ins in the rail: **a new button in
+  the sim needs an entry in `ITEMS` and in the `body.ui-rail #…` list of ui.css**, or it sits on top of the rail.
+  The stand-ins copy the button's text, `.on` and whether it is displayed, so keep those meaning what they do.
+  Public pages (`/`, `/leaderboard`, `/networks`) are seen without signing in: names through `publicName`, nothing
+  from the database that a visitor should not see. `courseKey` in `lib/showcase/store.mjs` is the sim's: change
+  one, change the other (`test/showcase.test.mjs` compares them).
+- Dev server: `npm run dev` on port 7001 (3000 is the admin). `next.config.ts` is read at start: a change to it
+  (the `/drive` and `/lab` redirects) needs a restart.
 - The database (#318, README: The database): Postgres, `DATABASE_URL` in `.env.local`, the container from
   `docker compose up -d` (port 5554). Tables in `lib/db/schema.mjs`: change it, then `npm run db:generate` and commit
   the new file in `migrations/` (the server applies it at its next start). The stores are async (`await

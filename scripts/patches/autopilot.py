@@ -1614,7 +1614,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiPanel.big small{font-size:11.5px} #aiPanel.big .aiHelp{display:none}
 </style>`);
 AI.el = document.createElement('div'); AI.el.id = 'aiPanel'; AI.el.className = 'panel';
-AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">AUTOPILOT</div><div class="sub" id="aiSize"></div></div>
+AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div class="sub" id="aiSize"></div></div>
   <button id="aiBig" class="ic" title="Full screen: the network, the charts and every setting, explained (Esc: back)">⤢</button></div>
   <div class="aiBody">
   <section class="aiLeft">
@@ -1904,7 +1904,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   #aiBtn:hover,#aiBtn.on{background:rgba(255,90,0,.85)}
   body.mp-race #aiBtn{display:none!important}
 </style>`);
-AI.btn = document.createElement('button'); AI.btn.id = 'aiBtn'; AI.btn.textContent = '🧠 Autopilot';
+AI.btn = document.createElement('button'); AI.btn.id = 'aiBtn'; AI.btn.textContent = '🧠 TNN lab';
 AI.btn.title = 'A tiny neural network learns to drive a lap of this course, with this car (I)';
 document.body.appendChild(AI.btn);
 AI.btn.addEventListener('click', e => { e.currentTarget.blur(); aiToggle(); });
@@ -2230,7 +2230,7 @@ rep("""function mpSendHit(h) {
 """)
 rep("""carRepairHook = () => mpPost({ t: 'repair' });""", """carRepairHook = () => { if (!AI.training) mpPost({ t: 'repair' }); };""")
 rep("""  if (!MP.on || MP.spectator || lap.lapNo < 1) return;""", """  if (!MP.on || MP.spectator || lap.lapNo < 1 || AI.drive) return;   // the autopilot's laps aren't ours""")
-rep("""<b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute""", """<b>Y</b> replay (not in a race) &nbsp; <b>I</b> autopilot (not in a race) &nbsp; <b>M</b> mute""")
+rep("""<b>Y</b> replay (not in a race) &nbsp; <b>M</b> mute""", """<b>Y</b> replay (not in a race) &nbsp; <b>I</b> TNN lab (not in a race) &nbsp; <b>M</b> mute""")
 rep("""  updateLapHud(dt);
   renderer.render(scene, camera);""", """  updateLapHud(dt);
   aiViz(dt);
@@ -2245,6 +2245,6 @@ open(ep, 'w').write(s)
 h = open(hp).read()
 a = """<b>Y</b> replay &nbsp;"""
 assert h.count(a) == 1
-h = h.replace(a, """<b>Y</b> replay &nbsp; <b>I</b> autopilot (a tiny neural network learns to drive) &nbsp;""")
+h = h.replace(a, """<b>Y</b> replay &nbsp; <b>I</b> TNN lab (a tiny neural network learns to drive) &nbsp;""")
 open(hp, 'w').write(h)
 print('autopilot patched')

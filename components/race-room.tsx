@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSubject } from 'subjecto/react';
 import { toast } from 'sonner';
-import { Check, ChevronLeft, Crown, Flag, Link2, LogOut, PanelLeftClose, PanelLeftOpen, Timer, Trophy, Wifi, WifiOff } from 'lucide-react';
+import { Check, ChevronLeft, Crown, Flag, Link2, LogOut, PanelLeftClose, PanelLeftOpen, Timer, Trophy, WifiOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,7 +15,8 @@ import { SegmentedControl, SegmentedControlIndicator, SegmentedControlItem } fro
 import { DriverAvatar } from '@/components/user-menu';
 import { SimFrame, type SimHandle } from '@/components/sim-frame';
 import { PHASE_LABEL } from '@/components/lobby';
-import { GroundControl, LapsControl, MapControl, WeatherControl, PaintPicker, StatusBadge, VehiclePicker, fmtTime, groundName, paintOf, vehicleName } from '@/components/race-controls';
+import { GroundControl, LapsControl, TrackPicker, WeatherControl, PaintPicker, StatusBadge, VehiclePicker, fmtTime, groundName, paintOf, vehicleName } from '@/components/race-controls';
+import { BrandMark } from '@/components/brand';
 import { cn } from '@/lib/utils';
 import { withBase } from '@/lib/base-path';
 import { LIMITS } from '@/lib/race/shared.mjs';
@@ -30,6 +31,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
   const [me] = useSubject(me$);
   const [room] = useSubject(room$);
   const [panel, setPanel] = useState(true);
+  const [tab, setTab] = useState<'race' | 'car' | 'laps'>('race');
   const [simReady, setSimReady] = useState(false);
   const sim = useRef<SimHandle>(null);
 
@@ -72,7 +74,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
     </Blocker>
   );
   if (status === 'unauthorized') return (
-    <Blocker title="Signed out" body="Sign in again to race."><Button asChild><Link href={`/?next=/race/${roomId}`}>Sign in</Link></Button></Blocker>
+    <Blocker title="Signed out" body="Sign in again to race."><Button asChild><Link href={`/signin?next=/race/${roomId}`}>Sign in</Link></Button></Blocker>
   );
   if (!room || !me || room.id !== roomId) return (
     <Blocker title={`Joining room ${roomId}…`} body={status === 'open' ? 'Taking a seat.' : 'Connecting to the race server.'}>
@@ -87,15 +89,16 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
       {(phase === 'racing' || phase === 'countdown') && <StandingsPanel room={room} meId={me.id} />}
 
       {panel ? (
-        <aside aria-label="Race room" className="absolute top-3 bottom-3 left-3 flex w-[min(380px,calc(100vw-24px))] flex-col overflow-hidden rounded-xl border bg-card/90 shadow-2xl backdrop-blur-md">
-          <div className="flex items-start gap-2 border-b p-4">
+        <aside aria-label="Race room" className="absolute top-3 bottom-3 left-3 flex w-[min(392px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-white/10 bg-background/88 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-start gap-3 border-b border-white/8 p-4">
+            <Link href="/lobby" aria-label="Back to the race rooms" title="Back to the race rooms" className="mt-0.5 rounded-lg p-1 outline-none hover:bg-white/8 focus-visible:ring-2 focus-visible:ring-ring"><BrandMark className="size-6" /></Link>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h1 className="truncate text-lg font-semibold">{room.name}</h1>
+                <h1 className="heading truncate text-lg">{room.name}</h1>
                 <Badge variant={phase === 'lobby' ? 'secondary' : 'default'}>{PHASE_LABEL[room.phase]}</Badge>
               </div>
-              <button type="button" onClick={copyLink} className="mt-1 inline-flex items-center gap-1.5 rounded font-mono text-sm tracking-widest text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="Copy the invite link">
-                {room.id} <Link2 className="size-3.5" />
+              <button type="button" onClick={copyLink} className="num mt-1 inline-flex items-center gap-1.5 rounded text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="Copy the invite link">
+                {room.id} <Link2 className="size-3.5" /> <span className="tracking-normal">copy invite link</span>
               </button>
             </div>
             <Button size="icon" variant="ghost" aria-label="Hide the panel" title="Hide the panel and drive" onClick={() => { setPanel(false); sim.current?.focus(); }}>
@@ -103,51 +106,67 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
             </Button>
           </div>
 
+          <div className="border-b border-white/8 px-4 py-2.5">
+            <SegmentedControl aria-label="Room panel" className="seg w-full" value={tab} onValueChange={v => v && setTab(v as typeof tab)}>
+              <SegmentedControlIndicator className="seg-indicator" />
+              <SegmentedControlItem value="race" className="seg-item flex-1 text-center">Race</SegmentedControlItem>
+              <SegmentedControlItem value="car" className="seg-item flex-1 text-center">Your car</SegmentedControlItem>
+              <SegmentedControlItem value="laps" className="seg-item flex-1 text-center">Best laps</SegmentedControlItem>
+            </SegmentedControl>
+          </div>
+
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-5 p-4">
-              <Players room={room} meId={me.id} />
-              <Separator />
-              <section className="space-y-3" aria-labelledby="race-settings">
-                <h2 id="race-settings" className="text-sm font-medium">Race {isHost ? '' : <span className="font-normal text-muted-foreground">· set by the host</span>}</h2>
-                <MapControl value={room.map} maps={maps} disabled={!isHost || phase !== 'lobby'} onChange={id => send({ t: 'settings', map: id })} />
-                <div className="flex flex-wrap items-center gap-3">
-                  <GroundControl value={room.ground} disabled={!isHost || phase !== 'lobby'} onChange={g => send({ t: 'settings', ground: g })} />
-                  <LapsControl value={room.laps} disabled={!isHost || phase !== 'lobby'} onChange={n => send({ t: 'settings', laps: n })} />
-                  <span className="text-xs text-muted-foreground">laps</span>
-                </div>
-                <WeatherControl value={room.weather ?? 'clear'} disabled={!isHost || phase !== 'lobby'} onChange={w => send({ t: 'settings', weather: w })} />
-              </section>
-              {mine && !mine.spectator && (phase === 'lobby' || phase === 'results') && (
+              {tab === 'race' && (
                 <>
+                  <Players room={room} meId={me.id} />
                   <Separator />
-                  <section className="space-y-3" aria-labelledby="your-car">
-                    <h2 id="your-car" className="text-sm font-medium">Your car</h2>
-                    <VehiclePicker value={mine.vehicle} paint={mine.paint} onChange={v => send({ t: 'car', vehicle: v })} />
-                    <PaintPicker value={paintOf(mine.vehicle, mine.paint)} onCommit={hex => send({ t: 'car', paint: hex })} />
+                  <section className="space-y-4" aria-labelledby="race-settings">
+                    <h2 id="race-settings" className="eyebrow text-muted-foreground">The race {isHost ? '' : <span className="tracking-normal normal-case">· set by the host</span>}</h2>
+                    <TrackPicker compact value={room.map} maps={maps.length ? maps : []} disabled={!isHost || phase !== 'lobby'} onChange={id => send({ t: 'settings', map: id })} />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <GroundControl value={room.ground} disabled={!isHost || phase !== 'lobby'} onChange={g => send({ t: 'settings', ground: g })} />
+                      <LapsControl value={room.laps} disabled={!isHost || phase !== 'lobby'} onChange={n => send({ t: 'settings', laps: n })} />
+                      <span className="text-xs text-muted-foreground">laps</span>
+                    </div>
+                    <WeatherControl value={room.weather ?? 'clear'} disabled={!isHost || phase !== 'lobby'} onChange={w => send({ t: 'settings', weather: w })} />
                   </section>
+                  {mine?.spectator && (
+                    <p className="rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">A race is running: you are watching it, and race in the next one.</p>
+                  )}
                 </>
               )}
-              {mine?.spectator && (
-                <p className="rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">A race is running: you are watching it, and race in the next one.</p>
+              {tab === 'car' && (
+                mine && !mine.spectator && (phase === 'lobby' || phase === 'results') ? (
+                  <section className="space-y-4" aria-labelledby="your-car">
+                    <h2 id="your-car" className="eyebrow text-muted-foreground">Your car</h2>
+                    <VehiclePicker value={mine.vehicle} paint={mine.paint} onChange={v => send({ t: 'car', vehicle: v })} />
+                    <h2 className="eyebrow pt-1 text-muted-foreground">Paint</h2>
+                    <PaintPicker value={paintOf(mine.vehicle, mine.paint)} onCommit={hex => send({ t: 'car', paint: hex })} />
+                  </section>
+                ) : (
+                  <p className="rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
+                    {mine?.spectator ? 'You are watching this race: you pick a car for the next one.' : `You are in the ${mine ? vehicleName(mine.vehicle) : 'car'}. Cars change between races, on the grid.`}
+                  </p>
+                )
               )}
-              <Separator />
-              <BestLaps room={room} meId={me.id} vehicle={mine?.vehicle} />
+              {tab === 'laps' && <BestLaps room={room} meId={me.id} vehicle={mine?.vehicle} />}
             </div>
           </ScrollArea>
 
-          <div className="space-y-2 border-t p-4">
+          <div className="space-y-2 border-t border-white/8 p-4">
             <RoomActions room={room} mine={mine} isHost={isHost} />
             <div className="flex items-center justify-between gap-2">
               <StatusBadge status={status} />
+              {!simReady && <p className="text-xs text-muted-foreground">Loading the track…</p>}
               <Button variant="ghost" size="sm" onClick={leave}><LogOut /> Leave</Button>
             </div>
-            {!simReady && <p className="text-xs text-muted-foreground">Loading the track…</p>}
           </div>
         </aside>
       ) : (
-        <div className="absolute top-[300px] right-3 flex flex-col items-end gap-2">
-          <Button variant="secondary" className="shadow-lg" onClick={() => setPanel(true)}>
-            <PanelLeftOpen /> Room {room.id}
+        <div className="absolute bottom-3 left-3 flex flex-col-reverse items-start gap-2">
+          <Button variant="glass" size="lg" className="bg-background/70 px-3 shadow-lg" onClick={() => setPanel(true)}>
+            <PanelLeftOpen /> <span className="num tracking-widest">{room.id}</span> Room
           </Button>
           {status !== 'open' && <Badge variant="destructive" className="gap-1"><WifiOff className="size-3" /> Reconnecting</Badge>}
         </div>
@@ -162,7 +181,7 @@ function Players({ room, meId }: { room: RoomView; meId: string }) {
   const sorted = useMemo(() => [...room.players].sort((a, b) => (a.slot < 0 ? 99 : a.slot) - (b.slot < 0 ? 99 : b.slot)), [room.players]);
   return (
     <section aria-labelledby="drivers" className="space-y-2">
-      <h2 id="drivers" className="text-sm font-medium">Drivers <span className="font-normal text-muted-foreground">{room.players.length}/{LIMITS.maxPlayers}</span></h2>
+      <h2 id="drivers" className="eyebrow text-muted-foreground">Drivers <span className="num tracking-normal">{room.players.length}/{LIMITS.maxPlayers}</span></h2>
       <ul className="space-y-1.5">
         {sorted.map(p => (
           <li key={p.id} className={cn('flex items-center gap-2.5 rounded-lg p-1.5', p.id === meId && 'bg-primary/10')}>
@@ -205,7 +224,7 @@ function BestLaps({ room, meId, vehicle }: { room: RoomView; meId: string; vehic
   const lead = ranked[0]?.time;
   return (
     <section aria-labelledby="best-laps" className="space-y-3">
-      <h2 id="best-laps" className="text-sm font-medium">Best laps <span className="font-normal text-muted-foreground">· {room.map.name}, {groundName(room.ground)}</span></h2>
+      <h2 id="best-laps" className="eyebrow text-muted-foreground">Best laps <span className="tracking-normal normal-case">· {room.map.name}, {groundName(room.ground)}</span></h2>
       {vehicle && (
         <SegmentedControl aria-label="Best laps with" className="seg" value={forCar ? 'car' : 'all'} onValueChange={v => v && setWhich(v as 'car' | 'all')}>
           <SegmentedControlIndicator className="seg-indicator" />
@@ -269,7 +288,7 @@ function RoomActions({ room, mine, isHost }: { room: RoomView; mine?: PlayerView
       const waiting = room.players.filter(p => p.id !== room.hostId && !p.ready);
       return (
         <div className="space-y-1.5">
-          <Button size="lg" className="w-full" onClick={() => send({ t: 'start', force: waiting.length > 0 })}>
+          <Button size="xl" className="w-full" onClick={() => send({ t: 'start', force: waiting.length > 0 })}>
             <Flag /> {waiting.length ? `Start without ${waiting.length === 1 ? waiting[0]!.name : `${waiting.length} drivers`}` : 'Start the race'}
           </Button>
           {waiting.length > 0 && <p className="text-center text-xs text-muted-foreground">Not ready yet: {waiting.map(p => p.name).join(', ')}</p>}
@@ -277,13 +296,13 @@ function RoomActions({ room, mine, isHost }: { room: RoomView; mine?: PlayerView
       );
     }
     return mine ? (
-      <Button size="lg" variant={mine.ready ? 'secondary' : 'default'} className="w-full" onClick={() => send({ t: 'ready', ready: !mine.ready })}>
+      <Button size="xl" variant={mine.ready ? 'secondary' : 'default'} className="w-full" onClick={() => send({ t: 'ready', ready: !mine.ready })}>
         {mine.ready ? <><Check /> Ready, waiting for the host</> : 'I’m ready'}
       </Button>
     ) : null;
   }
   if (room.phase === 'results') return isHost
-    ? <Button size="lg" className="w-full" onClick={() => send({ t: 'again' })}>Back to the grid</Button>
+    ? <Button size="xl" className="w-full" onClick={() => send({ t: 'again' })}>Back to the grid</Button>
     : <p className="text-center text-sm text-muted-foreground">The host takes everyone back to the grid.</p>;
   return <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground"><Timer className="size-4" /> {room.phase === 'countdown' ? 'On the grid…' : 'Race on'}</p>;
 }
@@ -302,7 +321,7 @@ function useRaceClock(room: RoomView) {
 function StandingsPanel({ room, meId }: { room: RoomView; meId: string }) {
   const { list, elapsed, finishWindowLeft } = useRaceClock(room);
   return (
-    <section aria-label="Standings" className="pointer-events-none absolute top-[240px] left-3 w-60 rounded-lg bg-black/55 p-3 text-sm text-white shadow-lg [text-shadow:0_1px_1px_#0008]">
+    <section aria-label="Standings" className="pointer-events-none absolute top-[236px] left-3 w-64 rounded-xl border border-white/10 bg-background/70 p-3 text-sm text-white shadow-lg backdrop-blur-md">
       <div className="mb-1.5 flex items-baseline justify-between">
         <span className="text-xs tracking-widest opacity-80">{room.phase === 'countdown' ? 'GRID' : 'RACE'}</span>
         <span className="font-mono tabular-nums">{elapsed != null ? fmtTime(elapsed) : '0:00.000'}</span>
@@ -398,9 +417,9 @@ function Results({ room, meId, isHost, onLeave }: { room: RoomView; meId: string
 function Blocker({ title, body, children }: { title: string; body: string; children?: React.ReactNode }) {
   return (
     <main className="flex min-h-dvh items-center justify-center p-6">
-      <div className="w-full max-w-sm space-y-4 rounded-xl border bg-card p-6 text-center">
-        <Wifi className="mx-auto size-6 text-muted-foreground" aria-hidden />
-        <h1 className="text-lg font-semibold">{title}</h1>
+      <div className="panel w-full max-w-sm space-y-4 p-7 text-center">
+        <BrandMark className="mx-auto size-8" />
+        <h1 className="heading text-xl">{title}</h1>
         <p className="text-sm text-muted-foreground">{body}</p>
         <div className="flex justify-center gap-2">{children}</div>
       </div>

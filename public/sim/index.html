@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sand Buggy</title>
+<title>Carsim</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#c9b48f;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
   canvas{display:block}
@@ -88,6 +88,7 @@
   #wreck .card{background:rgba(60,10,6,.78);color:#fff;border-radius:14px;padding:18px 24px;text-align:center;font-size:14px} #wreck h2{margin:0 0 6px;font-size:26px;color:#ff6a50}
   #busy{display:none;position:fixed;inset:0;align-items:center;justify-content:center;font-size:22px;color:#fff;background:rgba(25,16,6,.5);z-index:6}
 </style>
+<link rel="stylesheet" href="ui.css">
 <script type="importmap">
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
@@ -96,7 +97,7 @@
 </script>
 </head>
 <body>
-<div id="loading">Shaping the dunes…</div>
+<div id="loading">Building the track…</div>
 <div id="hud" class="panel"></div>
 <canvas id="gauge" width="440" height="440" style="position:fixed;right:190px;bottom:14px;width:220px;height:220px;display:none;pointer-events:none"></canvas>
 <div id="timer" class="panel"></div>
@@ -149,10 +150,11 @@
 </div></div>
 <div id="help" class="panel">
   <b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake<br>
-  <b>P</b> pause &nbsp; <b>Shift+P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD (AWD cars: front/rear split) &nbsp; <b>C</b> camera (chase / bonnet / side / under / orbit) &nbsp; <b>Shift/right-drag</b> look around the car &nbsp; <b>Y</b> replay &nbsp; <b>I</b> autopilot (a tiny neural network learns to drive) &nbsp; <b>K</b> paint &nbsp; <b>B</b> reset best lap &nbsp; <b>N</b> bots (0-4) &nbsp; <b>O</b> weather &nbsp; <b>R</b> back to last gate &nbsp; <b>T</b> restart lap &nbsp; <b>G</b> sand / earth &nbsp; <b>E</b> course editor &nbsp; <b>V</b> vehicle &nbsp; <b>X</b> TC/ABS &nbsp; <b>M</b> sound &nbsp; <b>H</b> hide help<br>Drive through every gate between the posts or the lap is invalid. Gate posts are solid: hits damage the vehicle (<b>T</b> restarts and repairs).
+  <b>P</b> pause &nbsp; <b>Shift+P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD (AWD cars: front/rear split) &nbsp; <b>C</b> camera (chase / bonnet / side / under / orbit) &nbsp; <b>Shift/right-drag</b> look around the car &nbsp; <b>Y</b> replay &nbsp; <b>I</b> TNN lab (a tiny neural network learns to drive) &nbsp; <b>K</b> paint &nbsp; <b>B</b> reset best lap &nbsp; <b>N</b> bots (0-4) &nbsp; <b>O</b> weather &nbsp; <b>R</b> back to last gate &nbsp; <b>T</b> restart lap &nbsp; <b>G</b> sand / earth &nbsp; <b>E</b> course editor &nbsp; <b>V</b> vehicle &nbsp; <b>X</b> TC/ABS &nbsp; <b>M</b> sound &nbsp; <b>H</b> hide help<br>Drive through every gate between the posts or the lap is invalid. Gate posts are solid: hits damage the vehicle (<b>T</b> restarts and repairs).
 </div>
 <script type="module" src="engine.js"></script>
 <script type="module" src="bridge.js"></script>
+<script type="module" src="ui.js"></script>
 
 </body>
 </html>

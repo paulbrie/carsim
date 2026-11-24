@@ -124,6 +124,11 @@ See README.md for the layout. Notes:
 - Car damage is deterministic on purpose: a hit `[cx, cy, cz, dx, dy, dz, vn, kind]` gives the same dents on
   every copy of a car, which is how the other players see ours. Keep `dentBody` / `contactOn` /
   `shedParts` free of `Math.random` (flying debris's velocity may be random: it is not replayed).
+- The tech specs page (#335, `/tech`): the cars' and grounds' figures are read from `engine.js` on the server
+  (`lib/tech/specs.mjs` cuts `ROAD_CARS`, `BUGGY`, `car`, `ENG`, `PRESSURES`, `SURFACES`, `VEHICLE_LIST`, `SPLITS` and `DT`
+  out by name and evaluates them alone): keep them top-level literals that need nothing else when they load
+  (`test/tech.test.mjs` checks every car comes out). The physics text in `app/tech/page.tsx` quotes `stepCar`'s constants
+  (the aids' slip limits, the damping ratios, the bump stop, the shift times...): change one, change the other.
 - `window.__sim` already has getters (TRACK, VEH, BRIDGE): adding another of the same name to it
   with Object.assign throws at boot and the sim never starts.
 - Headless Chrome here draws the sim at about a frame a second (software WebGL). To test races,

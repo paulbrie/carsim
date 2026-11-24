@@ -22,6 +22,7 @@ export function SiteFooter() {
           <div className="eyebrow text-muted-foreground/70">Explore</div>
           <Link className={`block ${a}`} href="/leaderboard">Leaderboard</Link>
           <Link className={`block ${a}`} href="/networks">Networks</Link>
+          <Link className={`block ${a}`} href="/tech">Tech specs</Link>
           <Link className={`block ${a}`} href="/#how">How it works</Link>
         </nav>
         <div className={col}>

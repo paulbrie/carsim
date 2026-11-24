@@ -13,6 +13,7 @@ car by car and track by track, is the leaderboard.
 | `/` | the home page, public: the closest duel on the board, the three ways in, the scoreboard, how a network drives and learns, the simulator, the findings (`app/page.tsx`) |
 | `/drive`, `/lab` | the sim alone (`/sim/index.html`), and the same with the TNN lab opening once a car and ground are picked (`?lab=1`); redirects in `next.config.ts`; no account needed. Its start menu picks the track first: the race rooms' maps or the course of one's own (below) |
 | `/leaderboard`, `/networks` | public: humans vs networks on every track; every saved network drawn from its weights |
+| `/tech` | public: what the physics takes into account, with its constants, and every car's figures (torque and power curves, gearing, top speed, suspension, tires), read from `public/sim/engine.js` itself (`lib/tech/specs.mjs`) |
 | `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
 | `/maps`, `/maps/<id>` | the super admin's maps and their editor |
@@ -611,6 +612,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | | |
 |---|---|
 | `app/page.tsx`, `app/leaderboard/`, `app/networks/`, `app/signin/`, `components/showcase.tsx` | the public pages |
+| `app/tech/`, `components/tech-cars.tsx`, `lib/tech/` | the tech specs page: the physics explained, the cars' table and cards; the sim's figures read out of engine.js |
 | `lib/showcase/store.mjs`, `lib/tnn.ts`, `lib/format.ts` | the scoreboard from the database; a network's shape and links for drawing; lap times and names |
 | `components/site-nav.tsx`, `components/site-footer.tsx`, `components/brand.tsx`, `components/track-outline.tsx`, `components/net-diagram.tsx` | the bar, the footer (credits), the logo, a track and a network drawn |
 | `public/sim/ui.css`, `public/sim/ui.js`, `scripts/patches/ui.py` | the sim page's interface over the sim's own |

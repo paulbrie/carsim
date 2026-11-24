@@ -222,9 +222,10 @@ function mpApplyBest() {
 }
 const mpEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 // the best laps' lists fold away (a click on their title): the timer's ('cars') and the one beside it ('room'), kept in
-// this browser; their titles take the pointer (the panels let it through to the drive)
+// this browser; their titles take the pointer (the panels let it through to the drive). So do the timer's lap details
+// ('laps': segTable's checkpoint times, #317), in the single-player sim too
 const MP_FOLD = (() => { try { return JSON.parse(localStorage.getItem('sandbuggy.foldBest') || '{}') || {}; } catch (e) { return {}; } })();
-const mpFoldHead = (k, tag, cls) => `<${tag} class="${cls} fold" data-fold="${k}" title="${MP_FOLD[k] ? 'Show' : 'Hide'} the best laps">${MP_FOLD[k] ? '▸' : '▾'} BEST LAPS</${tag}>`;
+const mpFoldHead = (k, tag, cls, what = 'BEST LAPS') => `<${tag} class="${cls} fold" data-fold="${k}" title="${MP_FOLD[k] ? 'Show' : 'Hide'} the ${what.toLowerCase()}">${MP_FOLD[k] ? '▸' : '▾'} ${what}</${tag}>`;
 function mpFoldClick(e) {
   const f = e.target.closest('[data-fold]'); if (!f) return;
   e.preventDefault(); e.stopPropagation();

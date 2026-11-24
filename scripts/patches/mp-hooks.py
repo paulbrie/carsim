@@ -86,6 +86,12 @@ rep("""    try { localStorage.setItem('sandbuggy.best.' + courseKey(), JSON.stri
     """    if (!MP.on) try { localStorage.setItem('sandbuggy.best.' + courseKey(), JSON.stringify({ time: lt, splits: lap.bestSplits })); } catch (e) { }""")
 rep("""<span>BEST ${fmt(lap.best)}</span></div>${segTable()}`;""",
     """<span>BEST ${fmt(lap.best)}</span></div>${mpRecRow()}${segTable()}`;""")
+# the lap details (the checkpoint times under the timer) fold away like the best laps (#317; MP_FOLD in mp-block.js)
+rep("""  const Hs = lap.history; if (!Hs.length) return '';""",
+    """  const Hs = lap.history; if (!Hs.length) return '';
+  if (MP_FOLD.laps) return `<table class="seg"><tr>${mpFoldHead('laps', 'th', '', 'LAP DETAILS')}</tr></table>`;""")
+rep("""  let h = `<table class="seg"><tr><th></th>${Hs.map(""",
+    """  let h = `<table class="seg"><tr>${mpFoldHead('laps', 'th', '', 'LAP DETAILS')}${Hs.map(""")
 # other players on the minimap
 rep("""  for (const b of BOTS.list) { const [x, y] = mapXY(b.pos.x, b.pos.z); c.fillStyle = b.col;""",
     """  for (const pe of MP.peers.values()) { if (!pe.shown) continue; const [x, y] = mapXY(pe.pos.x, pe.pos.z); c.fillStyle = pe.col; c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath(); c.arc(x, y, 4.5, 0, TAU); c.fill(); c.stroke(); }

@@ -2704,9 +2704,10 @@ function segTimes(splits, total) {
 }
 function segTable() {
   const Hs = lap.history; if (!Hs.length) return '';
+  if (MP_FOLD.laps) return `<table class="seg"><tr>${mpFoldHead('laps', 'th', '', 'LAP DETAILS')}</tr></table>`;
   const G = TRACK.gates.length, cols = Hs.map(h => segTimes(h.splits, h.time)), cur = lap.started ? segTimes(lap.splits, null) : null;
   const f = v => v == null ? '–' : v.toFixed(2);
-  let h = `<table class="seg"><tr><th></th>${Hs.map(x => `<th style="${x.valid ? '' : 'color:#ff8a7a'}">Lap ${x.no}</th>`).join('')}${cur ? '<th style="opacity:.7">now</th>' : ''}</tr>`;
+  let h = `<table class="seg"><tr>${mpFoldHead('laps', 'th', '', 'LAP DETAILS')}${Hs.map(x => `<th style="${x.valid ? '' : 'color:#ff8a7a'}">Lap ${x.no}</th>`).join('')}${cur ? '<th style="opacity:.7">now</th>' : ''}</tr>`;
   for (let i = 0; i < G; i++) {
     const vals = cols.map(c => c[i]), best = vals.length > 1 && vals.every(v => v != null) ? Math.min(...vals) : null;
     h += `<tr><td>${i === 0 ? 'Start' : 'CP' + i} → ${i === G - 1 ? 'Finish' : 'CP' + (i + 1)}</td>${vals.map(v => `<td style="${best != null && v === best && vals[0] !== vals[1] ? 'color:#7dff9a' : ''}">${f(v)}</td>`).join('')}${cur ? `<td style="opacity:.7">${f(cur[i])}</td>` : ''}</tr>`;
@@ -5551,9 +5552,10 @@ function mpApplyBest() {
 }
 const mpEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 // the best laps' lists fold away (a click on their title): the timer's ('cars') and the one beside it ('room'), kept in
-// this browser; their titles take the pointer (the panels let it through to the drive)
+// this browser; their titles take the pointer (the panels let it through to the drive). So do the timer's lap details
+// ('laps': segTable's checkpoint times, #317), in the single-player sim too
 const MP_FOLD = (() => { try { return JSON.parse(localStorage.getItem('sandbuggy.foldBest') || '{}') || {}; } catch (e) { return {}; } })();
-const mpFoldHead = (k, tag, cls) => `<${tag} class="${cls} fold" data-fold="${k}" title="${MP_FOLD[k] ? 'Show' : 'Hide'} the best laps">${MP_FOLD[k] ? '▸' : '▾'} BEST LAPS</${tag}>`;
+const mpFoldHead = (k, tag, cls, what = 'BEST LAPS') => `<${tag} class="${cls} fold" data-fold="${k}" title="${MP_FOLD[k] ? 'Show' : 'Hide'} the ${what.toLowerCase()}">${MP_FOLD[k] ? '▸' : '▾'} ${what}</${tag}>`;
 function mpFoldClick(e) {
   const f = e.target.closest('[data-fold]'); if (!f) return;
   e.preventDefault(); e.stopPropagation();

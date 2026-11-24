@@ -157,7 +157,8 @@ the room's clock doesn't stop; a race starting ends a pause), in the editor or a
 
 In a room, the timer's best laps with each car and the best laps with ours beside it fold away: click their
 **BEST LAPS** title (kept in this browser, `sandbuggy.foldBest`; the title takes the click, the rest of the panels let
-it through to the drive).
+it through to the drive). The timer's checkpoint times of the last laps fold the same way, in the single-player sim
+too: click **LAP DETAILS** (#317).
 
 ## All-wheel drive's torque split
 

@@ -414,6 +414,9 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   longer drawn (all of the frame for the training); **⤡ Back to the drawer** (or Esc) narrows it back. The slide is
   CSS (`@starting-style`, `display`'s discrete transition: the sim still just shows and hides the panel); without
   them, or with reduced motion, it simply appears.
+  Nothing down the left side hides under it (#339): the course editor moves beside it (a window under 720 px wide:
+  the lab closes for it), the keys and the track, car and ground menu come over it, and in a room it stops short of the
+  room's buttons in the bottom corner.
 - **Full screen (⤢ in the panel's corner, Esc back):** three columns. The numbers (generation, best, last exam), the
   buttons and the wheel and pedals; the network as large as the screen allows (hover a dot: what it is, its value,
   its pulls on the outputs) over two charts with axes, a legend and the values under the pointer (each exam's

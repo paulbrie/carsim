@@ -125,7 +125,7 @@ if (!MP) {
 // is spending as you drive (the sim's wheels: fx, fy of fm), and the tire model's own figures for the ground under
 // the car. The settings, their keeping and the sums are the sim's (__sim.setup, scripts/patches/setup.py).
 const S = window.__sim.setup;
-const su = { el: null, open: false, sig: '', k: {}, w: {}, liveT: 0, told: false };
+const su = { el: null, open: false, sig: '', k: {}, w: {}, liveT: 0, told: false, editing: false };
 // in a race room the room's own panel runs down the same side, over the sim: the page is told when a drawer (this
 // one, the lab's) is open, moves its panel away, and asks for the drawers to close when its panel comes back
 const ROOM = document.body.classList.contains('mp') && parent !== window;
@@ -312,7 +312,11 @@ function sync() {
   rail.style.top = top + 'px'; rail.style.maxHeight = Math.max(72, room) + 'px';
   rail.style.display = m.width && !$('aiPanel')?.classList.contains('big') ? '' : 'none';
   document.body.style.setProperty('--ui-rail-top', top + 'px');
-  document.body.classList.toggle('ui-edit', $('editor')?.style.display === 'block');
+  const editing = $('editor')?.style.display === 'block';
+  document.body.classList.toggle('ui-edit', editing);
+  // the course editor moves beside the lab's drawer (ui.css, #339); a window too narrow for both: the lab makes way for it
+  if (editing && !su.editing && labOpen() && !$('aiPanel').classList.contains('big') && innerWidth < 720) $('aiBtn')?.click();
+  su.editing = editing;
   if (su.open && (labOpen() || !setupCan())) setupToggle(false);                 // (the lab opened over it; a replay, the editor)
   else if (su.open) setupSync();
   if (ROOM && su.told !== (su.open || labOpen())) parent.postMessage({ t: 'drawer', open: su.told = su.open || labOpen() }, location.origin);

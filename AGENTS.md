@@ -70,6 +70,8 @@ See README.md for the layout. Notes:
   must call `markDirty` for what it changed, and anything that sets them wholesale (`H.set`) must set `aiGT.all = true`.
   `aiDemoNow` looks at `courseKey()` again only when `TRACK` or the car changes (or a second on): whatever changes a
   demo line must clear `AI.demoCk`.
+  The hidden layer's sizes (`AI_SIZES`, #316) are the server's too (`AUTOPILOT_SIZES` in `lib/autopilots/store.mjs`; a test
+  checks they match): change both.
   The exam (`aiExamStart`) is what picks the best: keep it what a real lap is (the flying one: two laps, the second
   timed, nothing put back between), and a change of exam a change of `aiExamKind` (the best is examined again).
   Tests: `__sim.aiTrainSync(gens)`, `__sim.aiTry(weights)` (how a drive ends; `aiTry(w, 0, true)`: the exam's race

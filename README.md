@@ -198,7 +198,12 @@ course's first): load any, delete yours. `/api/autopilots` (signed in; `lib/auto
 each in `<DATA_DIR>/autopilots`, at most 50 a driver; only the one who saved it, or the super admin, deletes it).
 
 - **The network:** 7 inputs straight to 2 outputs (steering, and a pedal: + throttle, − brake), each the tanh
-  of a weighted sum: 16 weights. **Bigger net** puts a hidden layer of 8 between (82 weights).
+  of a weighted sum: 16 weights. **hidden** (in Training) puts a hidden layer of tanh units between: 2 to 64 of
+  them (8: 82 weights; 64: 642), or none. Each size is a training of its own, and the choice is kept. A size not
+  trained yet starts from the one shown, when both have a hidden layer: its units carried over (the first ones, to a
+  smaller size), the new ones looking at the inputs but not yet heard, so it drives as before until it learns more
+  (**Start over** for nothing). A bigger layer can learn more, but has more weights to tune: expect it to need
+  more generations.
 - **What it sees:** by default its speed; where the racing line is 6, 15 and 30 m ahead (the sine of the
   bearing); how far it is to the side of the line; its yaw rate; and a pace note: the speed the line can be taken
   at there (from its bends and the ground's grip, the same profile the bots use) less its own. **Inputs, outputs

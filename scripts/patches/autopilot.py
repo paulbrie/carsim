@@ -18,8 +18,8 @@ BLOCK = r"""
 /* =====================================================================
    AUTOPILOT (#311): the smallest neural network that drives a lap, trained here in the browser.
    The policy: AI_IN inputs -> 2 outputs, steer (-1..1, + = A) and pedal (+ throttle, - brake), each the tanh of a
-   weighted sum of the inputs: 16 weights, the smallest there is (AI.h = 0); or with a hidden layer of 8 tanh units
-   between (AI.h = 8, 82 weights), the next size up. Its inputs, from the car and the course's racing line (botPath, a point a metre):
+   weighted sum of the inputs: 16 weights, the smallest there is (AI.h = 0); or with a hidden layer of tanh units
+   between, as many as AI_SIZES offers (AI.h = 8: 82 weights). Its inputs, from the car and the course's racing line (botPath, a point a metre):
      forward speed / 20 m/s; where the line is 6, 15 and 30 m ahead (the sine of its bearing from the car's heading);
      how far the car is to the side of the line / 5 m; how fast it is turning (yaw rate / 2); and a pace note:
      the speed the line can be taken at here (botPath's, from its bends and the ground's grip, braking for those
@@ -40,7 +40,7 @@ BLOCK = r"""
    The best weights so far drive the car (Drive it), as a player would, with lap timing.
    Saved per course and car in this browser. window.__sim.ai: AI, aiTrainSync(gens) for tests.
    ===================================================================== */
-const AI_SIZES = [0, 8];
+const AI_SIZES = [0, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64];          // the hidden layer's units (0: none), each size a training of its own
 const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_BUDGET_BLIND = 15, AI_LAP_BONUS = 5;
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
 const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '', cores: 1, draw: true, ped3d: true, speed: 1, onRoad: false, hbTurn: false, hbNoBrake: false, hbLock: 0.3 };
@@ -87,7 +87,7 @@ const aiShape = (inputs, hb, h) => {
 };
 const AI = { gens: 0, genEnd: 0, stopAfter: 30, sinceBest: 0, h: 0, np: 0, inputs: AI_DEFAULT_INPUTS, hb: false, kp: false, ks: false, nb: false, applied: [0, 0], nIn: 7, nOut: 2, names: [], shows: [], look: [], rayEnds: [], viewW: null, nAct: 0, nSim: 0, rateT: 0, rate: '', open: false, training: false, drive: false, key: '', w: null, m: null, v: null, k: 0, gen: 0, best: null, bestFit: -1, bestLap: null,
   hist: [], cands: null, eps: null, fits: null, ci: 0, ep: null, ctl: null, snapH: null, snapC: null, acc: 0, dst: null, el: null };
-const aiX = new Float32Array(32), aiY = new Float32Array(3), aiHid = new Float32Array(8);
+const aiX = new Float32Array(32), aiY = new Float32Array(3), aiHid = new Float32Array(AI_SIZES[AI_SIZES.length - 1]);
 // what the network takes in and gives out (kept in this browser; each set is a training of its own)
 function aiConfig(inputs, hb) {
   inputs = AI_INPUTS.map(d => d.id).filter(id => inputs.includes(id));
@@ -98,6 +98,7 @@ function aiConfig(inputs, hb) {
 }
 try {
   const c = JSON.parse(localStorage.getItem('sandbuggy.ai.config') || 'null');
+  if (AI_SIZES.includes(c?.h)) AI.h = c.h;
   aiConfig(c?.inputs || AI_DEFAULT_INPUTS, c?.hb); AI.kp = !!c?.kp; AI.ks = !!c?.ks; AI.nb = !!c?.nb;
   if (Number.isInteger(c?.stopAfter) && c.stopAfter >= 0) AI.stopAfter = c.stopAfter;
   if (Number.isInteger(c?.gens) && c.gens >= 0) AI.gens = c.gens;
@@ -120,26 +121,41 @@ try {
   if (c?.draw === false) AI_CFG.draw = false; if (c?.ped3d === false) AI_CFG.ped3d = false;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, cores: AI_CFG.cores, speed: AI_CFG.speed, onRoad: AI_CFG.onRoad, hbTurn: AI_CFG.hbTurn, hbNoBrake: AI_CFG.hbNoBrake, hbLock: AI_CFG.hbLock, draw: AI_CFG.draw, ped3d: AI_CFG.ped3d, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, cores: AI_CFG.cores, speed: AI_CFG.speed, onRoad: AI_CFG.onRoad, hbTurn: AI_CFG.hbTurn, hbNoBrake: AI_CFG.hbNoBrake, hbLock: AI_CFG.hbLock, draw: AI_CFG.draw, ped3d: AI_CFG.ped3d, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's, or no brake): another training (this one stays, under its own key);
 // one not trained yet starts from this one's weights, the new inputs' (and outputs') at nothing: it drives as this one did
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks, nb = AI.nb) {
   if (AI.training) aiTrain(false);
   AI.drive = false;
-  const was = AI.w && (AI.gen || AI.best) ? { names: AI.names.slice(), nIn: AI.nIn, nOut: AI.nOut, h: AI.h, w: AI.best || AI.w } : null;
+  const was = aiWas();
   aiConfig(inputs, hb); AI.kp = !!kp; AI.ks = !!ks; AI.nb = !!nb; aiKeepConfig();
   if (quiet) return;
   aiLoad();
-  if (was && !AI.gen && !AI.best && was.h === AI.h) { aiCarry(was); flash('Carried over: the new inputs start at nothing', '#9fd4ff', 2); }
+  if (was && !AI.gen && !AI.best && !was.h === !AI.h) { aiCarry(was); flash('Carried over: the new inputs start at nothing', '#9fd4ff', 2); }
   aiShow();
 }
+// another size of hidden layer (#316): another training too; one not trained yet starts from this one's if both have a
+// hidden layer: its units kept (the first ones, if fewer), the new ones looking at the inputs but not yet heard (it drives as before)
+function aiSetSize(h) {
+  if (!AI_SIZES.includes(h) || h === AI.h) return;
+  if (AI.training) aiTrain(false);
+  const was = aiWas();
+  AI.drive = false; AI.h = h; aiConfig(AI.inputs, AI.hb); aiKeepConfig(); aiLoad();
+  if (was && !AI.gen && !AI.best && was.h && h) { aiCarry(was); flash(h > was.h ? `Carried over: ${was.h} units, ${h - was.h} new ones not heard yet` : `Carried over: its first ${h} units of ${was.h}`, '#9fd4ff', 2.5); }
+  aiShow();
+}
+// this training, to carry over to another (null if it hasn't learnt anything)
+function aiWas() { return AI.w && (AI.gen || AI.best) ? { names: AI.names.slice(), nIn: AI.nIn, nOut: AI.nOut, h: AI.h, w: AI.best || AI.w } : null; }
+// (both with a hidden layer, or neither)
 function aiCarry(o) {
-  const I = AI.nIn, O = AI.nOut, h = AI.h, n = AI.np, w = new Float32Array(n), on = o.w.length, oo = Math.min(O, o.nOut);
+  const I = AI.nIn, O = AI.nOut, h = AI.h, oh = o.h, n = AI.np, w = new Float32Array(n), on = o.w.length, oo = Math.min(O, o.nOut);
   const from = AI.names.map(nm => o.names.indexOf(nm));                 // each input's place in the old network, or -1
-  for (let r = 0; r < (h || oo); r++) for (let i = 0; i < I; i++) if (from[i] >= 0) w[r * I + i] = o.w[r * o.nIn + from[i]];   // W (linear) or W1
-  if (h) for (let j = 0; j < h; j++) {
-    w[I * h + j] = o.w[o.nIn * h + j];                                  // b1
-    for (let k = 0; k < oo; k++) w[I * h + h + j * O + k] = o.w[o.nIn * h + h + j * o.nOut + k];   // W2
+  if (!h) for (let r = 0; r < oo; r++) for (let i = 0; i < I; i++) if (from[i] >= 0) w[r * I + i] = o.w[r * o.nIn + from[i]];   // W
+  for (let j = 0; j < h; j++) {
+    if (j >= oh) { for (let i = 0; i < I; i++) w[j * I + i] = aiGauss() * 0.1; continue; }   // a new unit: W1 as a fresh one's, b1 and W2 nothing
+    for (let i = 0; i < I; i++) if (from[i] >= 0) w[j * I + i] = o.w[j * o.nIn + from[i]];   // W1
+    w[I * h + j] = o.w[o.nIn * oh + j];                                  // b1
+    for (let k = 0; k < oo; k++) w[I * h + h + j * O + k] = o.w[o.nIn * oh + oh + j * o.nOut + k];   // W2
   }
   for (let k = 0; k < oo; k++) w[n - O + k] = o.w[on - o.nOut + k];   // b (b2)
   if (O > 2 && o.nOut <= 2) w[n - O + 2] = -1;                          // a new handbrake: off
@@ -1164,7 +1180,7 @@ function aiCanvas(cv) {
 // the diagram: what it sees (left) and does (right), live while it trains or drives; hover a dot for what it is
 function aiNetDraw(live) {
   const cv = AI.el.querySelector('#aiNet'), w = AI.viewW || AI.best || AI.w, I = AI.nIn, O = AI.nOut, big = AI.big;
-  if (!big) { const hh = Math.max(165, 22 + I * 20) + 'px'; if (cv.style.height !== hh) cv.style.height = hh; }   // as tall as its inputs need
+  if (!big) { const hh = Math.max(165, 22 + I * 20, 22 + AI.h * 5) + 'px'; if (cv.style.height !== hh) cv.style.height = hh; }   // as tall as its inputs need
   else if (cv.style.height) cv.style.height = '';
   const c = aiCanvas(cv); if (!c) return;
   const { g, W, H: Hc } = c;
@@ -1175,6 +1191,7 @@ function aiNetDraw(live) {
   const xi = big ? Math.min(250, W * 0.3) : 75, xo = W - (big ? 150 : 65), xh = (xi + xo) / 2, pad = big ? 16 : 11;
   const pb = pad + (big && !x ? 16 : 0);                               // (room for the line under it, idle)
   const yi = i => I > 1 ? pad + i * (Hc - pad - pb) / (I - 1) : Hc / 2, yo = k => Hc * (k + 0.5) / O, yh = j => h > 1 ? pad + j * (Hc - 2 * pad) / (h - 1) : Hc / 2;
+  const nrh = h > 1 ? clamp((Hc - 2 * pad) / (h - 1) / 2.4, 1.5, nr) : nr, thin = Math.min(1, Math.sqrt(8 / Math.max(1, h)));   // (many hidden units: smaller dots, fainter lines)
   // the dot under the pointer: ['i' | 'h' | 'o', index]
   let hov = null;
   if (cv._hx != null) {
@@ -1184,17 +1201,17 @@ function aiNetDraw(live) {
     if (!hov && cv._hx < xi - 8) { const k = Math.round(I > 1 ? (cv._hy - pad) / ((Hc - pad - pb) / (I - 1)) : 0); if (k >= 0 && k < I) hov = ['i', k]; }   // or its name
   }
   const lit = (a, ka, b, kb) => !hov || (hov[0] === a && hov[1] === ka) || (hov[0] === b && hov[1] === kb);
-  const edge = (x0, y0, x1, y1, v, on) => { const m = Math.min(1, Math.abs(v) / 1.5); g.strokeStyle = aiCol(v, (0.12 + 0.88 * m) * (on ? 1 : 0.12)); g.lineWidth = (big ? 0.6 : 0.5) + (big ? 4.5 : 3.5) * m; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
+  const edge = (x0, y0, x1, y1, v, on, f = 1) => { const m = Math.min(1, Math.abs(v) / 1.5); g.strokeStyle = aiCol(v, (0.12 + 0.88 * m) * (on ? 1 : 0.12) * (on && hov ? 1 : f)); g.lineWidth = (big ? 0.6 : 0.5) + (big ? 4.5 : 3.5) * m * f; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
   // the pulls: live, value x weight; idle, the weights themselves
   if (!h) for (let i = 0; i < I; i++) for (let k = 0; k < O; k++) edge(xi, yi(i), xo, yo(k), w[k * I + i] * (x ? x[i] : 1), lit('i', i, 'o', k));
   else {
-    for (let j = 0; j < h; j++) for (let i = 0; i < I; i++) edge(xi, yi(i), xh, yh(j), w[j * I + i] * (x ? x[i] : 1) * 0.7, lit('i', i, 'h', j));
+    for (let j = 0; j < h; j++) for (let i = 0; i < I; i++) edge(xi, yi(i), xh, yh(j), w[j * I + i] * (x ? x[i] : 1) * 0.7, lit('i', i, 'h', j), thin);
     const w2 = I * h + h;
-    for (let j = 0; j < h; j++) for (let k = 0; k < O; k++) edge(xh, yh(j), xo, yo(k), w[w2 + j * O + k] * (x ? aiHid[j] : 1), lit('h', j, 'o', k));
+    for (let j = 0; j < h; j++) for (let k = 0; k < O; k++) edge(xh, yh(j), xo, yo(k), w[w2 + j * O + k] * (x ? aiHid[j] : 1), lit('h', j, 'o', k), thin);
   }
-  const node = (cx, cy, v, on) => { g.fillStyle = aiCol(v, 0.25 + 0.75 * Math.min(1, Math.abs(v))); g.beginPath(); g.arc(cx, cy, nr * (on ? 1.25 : 1), 0, 7); g.fill(); g.strokeStyle = on ? '#fff' : 'rgba(255,255,255,.6)'; g.lineWidth = on ? 2 : 1; g.stroke(); };
+  const node = (cx, cy, v, on, r = nr) => { g.fillStyle = aiCol(v, 0.25 + 0.75 * Math.min(1, Math.abs(v))); g.beginPath(); g.arc(cx, cy, (on ? Math.max(r * 1.25, 4) : r), 0, 7); g.fill(); g.strokeStyle = on ? '#fff' : 'rgba(255,255,255,.6)'; g.lineWidth = on ? 2 : r < 3 ? 0.5 : 1; g.stroke(); };
   const isHov = (a, k) => !!hov && hov[0] === a && hov[1] === k;
-  for (let j = 0; j < h; j++) node(xh, yh(j), x ? aiHid[j] : 0, isHov('h', j));
+  for (let j = 0; j < h; j++) node(xh, yh(j), x ? aiHid[j] : 0, isHov('h', j), nrh);
   g.textBaseline = 'middle';
   // inputs, in real units: big, a table (name left, value by its dot); small, the value under the name
   const two = !big && I > 1 && (Hc - 2 * pad) / (I - 1) >= 18;
@@ -1527,7 +1544,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
   /* text that changes as it trains: a line each, cut short, so nothing under it moves */
   #aiPanel .st .ln,#aiPanel #aiRate,#aiPanel #aiRaceInfo{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} #aiPanel .st .dim{opacity:.75}
   #aiPanel .st{min-height:4.35em} #aiPanel #aiRate{min-height:1.45em}
-  #aiPanel #aiTrain{min-width:7.4em} #aiPanel #aiWatch{min-width:7.8em} #aiPanel #aiDrive{min-width:7.6em} #aiPanel #aiRace{min-width:7.8em} #aiPanel #aiH{min-width:7.2em}
+  #aiPanel #aiTrain{min-width:7.4em} #aiPanel #aiWatch{min-width:7.8em} #aiPanel #aiDrive{min-width:7.6em} #aiPanel #aiRace{min-width:7.8em}
   /* scrollbars: thin, a light thumb on a see-through track, their room kept whether they show or not */
   #aiPanel,#aiPanel .aiLeft,#aiPanel #aiCfg,#aiPanel #aiServer{--sb-thumb:rgba(255,255,255,.4);--sb-track:transparent;scrollbar-width:thin;scrollbar-color:var(--sb-thumb) var(--sb-track);scrollbar-gutter:stable}
   @media (prefers-contrast: more){#aiPanel,#aiPanel .aiLeft,#aiPanel #aiCfg,#aiPanel #aiServer{--sb-thumb:#fff}}
@@ -1604,7 +1621,7 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">AUTOPILOT</div><div cl
     <div class="aiKpi" id="aiKpi"></div>
     <div class="st" id="aiStat"></div><div class="sub" id="aiRate"></div><div class="sub" id="aiRaceInfo"></div>
     <div id="aiLoad" style="display:none"></div>
-    <div class="grp"><div class="gh">Training</div><label class="qc" title="How many of this computer's cores train at once (the rest of these settings: This computer, under Inputs, outputs and penalties)">cores <select id="aiCoresQ">${Array.from({ length: aiCoresMax() }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select></label><label class="qc" title="Train at most this many generations, then stop (empty or 0: until you pause it, or it stops improving). The same as Tries, exams and when to stop's">max gens <input type="number" id="aiGensQ" min="0" max="100000" step="10" placeholder="∞" style="width:52px"></label><button id="aiTrain">Train</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><label class="qc" title="How fast Watch plays the training, and Drive it and Race it drive: 1× real time, 2× or 4× (the same physics, more of it a frame)">speed <select id="aiSpeed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="aiBack" title="Carry on training from the best weights so far (the exam's best lap), not from where training wandered to">Back to the best</button><button id="aiH" title="The network's size: inputs straight to the outputs, or a hidden layer of 8 between">Size</button><button id="aiReset">Start over</button></div>
+    <div class="grp"><div class="gh">Training</div><label class="qc" title="How many of this computer's cores train at once (the rest of these settings: This computer, under Inputs, outputs and penalties)">cores <select id="aiCoresQ">${Array.from({ length: aiCoresMax() }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select></label><label class="qc" title="Train at most this many generations, then stop (empty or 0: until you pause it, or it stops improving). The same as Tries, exams and when to stop's">max gens <input type="number" id="aiGensQ" min="0" max="100000" step="10" placeholder="∞" style="width:52px"></label><button id="aiTrain">Train</button><button id="aiWatch" title="Run the training at real speed, with the sound, to watch every try (it learns no differently, only slower)">Watch at 1×</button><label class="qc" title="How fast Watch plays the training, and Drive it and Race it drive: 1× real time, 2× or 4× (the same physics, more of it a frame)">speed <select id="aiSpeed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label><button id="aiBack" title="Carry on training from the best weights so far (the exam's best lap), not from where training wandered to">Back to the best</button><label class="qc" title="The network's size: inputs straight to the outputs (none), or a hidden layer of so many units between. Each size is a training of its own; a new one starts from this one's when both have a hidden layer (Start over: from nothing)">hidden <select id="aiHQ">${AI_SIZES.map(h => `<option value="${h}">${h || 'none'}</option>`).join('')}</select></label><button id="aiReset">Start over</button></div>
     <div class="grp"><div class="gh">Its best, at the wheel</div><button id="aiDrive">Drive it</button><button id="aiRace" title="Drive it against a rival: another of this car alongside on the grid, driven by the best network too (as Train's rival below: a replay of its own laps, or a car that reacts; a car if none is set)">Race it</button></div>
     <div class="grp"><div class="gh">Keep it</div><button id="aiSaveF" title="Download this training (the weights, the generations, the chart) as a file">Save to file</button><button id="aiLoadF" title="Load a training saved to a file">Load file</button><button id="aiSaveS" title="Save this training on the server, under a name: you, or anyone, can load it there">Save to server</button><button id="aiLoadS" title="The autopilots saved on the server: load one (yours or anyone's), delete yours">From server</button></div>
     <div id="aiServer" style="display:none"></div>
@@ -1770,11 +1787,7 @@ AI.el.querySelector('#aiWatch').addEventListener('click', e => {
   if (AI.watch && !AI.training) aiTrain(true);
   aiShow();
 });
-AI.el.querySelector('#aiH').addEventListener('click', e => {
-  e.currentTarget.blur();
-  const was = AI.training; if (was) aiTrain(false);
-  AI.drive = false; AI.h = AI_SIZES[(AI_SIZES.indexOf(AI.h) + 1) % AI_SIZES.length]; aiLoad(); aiShow();
-});
+AI.el.querySelector('#aiHQ').addEventListener('change', e => { e.target.blur(); aiSetSize(+e.target.value); });
 // a training as a file or on the server: to keep, share, or carry to another browser (the browser keeps it anyway, per course, car and size)
 function aiExport() {
   if (aiKey() !== AI.key) aiLoad();
@@ -1915,7 +1928,7 @@ function aiShow() {
   const len = botPath().len, pct = f => Math.min(100, Math.round(f / len * 100));
   const best = AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? `a full lap in ${fmt(AI.bestLap)}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter ? `; stops at ${AI.stopAfter}` : ''})</span>` : ''}` : `${Math.round(AI.bestFit)} m of ${Math.round(len)} m (${pct(AI.bestFit)} %)`;
   AI.el.querySelector('#aiSize').textContent = `${AI.h ? 'a tiny neural network' : 'the smallest network'}: ${AI.nIn} inputs ${AI.h ? `→ ${AI.h} hidden →` : 'straight to'} ${AI.nOut} outputs, ${AI.np} weights${AI.kp || AI.ks ? ` · ${[AI.kp && 'pedals', AI.ks && 'steering'].filter(Boolean).join(' and ')} like the keyboard` : ''}${AI.nb ? ' · no brake' : ''}`;
-  AI.el.querySelector('#aiH').textContent = AI.h ? 'Smaller net' : 'Bigger net';
+  AI.el.querySelector('#aiHQ').value = AI.h;
   AI.el.querySelectorAll('[data-in]').forEach(c => { c.checked = AI.inputs.includes(c.dataset.in); });
   AI.el.querySelector('#aiHb').checked = AI.hb; AI.el.querySelector('#aiKp').checked = AI.kp; AI.el.querySelector('#aiKs').checked = AI.ks; AI.el.querySelector('#aiBrk').checked = !AI.nb;
   for (const k in AI_PEN) { const f = AI.el.querySelector('#aiPen_' + k); if (document.activeElement !== f) f.value = AI_PEN[k]; }

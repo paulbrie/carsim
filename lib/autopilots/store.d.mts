@@ -1,3 +1,4 @@
+export const AUTOPILOT_SIZES: number[];
 export const AUTOPILOT_LIMITS: { nameMax: number; weightsMax: number; inputsMax: number; histMax: number; perOwner: number; bytesMax: number };
 export class AutopilotError extends Error { status: number; constructor(status: number, message: string) }
 export interface AutopilotSummary {

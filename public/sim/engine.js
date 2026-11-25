@@ -6505,7 +6505,7 @@ if (MP.edit) {
 const AI_SIZES = [0, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64];          // the hidden layer's units (0: none), each size a training of its own
 const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_BUDGET_BLIND = 15, AI_LAP_BONUS = 5;
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
-const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '', cores: 1, draw: true, ped3d: true, speed: 1, onRoad: false, hbTurn: false, hbNoBrake: false, hbLock: 0.3 };
+const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, crashKmh: 0, lostAfter: 20, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '', cores: 1, draw: true, ped3d: true, speed: 1, onRoad: false, hbTurn: false, hbNoBrake: false, hbLock: 0.3 };
 // the rival (#311): another of this car on the course, near enough to matter within AI_RV_NEAR m along the line
 const AI_RV_NEAR = 30, AI_RV_MODES = ['off', 'replay', 'car'];
 const AI_LOOK_T = [0.3, 0.7, 1.4, 2.4, 4.8];                           // the look-ahead in seconds, if by time (at least AI_LOOK_MIN m)
@@ -6567,6 +6567,10 @@ try {
   if (Number.isInteger(c?.stopAfter) && c.stopAfter >= 0) AI.stopAfter = c.stopAfter;
   if (Number.isInteger(c?.gens) && c.gens >= 0) AI.gens = c.gens;
   if (Number.isFinite(c?.off) && c.off >= 3 && c.off <= 30) AI_CFG.off = c.off;
+  if (Number.isFinite(c?.crash) && c.crash >= 0 && c.crash <= 2000) AI_CFG.crash = c.crash;                      // (#348)
+  if (Number.isFinite(c?.crashKmh) && c.crashKmh >= 0 && c.crashKmh <= 50) AI_CFG.crashKmh = c.crashKmh;
+  if (Number.isFinite(c?.window) && c.window >= 5 && c.window <= 60) AI_CFG.window = c.window;
+  if (Number.isInteger(c?.lostAfter) && c.lostAfter >= 0 && c.lostAfter <= 1000) AI_CFG.lostAfter = c.lostAfter;
   if (Number.isFinite(c?.pace) && c.pace >= 0.5 && c.pace <= 2) AI_CFG.pace = c.pace;
   if (Number.isFinite(c?.gCorner) && c.gCorner >= 0.2 && c.gCorner <= 2) AI_CFG.gCorner = c.gCorner;
   if (Number.isFinite(c?.gBrake) && c.gBrake >= 0.2 && c.gBrake <= 2) AI_CFG.gBrake = c.gBrake;
@@ -6585,7 +6589,7 @@ try {
   if (c?.draw === false) AI_CFG.draw = false; if (c?.ped3d === false) AI_CFG.ped3d = false;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
 } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
-const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, cores: AI_CFG.cores, speed: AI_CFG.speed, onRoad: AI_CFG.onRoad, hbTurn: AI_CFG.hbTurn, hbNoBrake: AI_CFG.hbNoBrake, hbLock: AI_CFG.hbLock, draw: AI_CFG.draw, ped3d: AI_CFG.ped3d, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
+const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ crash: AI_CFG.crash, crashKmh: AI_CFG.crashKmh, window: AI_CFG.window, lostAfter: AI_CFG.lostAfter, rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, cores: AI_CFG.cores, speed: AI_CFG.speed, onRoad: AI_CFG.onRoad, hbTurn: AI_CFG.hbTurn, hbNoBrake: AI_CFG.hbNoBrake, hbLock: AI_CFG.hbLock, draw: AI_CFG.draw, ped3d: AI_CFG.ped3d, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's, or no brake): another training (this one stays, under its own key);
 // one not trained yet starts from this one's weights, the new inputs' (and outputs') at nothing: it drives as this one did
 function aiSetInputs(inputs, hb, quiet, kp = AI.kp, ks = AI.ks, nb = AI.nb) {
@@ -7024,7 +7028,8 @@ function aiStep() {
   const gain = R ? E.st.dist - R.st.dist : 0, cpen = R ? AI_PEN.contact * E.contact - AI_PEN.gain * gain : 0;   // the rival: its impacts, the metres gained on it
   const pen = AI_PEN.offRoad * E.offM + AI_PEN.damage * dmg + (car.wrecked ? AI_PEN.wreck : 0) + AI_PEN.smooth * E.swing + AI_PEN.path * extra - AI_PEN.speed * kmh + cpen;
   const fit = (why === 'lap' ? len + AI_LAP_BONUS * Math.max(0, AI_T - run) : prog / E.laps) - pen;   // (not all the laps: below any that did them)
-  AI.last = { why, at: Math.round(prog), t: +E.t.toFixed(1), lap: why === 'lap' ? +run.toFixed(2) : null, laps: E.times.map(x => +x.toFixed(2)), hb: +E.hb.toFixed(1), hbHeld: +E.hbHeld.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1), extra: Math.round(extra),
+  const vEnd = Math.round(Math.hypot(car.vel.x, car.vel.z) * 3.6);   // (km/h, as it ended: what ending badly costs, aiEndCost)
+  AI.last = { why, at: Math.round(prog), vEnd, t: +E.t.toFixed(1), lap: why === 'lap' ? +run.toFixed(2) : null, laps: E.times.map(x => +x.toFixed(2)), hb: +E.hb.toFixed(1), hbHeld: +E.hbHeld.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1), extra: Math.round(extra),
     rival: R ? { kind: E.sc.kind, contact: +E.contact.toFixed(1), touches: E.touches, gain: Math.round(gain), cpen: Math.round(cpen), dmgF: dmg } : null };
   return fit;
 }
@@ -7077,16 +7082,20 @@ function aiLineAt(d) {
   if (AI.s0path !== Pt) { const g = TRACK.gates[0]; let bi = 0, bd = Infinity; Pt.P.forEach((q, j) => { const e = (q.x - g.p.x) ** 2 + (q.z - g.p.z) ** 2; if (e < bd) { bd = e; bi = j; } }); AI.s0path = Pt; AI.s0 = bi; }
   return Pt.P[((AI.s0 + Math.round(d / Pt.ds)) % Pt.n + Pt.n) % Pt.n];
 }
+// What a try that ends badly (off the course, stuck, wrecked, backwards, over) costs, on top of the metres it didn't get
+// (#348): AI_CFG.crash metres, and AI_CFG.crashKmh more for each km/h it was going as it ended: going off at 140 km/h
+// costs more than at 60, so a try is told where it was too fast as well as that it failed.
+const aiEndCost = L => L.why === 'time' || L.why === 'lap' ? 0 : AI_CFG.crash + AI_CFG.crashKmh * (L.vEnd || 0);
 // A training that has lost the lap goes back to the best (#348). Its tries are 15 s stretches, one place on the lap a
 // generation, and what pays on one stretch costs on another: after its first laps a training's weights wandered off
 // them and its exams went off at one bend, for thousands of generations (on the X7's figure-8, laps in 100 of 600
 // generations at best, in none after the first 100 at worst; the user's own: its best 4030 generations back). So once
 // it has a lap, AI_LOST exams in a row without one take it back to the best weights (as Back to the best does), to look
-// around them afresh. AI.backs: how many times in this training.
-const AI_LOST = 20;
+// around them afresh. AI.backs: how many times in this training. AI_CFG.lostAfter (the lab's "back to the best after"):
+// 1 keeps only the steps whose exam still laps; 0: never.
 function aiLost(lap) {
-  if (lap != null || AI.bestLap == null || !AI.best) { AI.lost = 0; return; }
-  if (++AI.lost < AI_LOST || AI.best.length !== AI.w.length) return;
+  if (lap != null || AI.bestLap == null || !AI.best || !AI_CFG.lostAfter) { AI.lost = 0; return; }
+  if (++AI.lost < AI_CFG.lostAfter || AI.best.length !== AI.w.length) return;
   AI.w.set(AI.best); AI.m.fill(0); AI.lost = 0; AI.backs = (AI.backs || 0) + 1;
 }
 // Where a generation's tries start (d metres on from the start line; 0: at the line, from a standstill as an exam starts):
@@ -7128,7 +7137,7 @@ function aiTick() {
     AI.gen++; aiRvKeep(); aiSave();
     return false;
   }
-  AI.fits[AI.ci] = fit - (AI.last.why === 'time' || AI.last.why === 'lap' ? 0 : AI_CFG.crash);   // ending it badly costs: braking for a bend beats flying off it
+  AI.fits[AI.ci] = fit - aiEndCost(AI.last);                          // ending it badly costs: braking for a bend beats flying off it
   if (++AI.ci >= AI_CFG.pop) aiEndGen();
   return true;
 }
@@ -7209,7 +7218,7 @@ function aiParBegin(j) {
 // a drive of it ended with this score: the job's result (null: an exam's race, next)
 function aiParEnd(j, fit) {
   const E = AI.ep; AI.ep = null;
-  if (j.kind === 'try') return { fit: fit - (AI.last.why === 'time' || AI.last.why === 'lap' ? 0 : AI_CFG.crash), why: AI.last.why, at: AI.last.at };   // (as aiTick)
+  if (j.kind === 'try') return { fit: fit - aiEndCost(AI.last), why: AI.last.why, at: AI.last.at };   // (as aiTick)
   if (j.kind === 'race') { const cost = aiRaceCost(AI.last); return { fit: -cost, cost, why: AI.last.why }; }
   if (!j.phase) {
     j.lap = { fit, last: AI.last, dist: E.st.dist };
@@ -8246,6 +8255,10 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div clas
       <label title="Each generation's exam (the lap that picks the best) is a flying lap: two laps in a row from the start line, the second timed, as Drive it's laps after the first (and a driver's best lap) are: at speed across the line, on the ground the first lap wore, with its knocks. Not one lap from a standstill"><input type="checkbox" id="aiFly"> exams are flying laps</label>
       <label style="justify-content:space-between" title="Flying exams: so many timed laps in a row after the first, the slowest counting (and the knocks of each carried into the next): a network that is quick for a lap and then loses it scores its bad lap">flying laps an exam times <input type="number" id="aiExamLaps" min="1" max="5" step="1"></label>
       <label style="justify-content:space-between" title="A try ends (and loses the 100 m for ending badly) this far from the racing line. Wider gives it room for its own line, and to go astray">end a try this far from the line, m <input type="number" id="aiOff" min="3" max="30" step="1"></label>
+      <label style="justify-content:space-between" title="Each try drives this long at most, from its place on the line. Longer tries carry the cost of a risk taken near their end (a fast bend just after the window): with 15 s, going fast and then off late paid as well as going carefully">tries last, s <input type="number" id="aiWindow" min="5" max="60" step="1"></label>
+      <label style="justify-content:space-between" title="What a try that ends badly (off the course, stuck, wrecked) loses, on top of the metres it didn't drive. More: risk costs more">a try that ends badly costs, m <input type="number" id="aiCrash" min="0" max="2000" step="10"></label>
+      <label style="justify-content:space-between" title="And so much more for each km/h it was going as it ended badly: going off at 140 km/h costs more than at 60, which tells it where it was too fast (0: the same whatever the speed)">… and per km/h it ended at, m <input type="number" id="aiCrashKmh" min="0" max="50" step="0.5"></label>
+      <label style="justify-content:space-between" title="Once it laps: after so many exams in a row without a lap, training goes back to the best weights (as Back to the best). 1: only steps whose exam still laps are kept; 0: never">back to the best after exams without a lap <input type="number" id="aiLostAfter" min="0" max="1000" step="1"></label>
       <label style="justify-content:space-between" title="Each Train (or Train more) runs this many generations, then stops (0: until you pause it)">train this many generations at a time <input type="number" id="aiGens" min="0" max="10000" step="10"></label>
       <label style="justify-content:space-between" title="Once it laps: stop training when that many generations in a row bring no better lap (0: never stop). Counted afresh at each Train or Train more">stop after generations without a better lap <input type="number" id="aiStopAfter" min="0" max="1000" step="5"></label></div>
     <div class="card"><div class="h3">This computer: cores and drawing</div>
@@ -8350,6 +8363,10 @@ AI.el.querySelector('#aiCfg').addEventListener('change', e => {
     const v = Math.round(+t.value); if (v >= 1 && v <= 5) { AI_CFG.examLaps = v; aiKeepConfig(); }
   } else if (t.id === 'aiOff') {
     const v = +t.value; if (Number.isFinite(v) && v >= 3 && v <= 30) { AI_CFG.off = v; aiKeepConfig(); }
+  } else if (t.id === 'aiWindow' || t.id === 'aiCrash' || t.id === 'aiCrashKmh' || t.id === 'aiLostAfter') {   // (#348)
+    const k = { aiWindow: 'window', aiCrash: 'crash', aiCrashKmh: 'crashKmh', aiLostAfter: 'lostAfter' }[t.id], v = +t.value;
+    const [lo, hi] = { window: [5, 60], crash: [0, 2000], crashKmh: [0, 50], lostAfter: [0, 1000] }[k];
+    if (Number.isFinite(v) && v >= lo && v <= hi) { AI_CFG[k] = k === 'lostAfter' ? Math.round(v) : v; aiKeepConfig(); }
   } else if (t.id === 'aiGens') {
     const v = Math.round(+t.value); if (Number.isFinite(v) && v >= 0) { AI.gens = v; aiKeepConfig(); if (AI.training) AI.genEnd = AI.gen + v; }
   } else if (t.id === 'aiStopAfter') {
@@ -8518,6 +8535,7 @@ function aiShow() {
   { const f = AI.el.querySelector('#aiGensQ'); if (document.activeElement !== f) f.value = AI.gens || ''; }
   { const f = AI.el.querySelector('#aiStopQ'); if (document.activeElement !== f) f.value = AI.stopAfter || ''; }
   { const f = AI.el.querySelector('#aiOff'); if (document.activeElement !== f) f.value = AI_CFG.off; }
+  for (const [id, k] of [['aiWindow', 'window'], ['aiCrash', 'crash'], ['aiCrashKmh', 'crashKmh'], ['aiLostAfter', 'lostAfter']]) { const f = AI.el.querySelector('#' + id); if (document.activeElement !== f) f.value = AI_CFG[k]; }
   { const f = AI.el.querySelector('#aiExamLaps'); if (document.activeElement !== f) f.value = AI_CFG.examLaps; }
   { const f = AI.el.querySelector('#aiPace'); if (document.activeElement !== f) f.value = AI_CFG.pace; }
   { const f = AI.el.querySelector('#aiRivalShare'); if (document.activeElement !== f) f.value = AI_CFG.rivalShare; }

@@ -396,6 +396,13 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   31 / 53 / 41 / 40 / 16 / 30 and 24 / 91 / 65 / 67 / 32 / 59 (flying exams with rolling starts: 23 then none, against
   69 / 37 / 38 / 90 / 60 / 35). The best lap is no faster for it by itself; one run of the ten on the fixed engine never lapped (as that
   seed didn't before).
+  **How tries are scored, as settings** (#348, *Tries, exams and when to stop*): **tries last** (15 s by default),
+  **a try that ends badly costs** (100 m), **… and per km/h it ended at** (0: `aiEndCost`, the speed the car had as it went
+  off, stuck or wrecked: going off at 140 km/h costs more than at 60, which tells it where it was too fast), and **back to
+  the best after exams without a lap** (20; 1 keeps only the steps whose exam still laps; 0 never). With 15 s tries and
+  100 m, a try that went faster and then off late in its window scored about as well as a careful one, while an exam
+  needs a whole lap without a mistake: on prod's figure-8 (X7, headless, 400 generations) 300 m with 25 s tries lapped in
+  159 and 236 generations of two runs (best 51.5 s, 52.4 s), against 11, 45 and 98 (53.6–54.6 s) with the defaults.
 - **Watch at 1×** runs the training at real speed, with the sound, to follow every try (it learns the same, only
   slower); **Full speed** goes back. The panel shows the decisions a second: the network runs on the main thread,
   in the sim's input step, as it needs the car's physics state, which lives there (31 ns a decision for the 16

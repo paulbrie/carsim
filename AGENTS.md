@@ -79,7 +79,8 @@ See README.md for the layout. Notes:
 - Best laps (#304): in a race (`?mp=1`) the timer's BEST comes from the server (`mpApplyBest`, from the
   room's `records`), not localStorage; anything that rebuilds the course or changes the car or ground must
   leave `loadBest` / `mpApplyBest` to set it. The server only takes a lap no longer than the time since the
-  player's previous one (`lapMark`): reset it wherever the sim restarts its lap (a car, map or ground change).
+  player's previous one (`lapMark`): reset it wherever the sim restarts its lap (a car, map or ground change). A network's
+  lap may be up to `NET_SPEED_MAX` (4) times that (#353: Drive it at 2× or 4×): a faster speed in the lab must raise it.
 - The ghost car (#310) is timed by our lap (`simTime - lap.lapStart`) and its path comes from the replay tape
   (`rp.buf`, `mpTrace`): keep `recordFrame` recording in races. It is see-through with a depth-only twin drawn
   after everything solid (`mpGhostDepth`), so only its nearest surfaces show; a model that loads later gets the

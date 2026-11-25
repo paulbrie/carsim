@@ -368,3 +368,23 @@ test('a network\'s laps are best laps of their own, named and credited as the se
   t += 60_000; c.message({ t: 'lap', lap: 1, time: 20, valid: true, net: {} }); await settle();
   assert.equal(list()[0].time, 27);
 });
+
+test('a network\'s lap driven at 2× or 4× (the lab\'s Drive it sped up) counts; a driver\'s that quick doesn\'t (#353)', async () => {
+  const { RecordStore } = await import('../lib/race/records.mjs');
+  let t = 1_000_000;
+  const hub = new RaceHub({ now: () => t, records: new RecordStore(null, { now: () => t }) });
+  const inbox = []; const c = hub.connect({ id: 'u1', name: 'Ann' }, m => inbox.push(m));
+  const list = () => inbox.filter(m => m.t === 'records').at(-1)?.list ?? [];
+  const settle = () => new Promise(r => setImmediate(r));
+  c.message({ t: 'create' });
+  t += 61_000; c.message({ t: 'lap', lap: 1, time: 60, valid: true, net: {} }); await settle();       // at 1×
+  assert.deepEqual(list().map(e => e.time), [60]);
+  t += 15_200; c.message({ t: 'lap', lap: 2, time: 59, valid: true, net: {} }); await settle();       // at 4×: 59 s in 15.2 s
+  assert.deepEqual(list().map(e => e.time), [59]);
+  t += 29_600; c.message({ t: 'lap', lap: 3, time: 58.5, valid: true, net: {} }); await settle();     // at 2×
+  assert.deepEqual(list().map(e => e.time), [58.5]);
+  t += 10_000; c.message({ t: 'lap', lap: 4, time: 58, valid: true, net: {} }); await settle();       // faster than 4×: no
+  assert.deepEqual(list().map(e => e.time), [58.5]);
+  t += 15_200; c.message({ t: 'lap', lap: 5, time: 59, valid: true }); await settle();                // a driver's, as quick: no
+  assert.deepEqual(list().map(e => [e.id, e.time]), [['tnn:local:u1', 58.5]]);
+});

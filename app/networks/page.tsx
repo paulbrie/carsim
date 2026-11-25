@@ -51,6 +51,11 @@ export default async function Networks() {
                   </div>
                   <h2 className="mt-2 line-clamp-2 font-semibold text-pretty" title={n.name}>{n.name}</h2>
                   <p className="mt-1 truncate text-sm text-muted-foreground">{carName(n.vehicle)} · {track ? `${track}, ${groundLabel(n.ground)}` : 'a course of its maker’s own'}</p>
+                  {n.past.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground/80" title="The circuits it was trained on before the one it was saved on, and its generations on each">
+                      Trained before on {n.past.map(p => `${trackName(p.track ?? null) ?? p.trackName ?? 'a course of its maker’s own'} (${groundLabel(p.ground)}${p.vehicle !== n.vehicle ? `, ${carName(p.vehicle)}` : ''}, gen. ${p.from.toLocaleString('en-US')}–${p.to.toLocaleString('en-US')})`).join(' · ')}
+                    </p>
+                  )}
                   <div className="my-4 rounded-xl border border-white/6 bg-black/20 p-3">
                     <NetDiagram net={n} className="max-h-64" />
                   </div>

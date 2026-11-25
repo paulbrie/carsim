@@ -23,10 +23,10 @@ See README.md for the layout. Notes:
   index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, the car's setup (the drive, the split,
   the tires' pressure, kept per car: `SETUP`, #332) `setup.py`, a network's laps as best laps, marked with its name and maker (#333) `net-laps.py`, a saved network's preview (the networks page's Watch it drive, `?net=<id>`, #336) `preview.py`, a training kept whole in the browser (the chart, the last exam, the rivals; storage full: the chart shortened, then a warning, #341) `keep.py`,
   a lap to follow (the driver's best lap kept, the lab's choice, the review against it, #340) `follow.py`,
-  the sound's switch (M, the rail's Sound, #343) `sound.py`, watching a leaderboard duel (`?mp=1&watch=1`, the page `/duel/...` as the room) `watch.py`,
+  the sound's switch (M, the rail's Sound, #343) `sound.py`, watching a leaderboard duel (`?mp=1&watch=1`, the page `/duel/...` as the room) `watch.py`, a saved network's whole configuration and its history over circuits (#351) `net-save.py`,
   last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, watch, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, watch, net-save, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -115,6 +115,10 @@ See README.md for the layout. Notes:
   by `courseKey()` (and `carsim.track`); the browser's own course waits in `carsim.course.mine`. Its keys are not
   `sandbuggy.*` (the autopilot's workers boot with a copy of those). `/api/tracks` is public: send nothing more there
   than the sim needs (no `updatedBy`).
+- A saved network carries its configuration (#351, `net-save.py`): a new lab setting that shapes a training goes in
+  `AI_CFG` (saved with it by `aiNetConfig`; unless it is this machine's own: `AI_CFG_LOCAL`) and must be read in
+  `aiConfigRead` with its limits, or loading a network won't put it back. Its history is `AI.past` / `AI.pastHist` (lined
+  up, one per earlier circuit) and `AI.fromGen` (`AI.from` is where a try starts): whatever starts a training over (`aiFresh`) or carries one elsewhere keeps them in step.
 - Training that stops by itself must say why (#323, `scripts/patches/lab-stops.py`): call `aiStopped(why)`, or pass a
   reason to `aiHalt(drive, why)`, not a bare `aiTrain(false)` (that is for the user's own Pause). A flash alone isn't
   enough: the full-screen lab covers the sim. The training is driven by animation frames, and by `aiBgKick`'s message loop

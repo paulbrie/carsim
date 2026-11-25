@@ -6591,8 +6591,9 @@ function aiConfig(inputs, hb) {
   AI.names = []; AI.shows = []; AI.groups = [];
   for (const d of AI_INPUTS) if (inputs.includes(d.id)) d.names.forEach((nm, k) => { AI.names.push(nm); AI.shows.push(Array.isArray(d.show) ? d.show[k] : d.show); AI.groups.push(d); });
 }
-try {
-  const c = JSON.parse(localStorage.getItem('sandbuggy.ai.config') || 'null');
+// the lab's settings from c (this browser's, kept by aiKeepConfig; or a network's being loaded, #351): what isn't in c,
+// or isn't valid, stays as it is (the switches: off)
+function aiConfigRead(c) {
   if (AI_SIZES.includes(c?.h)) AI.h = c.h;
   aiConfig(c?.inputs || AI_DEFAULT_INPUTS, c?.hb); AI.kp = !!c?.kp; AI.ks = !!c?.ks; AI.nb = !!c?.nb;
   if (Number.isInteger(c?.stopAfter) && c.stopAfter >= 0) AI.stopAfter = c.stopAfter;
@@ -6619,7 +6620,8 @@ try {
   if (Number.isFinite(c?.hbLock) && c.hbLock >= 0.05 && c.hbLock <= 1) AI_CFG.hbLock = c.hbLock;
   if (c?.draw === false) AI_CFG.draw = false; if (c?.ped3d === false) AI_CFG.ped3d = false;
   for (const k in AI_PEN) if (Number.isFinite(c?.pen?.[k]) && c.pen[k] >= 0) AI_PEN[k] = c.pen[k];
-} catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
+}
+try { aiConfigRead(JSON.parse(localStorage.getItem('sandbuggy.ai.config') || 'null')); } catch (e) { aiConfig(AI_DEFAULT_INPUTS, false); }
 const aiKeepConfig = () => { try { localStorage.setItem('sandbuggy.ai.config', JSON.stringify({ crash: AI_CFG.crash, crashKmh: AI_CFG.crashKmh, window: AI_CFG.window, lostAfter: AI_CFG.lostAfter, rival: AI_CFG.rival, rivalShare: AI_CFG.rivalShare, rivalCar: AI_CFG.rivalCar, cores: AI_CFG.cores, speed: AI_CFG.speed, onRoad: AI_CFG.onRoad, hbTurn: AI_CFG.hbTurn, hbNoBrake: AI_CFG.hbNoBrake, hbLock: AI_CFG.hbLock, draw: AI_CFG.draw, ped3d: AI_CFG.ped3d, examLaps: AI_CFG.examLaps, flying: AI_CFG.flying, rolling: AI_CFG.rolling, lookTime: AI_CFG.lookTime, lineW: AI_CFG.lineW, racingLine: AI_CFG.racingLine, gAccel: AI_CFG.gAccel, gCorner: AI_CFG.gCorner, gBrake: AI_CFG.gBrake, pace: AI_CFG.pace, off: AI_CFG.off, gens: AI.gens, stopAfter: AI.stopAfter, h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb, pen: AI_PEN })); } catch (e) { } };
 // another set of inputs or outputs (or pedals / steering like the keyboard's, or no brake): another training (this one stays, under its own key);
 // one not trained yet starts from this one's weights, the new inputs' (and outputs') at nothing: it drives as this one did
@@ -6926,7 +6928,7 @@ function aiNetMark() {
 }
 function aiFresh() {
   const n = AI.np = aiShape(AI.inputs, AI.hb, AI.h).np, b = n - AI.nOut;
-  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null, examKind: aiExamKind(), rvPool: [], bestSolo: null, bestAt: null, ident: null });
+  Object.assign(AI, { w: new Float32Array(n), m: new Float32Array(n), v: new Float32Array(n), k: 0, gen: 0, best: null, bestFit: -1, bestLap: null, sinceBest: 0, hist: [], cands: null, ep: null, examKind: aiExamKind(), rvPool: [], bestSolo: null, bestAt: null, ident: null, past: [], pastHist: [], fromGen: 0 });
   for (let i = 0; i < n; i++) AI.w[i] = aiGauss() * 0.1;
   AI.w[b + 1] = 0.5;                                                  // a little throttle to begin with, or nothing moves
   if (AI.nOut > 2) AI.w[b + 2] = -1;                                  // the handbrake off, until it learns better
@@ -6941,6 +6943,7 @@ function aiLoad() {
     }
     if (d && d.w?.length === AI.np) Object.assign(AI, { w: Float32Array.from(d.w), m: Float32Array.from(d.m || AI.m), v: Float32Array.from(d.v || AI.v), k: d.k || 0, gen: d.gen || 0,
       best: d.best?.length === AI.np ? Float32Array.from(d.best) : null, bestFit: d.bestFit ?? -1, bestLap: d.bestLap ?? null, hist: d.hist || [], sinceBest: d.sinceBest | 0, examKind: d.exam || 'line', bestSolo: d.bestSolo ?? null, bestAt: d.bestAt || null, ident: d.ident && typeof d.ident.id === 'string' ? d.ident : null });
+    if (d && d.w?.length === AI.np) aiPastRead(d);                     // (#351: the circuits it was trained on before)
   } catch (e) { }
 }
 function aiSave() {
@@ -6948,7 +6951,7 @@ function aiSave() {
   if (!AI.key || !AI.w) return false;                                 // (nothing loaded yet)
   const KEEP = 20000;                                                 // generations of chart kept (each ~20 bytes)
   const rec = { w: [...AI.w], m: [...AI.m], v: [...AI.v], k: AI.k, gen: AI.gen, best: AI.best && [...AI.best], bestFit: AI.bestFit, bestLap: AI.bestLap, sinceBest: AI.sinceBest, hist: AI.hist.slice(-KEEP), exam: AI.examKind, bestSolo: AI.bestSolo, bestAt: AI.bestAt || null, ident: AI.ident || null,
-    last: AI.lastExam || null, rv: AI.rvPool.map(w => [...w]) };   // (#341: the last exam and the rivals too, and the whole chart)
+    last: AI.lastExam || null, rv: AI.rvPool.map(w => [...w]), past: AI.past, pastHist: AI.pastHist, from: AI.fromGen };   // (#341: the last exam and the rivals too, and the whole chart)
   for (const n of [KEEP, 2000, 300, 0]) {                    // storage short: the chart's oldest generations go first
     if (rec.hist.length > n) rec.hist = n ? rec.hist.slice(-n) : [];
     else if (n < KEEP) continue;
@@ -8248,7 +8251,7 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div clas
   <section class="aiMid">
     <div class="aiBox aiNetBox"><div class="h2">What it sees → what it does <span><i style="background:#ff8a3d"></i>pushes + (left, gas)</span><span><i style="background:#4aa8ff"></i>pushes − (right, brake)</span><span>thicker: stronger · hover a dot</span></div>
       <div class="aiCv"><canvas id="aiNet" title="Each line: an input's pull on an output right now (its value × its weight). Orange pushes + (steer left, throttle), blue − (steer right, brake); thicker, stronger. Hover a dot for what it is"></canvas></div></div>
-    <div class="aiBox aiChartBox"><div class="aiCv"><canvas id="aiChart"></canvas></div><div class="aiCv aiBigOnly"><canvas id="aiChart2"></canvas></div></div>
+    <div class="aiBox aiChartBox"><div class="aiCv"><canvas id="aiChart"></canvas></div><div class="aiCv aiBigOnly"><canvas id="aiChart2"></canvas></div><div class="sub" id="aiPast" style="display:none;grid-column:1/-1"></div></div>
     <div class="aiBox aiMapBox"><div class="aiCv"><canvas id="aiMap" title="Drive it: where it accelerates, coasts and brakes around the course, and where it pulls the handbrake (the latest pass at each point). Hover for the values"></canvas></div><div id="aiMapCmp"></div></div>
   </section>
   <details id="aiCfg"><summary>Inputs, outputs and penalties</summary>
@@ -8416,11 +8419,65 @@ AI.el.querySelector('#aiWatch').addEventListener('click', e => {
   aiShow();
 });
 AI.el.querySelector('#aiHQ').addEventListener('change', e => { e.target.blur(); aiSetSize(+e.target.value); });
+// ---- a network's configuration and history (#351)
+const AI_CFG_LOCAL = ['cores', 'draw', 'ped3d', 'speed'];             // this machine's, not the network's
+const AI_PAST_MAX = 16, AI_PAST_PTS = 300;                             // circuits kept before this one; their charts' points
+// the settings it is trained with: the lab's, the car's setup, the lap it follows (whose: the recording stays here)
+function aiNetConfig() {
+  const cfg = {}; for (const k in AI_CFG) if (!AI_CFG_LOCAL.includes(k)) cfg[k] = AI_CFG[k];
+  const D = aiDemoNow();
+  return { cfg, pen: { ...AI_PEN }, gens: AI.gens, stopAfter: AI.stopAfter, exam: aiExamKind(),
+    setup: { vehicle: VEH.key, awd: !!car.awd, split: car.split, p: car.pIdx, psi: PRESSURES[car.pIdx]?.psi ?? null },
+    follow: D ? { who: String(D.who || ''), time: D.time ?? null, src: String(D.src || '') } : null };
+}
+// a network's settings put back in the lab (and its setup on the car, if it is this car); false: it has none (saved before #351)
+function aiNetConfigApply(c) {
+  if (!c || typeof c !== 'object' || !c.cfg || typeof c.cfg !== 'object') return false;
+  aiConfigRead({ ...c.cfg, pen: c.pen, gens: c.gens, stopAfter: c.stopAfter, h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb });
+  const S = c.setup;
+  if (S && S.vehicle === VEH.key) {
+    if (typeof S.awd === 'boolean') setDrive(S.awd);
+    if (Number.isFinite(S.split)) setSplit(S.split);
+    if (Number.isInteger(S.p)) setPressure(S.p);
+  }
+  aiKeepConfig();
+  return true;
+}
+const aiTrackName = () => (typeof TRK !== 'undefined' && TRK.list?.find(t => t.key === courseKey())?.name) || null;
+// a chart of at most AI_PAST_PTS points: every step-th generation's
+function aiThin(h) {
+  h = Array.isArray(h) ? h : [];
+  const step = Math.max(1, Math.ceil(h.length / AI_PAST_PTS));
+  return { step, h: step > 1 ? h.filter((_, i) => i % step === 0) : h.slice() };
+}
+// where a training (a file's, the server's) was made: one stint of a network's history
+function aiStintOf(d) {
+  return { course: String(d.course || ''), track: d.track ? String(d.track) : null, ground: String(d.ground || ''), vehicle: String(d.vehicle || ''), vehicleName: String(d.vehicleName || ''),
+    from: Math.max(0, d.from | 0), to: Math.max(0, d.gen | 0), bestLap: Number.isFinite(d.bestLap) ? d.bestLap : null, bestFit: Number.isFinite(d.bestFit) ? d.bestFit : -1,
+    config: d.config && typeof d.config === 'object' ? d.config : null, savedAt: d.savedAt ? String(d.savedAt) : null };
+}
+function aiPastRead(d) {
+  const P = Array.isArray(d.past) ? d.past.filter(p => p && typeof p === 'object') : [];
+  const H = Array.isArray(d.pastHist) ? d.pastHist : [];
+  AI.past = P.slice(-AI_PAST_MAX);
+  AI.pastHist = AI.past.map((_, i) => { const x = H[H.length - AI.past.length + i]; return x && Array.isArray(x.h) ? x : null; });   // (the last ones: the charts line up with the stints)
+  AI.fromGen = Number.isInteger(d.from) && d.from >= 0 ? d.from : 0;
+}
+// under the chart: the circuits it was trained on before this one
+function aiPastShow() {
+  const el = AI.el?.querySelector('#aiPast'); if (!el) return;
+  const P = AI.past || [];
+  el.style.display = P.length ? '' : 'none';
+  if (!P.length) { el.replaceChildren(); return; }
+  const line = p => `${p.track || (p.course ? 'a course of its own' : 'another course')} (${String(p.ground || '').toLowerCase()}${p.vehicle !== VEH.key ? ', ' + (p.vehicleName || p.vehicle) : ''}): generations ${p.from}–${p.to}${p.bestLap != null ? ', best lap ' + fmt(p.bestLap) : ''}`;
+  el.textContent = `Trained before on ${P.map(line).join(' · ')} · here from generation ${AI.fromGen}`;
+}
 // a training as a file or on the server: to keep, share, or carry to another browser (the browser keeps it anyway, per course, car and size)
 function aiExport() {
   if (aiKey() !== AI.key) aiLoad();
   return { kind: 'carsim-autopilot', version: 2, vehicle: VEH.key, vehicleName: VEH.name, course: courseKey(), ground: groundName(), h: AI.h, inputs: AI.inputs, handbrake: AI.hb, keyPedals: AI.kp, keySteering: AI.ks, noBrake: AI.nb, weights: AI.np,
-    w: [...AI.w], best: AI.best && [...AI.best], gen: AI.gen, bestFit: AI.bestFit, bestLap: AI.bestLap, hist: AI.hist, adam: { m: [...AI.m], v: [...AI.v], k: AI.k }, savedAt: new Date().toISOString() };
+    w: [...AI.w], best: AI.best && [...AI.best], gen: AI.gen, bestFit: AI.bestFit, bestLap: AI.bestLap, hist: AI.hist, adam: { m: [...AI.m], v: [...AI.v], k: AI.k }, savedAt: new Date().toISOString(),
+    track: aiTrackName(), config: aiNetConfig(), from: AI.fromGen, past: AI.past, pastHist: AI.pastHist };   // (#351)
 }
 // a training (a file's, the server's) in place of this course and car's with its inputs; false if it isn't one
 function aiImport(d, what = 'Training') {
@@ -8430,15 +8487,23 @@ function aiImport(d, what = 'Training') {
   const other = [d.vehicle !== VEH.key && `the ${d.vehicleName || d.vehicle}`, d.course !== courseKey() && 'another course or ground'].filter(Boolean);
   if (other.length && !confirm(`This training was made with ${other.join(' and ')}. Load it for the ${VEH.name} here anyway? (It may drive worse, and Train more carries on from it.)`)) return false;
   if (AI.training) aiTrain(false);
+  const withCfg = aiNetConfigApply(d.config);                         // (#351: its settings, as it was trained)
   AI.drive = false; AI.h = d.h; aiSetInputs(ins, !!d.handbrake, true, !!d.keyPedals, !!d.keySteering, !!d.noBrake); aiLoad();   // this course, car, size and inputs: replaced by it
   const n = AI.np, ad = d.adam && arr(d.adam.m, n) && arr(d.adam.v, n) ? d.adam : null;
   // made elsewhere: its record doesn't count here (Drive it uses its weights; the next exam sets the score)
   Object.assign(AI, { w: Float32Array.from(d.w), best: Float32Array.from(d.best || d.w), gen: d.gen | 0, bestFit: other.length ? 0 : Number.isFinite(d.bestFit) ? d.bestFit : 0,
     bestLap: other.length ? null : d.bestLap ?? null, hist: other.length ? [] : Array.isArray(d.hist) ? d.hist : [], sinceBest: 0,
     m: ad ? Float32Array.from(ad.m) : new Float32Array(n), v: ad ? Float32Array.from(ad.v) : new Float32Array(n), k: ad ? ad.k | 0 : 0 });
+  // its history (#351): the circuits it was trained on before; made elsewhere, where it was made is one more, and this
+  // circuit's chart starts at its generation
+  aiPastRead(d);
+  if (other.length) {
+    AI.past.push(aiStintOf(d)); AI.pastHist.push(aiThin(d.hist)); AI.fromGen = Math.max(0, d.gen | 0);
+    AI.past = AI.past.slice(-AI_PAST_MAX); AI.pastHist = AI.pastHist.slice(-AI_PAST_MAX);
+  }
   AI.ident = typeof d.id === 'string' && d.name ? { id: d.id, name: String(d.name), creator: String(d.ownerName || 'Driver'), sig: aiNetSig(AI.best || AI.w) } : null;
   aiSave(); aiShow();
-  flash(`${what} loaded: ${AI.np} weights, generation ${AI.gen}`, '#9fd4ff', 2);
+  flash(`${what} loaded: ${AI.np} weights, generation ${AI.gen}${withCfg ? ', with its settings' : ''}${AI.past.length ? `, trained on ${AI.past.length + 1} circuits` : ''}`, '#9fd4ff', 2.5);
   return true;
 }
 AI.el.querySelector('#aiSaveF').addEventListener('click', e => {
@@ -8475,7 +8540,9 @@ AI.el.querySelector('#aiSaveS').addEventListener('click', async e => {
 async function aiSaveServer(name, d = aiExport()) {
   name = String(name || '').trim();
   if (!name) throw new Error('Give it a name');
-  const r = await aiApi('', { method: 'POST', body: JSON.stringify({ name, training: { ...d, hist: (d.hist || []).slice(-300) } }) });
+  let t = { ...d, hist: (d.hist || []).slice(-2000) };
+  if (JSON.stringify(t).length > 500000) t = { ...t, hist: t.hist.slice(-300), pastHist: (t.pastHist || []).map(x => { const k = x ? Math.ceil(x.h.length / 60) : 1; return k > 1 ? { step: x.step * k, h: x.h.filter((_, i) => i % k === 0) } : x; }) };
+  const r = await aiApi('', { method: 'POST', body: JSON.stringify({ name, training: t }) });
   const a = r?.autopilot, sw = d.best || d.w;
   if (a?.id && sw && AI.np === sw.length && aiNetSig(AI.best || AI.w) === aiNetSig(sw)) { AI.ident = { id: a.id, name: a.name || name, creator: a.ownerName || 'Driver', sig: aiNetSig(sw) }; aiSave(); }
   flash(`Saved on the server: ${name}`, '#9fd4ff', 2); if (AI.listOpen) aiServerList();
@@ -8498,7 +8565,7 @@ async function aiServerList() {
   if (!list.length) { box.replaceChildren(el('div', 'sub', 'Nothing saved on the server yet.')); return; }
   box.replaceChildren(...list.slice(0, 40).map(a => {
     const row = el('div', 'srv'), info = el('div', 'si');
-    info.append(el('b', null, a.name), el('div', 'sub', `${a.mine ? 'yours' : 'by ' + a.ownerName} · ${a.vehicleName || a.vehicle} · ${a.ground}${here(a) ? ' · this car and course' : ''} · ${a.bestLap != null ? 'lap ' + fmt(a.bestLap) : 'no lap yet'} · gen ${a.gen} · ${a.weights} weights`));
+    info.append(el('b', null, a.name), el('div', 'sub', `${a.mine ? 'yours' : 'by ' + a.ownerName} · ${a.vehicleName || a.vehicle} · ${a.ground}${here(a) ? ' · this car and course' : ''} · ${a.bestLap != null ? 'lap ' + fmt(a.bestLap) : 'no lap yet'} · gen ${a.gen} · ${a.weights} weights${a.past?.length ? ` · trained on ${a.past.length + 1} circuits` : ''}`));
     const load = el('button', null, 'Load');
     load.addEventListener('click', async ev => {
       ev.currentTarget.blur();
@@ -8554,6 +8621,7 @@ function aiToggle() {
 }
 function aiShow() {
   if (!AI.open) return;
+  aiPastShow();
   if (AI.el.style.top) AI.el.style.top = AI.el.style.maxHeight = '';     // (the drawer: the window's height, its CSS)
   const len = botPath().len, pct = f => Math.min(100, Math.round(f / len * 100));
   const best = AI.bestFit < 0 ? 'nothing yet' : AI.bestLap != null ? `a full lap in ${fmt(AI.bestLap)}${AI.sinceBest ? ` <span style="opacity:.7">(${AI.sinceBest} generation${AI.sinceBest > 1 ? 's' : ''} ago${AI.stopAfter && AI.training ? `; stops after ${AI.stopAfter - AI.dry} more without one` : ''})</span>` : ''}` : `${Math.round(AI.bestFit)} m of ${Math.round(len)} m (${pct(AI.bestFit)} %)`;
@@ -8950,6 +9018,7 @@ setTimeout(() => {
   // for tests and the console: step the physics without drawing (headless browsers draw at a frame a second)
   Object.assign(window.__sim, { MP, placeAtGate, resetCar, switchVehicle, setCamMode, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { simulate(dt); mpFrame(dt); } } });
   Object.assign(window.__sim, { ai: AI, aiTrainSync, aiTry, aiDrive });
+  Object.assign(window.__sim, { aiExport, aiImport, aiNetConfig, aiCfg: AI_CFG, aiPen: AI_PEN });   // (#351)
   Object.assign(window.__sim, { sound: { muted: () => muted, set: setMuted } });   // (the rail's Sound, the room's page; #343)
   Object.assign(window.__sim, { aiFollow, aiFollowing, aiMyLap, aiKeepLap, aiLapClean, aiLapProfile, aiMapCmp });   // (a lap to follow, #340)
   Object.assign(window.__sim, { setup: SETUP });                                  // (the Car setup drawer, ui.js)

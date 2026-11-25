@@ -49,11 +49,37 @@ test('autopilots: what isn\'t a training, or is too much, is refused', async () 
   await no({ training: training({ best: [1, 2] }) });
   await no({ training: training({ inputs: [] }) });
   await no({ training: training({ inputs: ['<script>'] }) });
-  const c = await s.create({ name: 'x', training: training({ hist: Array(1000).fill([1, 2, null]), extra: 'dropped' }), owner: 'o' });
+  const c = await s.create({ name: 'x', training: training({ hist: Array(AUTOPILOT_LIMITS.histMax + 500).fill([1, 2, null]), extra: 'dropped' }), owner: 'o' });
   assert.equal((await s.get(c.id)).hist.length, AUTOPILOT_LIMITS.histMax); assert.equal((await s.get(c.id)).extra, undefined);
   for (let i = 1; i < AUTOPILOT_LIMITS.perOwner; i++) await s.create({ name: 'x' + i, training: training(), owner: 'o' });
   await no({ training: training() }, 409);
   assert.ok((await s.create({ name: 'other owner', training: training(), owner: 'p' })).id);
+});
+
+test('autopilots: a network keeps its configuration and the circuits it was trained on before, with their charts (#351)', async () => {
+  const s = new AutopilotStore(T.db);
+  const config = { cfg: { crash: 300, flying: true, rival: 'car', rivalCar: 'gt500', '<bad key>': 1, list: [1, 2] }, pen: { offRoad: 2, damage: 150 }, gens: 0, stopAfter: 40,
+    exam: 'flying2 1 0.84', setup: { vehicle: 'buggy', awd: true, split: 0.35, p: 2, psi: 18 }, follow: { who: 'Ann', time: 61.2, src: 'mine', deep: { x: 1 } }, fn: () => 1 };
+  const stint = (course, from, to) => ({ course, track: 'Serpentine', ground: 'Road', vehicle: 'gt500', vehicleName: 'Mustang GT500', from, to, bestLap: 70.5, bestFit: 1500, config, savedAt: '2026-11-25T10:00:00Z' });
+  const past = Array.from({ length: AUTOPILOT_LIMITS.pastMax + 2 }, (_, i) => stint('c' + i, i * 10, i * 10 + 10));
+  const pastHist = past.map((_, i) => i === past.length - 1 ? { step: 3, h: Array(AUTOPILOT_LIMITS.pastHistMax + 50).fill([1, 2, 60]) } : i === past.length - 2 ? 'junk' : { step: 1, h: [[5, 4, null]] });
+  const a = await s.create({ name: 'travelled', owner: 'o', training: training({ track: 'Trefoil', config, from: 170, past, pastHist }) });
+  const full = await s.get(a.id);
+  assert.deepEqual(full.config.cfg, { crash: 300, flying: true, rival: 'car', rivalCar: 'gt500' });      // plain values only
+  assert.deepEqual(full.config.pen, { offRoad: 2, damage: 150 }); assert.equal(full.config.stopAfter, 40);
+  assert.deepEqual(full.config.setup, config.setup); assert.deepEqual(full.config.follow, { who: 'Ann', time: 61.2, src: 'mine' });   // (one level down)
+  assert.equal(full.from, 170); assert.equal(full.track, 'Trefoil');
+  assert.equal(full.past.length, AUTOPILOT_LIMITS.pastMax); assert.equal(full.past[0].course, 'c2');           // the latest kept
+  assert.equal(full.past.at(-1).to, 180); assert.deepEqual(full.past.at(-1).config.setup, config.setup);
+  assert.equal(full.pastHist.length, full.past.length);                                                        // lined up
+  assert.equal(full.pastHist.at(-1).step, 3); assert.equal(full.pastHist.at(-1).h.length, AUTOPILOT_LIMITS.pastHistMax);
+  assert.equal(full.pastHist.at(-2), null); assert.deepEqual(full.pastHist[0].h, [[5, 4, null]]);
+  const [listed] = await s.list();                                                                               // the list: no charts, no settings
+  assert.equal(listed.past.length, AUTOPILOT_LIMITS.pastMax); assert.equal(listed.past[0].config, undefined); assert.equal(listed.pastHist, undefined);
+  assert.deepEqual(listed.past.at(-1), { course: 'c17', track: 'Serpentine', ground: 'Road', vehicle: 'gt500', vehicleName: 'Mustang GT500', from: 170, to: 180, bestLap: 70.5 });
+  const old = await s.create({ name: 'before #351', owner: 'o', training: training() });                       // one saved before: none of it
+  const o = await s.get(old.id);
+  assert.equal(o.config, null); assert.deepEqual(o.past, []); assert.deepEqual(o.pastHist, []); assert.equal(o.from, 0);
 });
 
 test('autopilots: every hidden layer the sim offers fits, the biggest with every input', async () => {

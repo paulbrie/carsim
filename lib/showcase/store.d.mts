@@ -4,6 +4,8 @@ export interface Network {
   id: string; name: string; ownerName: string; savedAt: number; vehicle: string; course: string; ground: string; track: string | null;
   h: number; inputs: string[]; handbrake: boolean; noBrake: boolean; keyPedals: boolean; keySteering: boolean;
   weights: number; gen: number; bestLap: number | null; w: number[] | null;
+  /** the circuits it was trained on before (#351): track is a map's id when the course is one's as it is now (board()), trackName its name when saved */
+  past: { course: string; track?: string | null; trackName: string | null; ground: string; vehicle: string; from: number; to: number; bestLap: number | null }[];
 }
 /** ghost: the lap's path is kept (it can be watched against, /duel). */
 export interface HumanLap { id: string; name: string; image: string | null; time: number; at: number; ghost: boolean }

@@ -290,8 +290,13 @@ function BestLaps({ room, meId, vehicle }: { room: RoomView; meId: string; vehic
           {shown.map(({ e, pos }) => (
             <li key={`${e.id}|${e.vehicle}`} className={cn('flex items-center gap-2.5 rounded-lg p-1.5', e.id === meId && 'bg-primary/10')}>
               <span className="w-5 text-right text-sm tabular-nums text-muted-foreground">{pos}</span>
-              {e.net ? <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-tnn/15 text-tnn"><Brain className="size-4" /></span>
-                : <DriverAvatar name={e.name} image={e.image} className="size-7" />}
+              {/* a network: its brain, with the picture of whoever trained it (#354) */}
+              <span aria-hidden className="relative w-9 shrink-0">
+                {e.net ? <>
+                  <span className="grid size-7 place-items-center rounded-full bg-tnn/15 text-tnn"><Brain className="size-4" /></span>
+                  <DriverAvatar name={e.net.creator} image={e.net.image ?? null} className="absolute right-0 -bottom-1 size-5 ring-2 ring-card [&_[data-slot=avatar-fallback]]:text-[8px]" />
+                </> : <DriverAvatar name={e.name} image={e.image} className="size-7" />}
+              </span>
               <span className="min-w-0 flex-1">
                 <span className={cn('block truncate text-sm font-medium', e.net && 'text-tnn')} title={e.net ? `A network's lap: ${e.net.name}, made by ${e.net.creator}${e.net.weights ? `, ${e.net.weights} weights` : ''}` : undefined}>
                   {e.name}{e.id === meId && <span className="text-muted-foreground"> (you)</span>}

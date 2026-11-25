@@ -369,6 +369,37 @@ test('a network\'s laps are best laps of their own, named and credited as the se
   assert.equal(list()[0].time, 27);
 });
 
+test('a network\'s lap shows its maker\'s picture: kept with the lap, or found for one set before (#354)', async () => {
+  const { RecordStore } = await import('../lib/race/records.mjs');
+  let t = 1_000_000;
+  const asked = [];
+  const nets = { info: async id => { asked.push(id); return id === 'abcdefabcdef' ? { name: 'Swift', owner: 'u2', ownerName: 'Cleo', weights: 42, h: 4 } : null; } };
+  const store = new RecordStore(null, { now: () => t });
+  // laps of before: Cleo's saved network, Ann's unsaved one, without pictures; Cleo's own lap with hers
+  store.submit({ map: 'figure-8', mv: 0, ground: 'sand', vehicle: 'buggy', user: { id: 'tnn:abcdefabcdef', name: 'Swift' }, time: 40, net: { autopilot: 'abcdefabcdef', name: 'Swift', creator: 'Cleo' } });
+  store.submit({ map: 'figure-8', mv: 0, ground: 'sand', vehicle: 'buggy', user: { id: 'tnn:local:u1', name: 'Unsaved network' }, time: 41, net: { name: 'Unsaved network', creator: 'Ann' } });
+  store.submit({ map: 'figure-8', mv: 0, ground: 'sand', vehicle: 'buggy', user: { id: 'u2', name: 'Cleo', image: 'https://img/cleo' }, time: 42 });
+  const hub = new RaceHub({ now: () => t, records: store, nets });
+  const inbox = []; const c = hub.connect({ id: 'u1', name: 'Ann', image: 'https://img/ann' }, m => inbox.push(m));
+  const list = () => inbox.filter(m => m.t === 'records').at(-1).list;
+  const settle = () => new Promise(r => setImmediate(r));
+  c.message({ t: 'create' });
+  const byId = id => list().find(e => e.id === id);
+  assert.equal(byId('tnn:local:u1').net.image, 'https://img/ann');               // the player behind it, signed in
+  await settle();                                                                // (the saved one's owner, asked once)
+  assert.equal(byId('tnn:abcdefabcdef').net.image, 'https://img/cleo');           // its owner, from her best lap
+  assert.equal(byId('u2').net, undefined);
+  assert.deepEqual(asked, ['abcdefabcdef']);
+  // a new lap keeps it: Ann's unsaved network, then Cleo's saved one driven by Ann
+  t += 31_000; c.message({ t: 'lap', lap: 1, time: 30, valid: true, net: { id: null } }); await settle();
+  t += 29_000; c.message({ t: 'lap', lap: 2, time: 28, valid: true, net: { id: 'abcdefabcdef' } }); await settle();
+  assert.equal(store.list('figure-8', 'sand').find(e => e.id === 'tnn:local:u1').net.image, 'https://img/ann');
+  assert.equal(store.list('figure-8', 'sand').find(e => e.id === 'tnn:abcdefabcdef').net.image, 'https://img/cleo');
+  // not a picture's address: none
+  const { cleanNet } = await import('../lib/race/records.mjs');
+  assert.equal(cleanNet({ image: 'javascript:alert(1)' }).image, undefined);
+});
+
 test('a network\'s lap driven at 2× or 4× (the lab\'s Drive it sped up) counts; a driver\'s that quick doesn\'t (#353)', async () => {
   const { RecordStore } = await import('../lib/race/records.mjs');
   let t = 1_000_000;

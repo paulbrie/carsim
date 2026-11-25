@@ -39,8 +39,8 @@ export interface RoomView {
 
 /** a driver's best lap with a car on a map and ground (lib/race/records.mjs); splits only if set on this version of the map */
 export interface BestLap { id: string; name: string; image: string | null; vehicle: string; time: number; splits: (number | null)[]; mv: number; at: number; ghost?: boolean; net?: NetMark }
-/** a network drove it (#333): the saved network's id (null: not saved), its name, who made it, its size */
-export interface NetMark { autopilot: string | null; name: string; creator: string; weights: number; h: number }
+/** a network drove it (#333): the saved network's id (null: not saved), its name, who made it, its size; image: its maker's picture (#354) */
+export interface NetMark { autopilot: string | null; name: string; creator: string; weights: number; h: number; image?: string }
 
 /** a best lap's path, to race against (#310): trace as lib/race/records.mjs GHOST describes it, null if there is none */
 export interface GhostLap { map: string; v: number; ground: string; vehicle: string; id: string; name: string; time: number | null; trace: string | null }

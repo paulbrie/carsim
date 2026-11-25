@@ -52,6 +52,8 @@ See README.md for the layout. Notes:
   credited as the server has it: the hub's `netLap` asks `nets`, the autopilots' store) or `tnn:local:<user id>` (one not saved),
   with `net` ({ autopilot, name, creator, weights, h }). Anything that ranks or lists best laps tells the two apart by `net`
   (humans' have none). The sim sends them with `net` (`aiNetMark`: `AI.ident` while the driving weights are the saved ones).
+  `net.image` is the maker's picture (#354, http(s) only: `cleanNet`); a record without one gets it in the hub's `#netPicture`
+  (a saved network's owner from `nets.info`'s `owner`): it is for signed-in pages only, the public ones show no pictures.
 - Bridges' earthworks (`scripts/patches/bridges.py`, after even.py): a bridged crossing keeps its two branches'
   heights apart (`bridgedCrossing`): any profile code that brings crossing branches to one height must skip it.
 - Grounds (#308, `grounds.py`): the world's hills come from the ground: `COUNTRY` (earth or road) builds them with

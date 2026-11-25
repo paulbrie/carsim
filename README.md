@@ -675,6 +675,8 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   server goes by its name and its maker as the server has them (`tnn:<id>`, whoever drives it); one not saved, or
   trained further since it was loaded or saved, is "Unsaved network" by whoever drove it (`tnn:local:<user>`). The
   lists show it in cyan with its maker, its ghost can be raced, and the scoreboard counts it on the network's side.
+  The room's best laps show its maker's picture on its brain (#354: `net.image`, their sign-in's, kept with the lap; a
+  lap set before has it filled in by the hub from the maker as signed in now or their own best laps).
   Driven at 2× or 4× (the lab's speed), a lap takes a half or a quarter of its time on the clock: the server takes
   a network's lap up to 4 times the time since the player's previous one (`NET_SPEED_MAX`, #353; a driver's, as it is).
   Driving alone, its lap is the timer's BEST as ours is, with the network's name and maker under it.

@@ -67,7 +67,7 @@ const nextUpgrade = app.getUpgradeHandler();
 
 // a network's lap (#333) is named and credited as its saved autopilot is
 const autopilots = autopilotStore();
-const nets = { info: async id => { const a = await autopilots.get(id); return a && { name: a.name, ownerName: a.ownerName, weights: a.weights, h: a.h }; } };
+const nets = { info: async id => { const a = await autopilots.get(id); return a && { name: a.name, owner: a.owner, ownerName: a.ownerName, weights: a.weights, h: a.h }; } };
 const hub = new RaceHub({ maps, records, chat, nets });
 const started = Date.now();
 // In development the lists of cars, grounds and weathers are read again when shared.mjs changes: this process

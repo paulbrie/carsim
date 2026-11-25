@@ -8705,10 +8705,19 @@ function aiPlot(cv, o) {
   const gx = [0, n - 1]; if (big && n > 8) gx.splice(1, 0, Math.round((n - 1) / 3), Math.round((n - 1) * 2 / 3));
   [...new Set(gx)].forEach((i, k, a) => { g.textAlign = n === 1 ? 'center' : k === 0 ? 'left' : k === a.length - 1 ? 'right' : 'center'; g.fillText((big && k === 0 ? 'gen. ' : '') + o.xs[i], xs(i), H - Bm + 4); });
   g.textBaseline = 'middle';
-  for (const r of refs) {                                              // the dashed lines: a lap, the best, a driver's best
+  const labs = [];
+  for (const r of refs) {                                              // the dashed lines: a lap, the best, a driver's and a network's best
     g.strokeStyle = r.col || 'rgba(255,255,255,.4)'; g.lineWidth = r.col ? 1.5 : 1; g.setLineDash([5, 5]); g.beginPath(); g.moveTo(L, y(r.v)); g.lineTo(W - R, y(r.v)); g.stroke(); g.setLineDash([]); g.lineWidth = 1;
-    g.textAlign = r.right ? 'right' : 'left'; g.fillStyle = r.col || 'rgba(255,255,255,.6)';
-    g.fillText(r.label, r.right ? W - R - 4 : L + 4, y(r.v) + (y(r.v) - T < fs + 2 ? fs * 0.8 : -fs * 0.8));
+    // its label: over the line (under it at the top), at the end asked for; (#352) not over another label: the line's other side,
+    // then the other end, then beside the other on its row, then its short form (the time) so; cut to the chart's width
+    const yl = y(r.v), dy = yl - T < fs + 2 ? fs * 0.8 : -fs * 0.8;
+    const fit = s => { if (g.measureText(s).width > pw - 8) { while (s.length > 4 && g.measureText(s + '…').width > pw - 8) s = s.slice(0, -1); s += '…'; } return s; };
+    const free = b => b.x0 >= L - 2 && b.ly > T - fs * 0.4 && b.ly < T + ph + fs * 0.4 && !labs.some(q => q.x0 < b.x1 + 6 && b.x0 < q.x1 + 6 && Math.abs(q.ly - b.ly) < fs + 1);
+    const spots = s => { const lw = g.measureText(s).width, at = (rt, ly, xe) => { const x1 = xe ?? (rt ? W - R - 4 : L + 4 + lw); return { s, x0: x1 - lw, x1, ly }; };
+      return [at(!!r.right, yl + dy), at(!!r.right, yl - dy), at(!r.right, yl + dy), at(!r.right, yl - dy), ...labs.filter(q => Math.abs(q.ly - yl - dy) < fs + 1).map(q => at(true, yl + dy, q.x0 - 10))]; };
+    const all = [...spots(fit(r.label)), ...(r.short ? spots(r.short) : [])], lp = all.find(free) || all[0]; labs.push(lp);
+    g.textAlign = 'left'; g.fillStyle = r.col || 'rgba(255,255,255,.6)';
+    g.fillText(lp.s, lp.x0, lp.ly);
   }
   for (const s of o.series) {
     g.strokeStyle = s.col; g.fillStyle = s.col; g.lineWidth = big ? 2 : 1.5; g.setLineDash(s.dash || []); g.beginPath(); let on = false, py = 0;
@@ -8728,12 +8737,15 @@ function aiPlot(cv, o) {
   const tb = f(600), tn = f(400);
   aiTipBox(g, x, cv._hy ?? T, W, H, [[`Generation ${o.xs[i]}`, tb], ...o.series.map(s => [`${s.name}: ${s.vals[i] == null ? '—' : o.fmt(s.vals[i])}`, tn]), ...(o.more ? [[o.more(i), tn]] : [])].filter(r => r[0]), fs);
 }
-// the best lap a driver has done with this car on this course and ground (a race room's records: the autopilot's laps
-// are never posted there); null outside a room, or none yet
-function aiHumanBest() {
-  const e = MP.on && Array.isArray(MP.carRecs) ? MP.carRecs[0] : null;
-  return e && Number.isFinite(e.time) ? { t: e.time, name: e.name || 'a driver' } : null;
+// the best lap with this car on this course and ground (a race room's records) by a driver, and the best by a network: a
+// network's laps are best laps too (with net), so the room's first may be a network's (#352); null outside a room, or none yet
+function aiRoomBest(byNet) {
+  let b = null;
+  for (const e of MP.on && Array.isArray(MP.carRecs) ? MP.carRecs : []) if (!!e.net === byNet && Number.isFinite(e.time) && (!b || e.time < b.time)) b = e;
+  return b;
 }
+function aiHumanBest() { const e = aiRoomBest(false); return e ? { t: e.time, name: e.name || 'a driver' } : null; }
+function aiNetBest() { const e = aiRoomBest(true); return e ? { t: e.time, name: e.net.name || e.name || 'a network', creator: e.net.creator || '' } : null; }
 // ---------- Drive it on the map: the pedals and the handbrake where it used them ----------
 // at each point of the course's line, the latest pass's place, pedals and speed (a decision at a time: ~1 m apart at
 // 200 km/h, as the line's points): AI.map, from Drive it's start until the next
@@ -8988,8 +9000,9 @@ function aiChartsDraw() {
   const lapc = { xs, title: AI.big ? 'Exam lap time' : `lap times · best ${fmt(AI.bestLap)}`, series: [{ name: 'exam lap', col: AI_C1, vals: laps, dots: true }, { name: 'best so far', col: AI_C2, vals: bestSo, step: true }],
     invert: true, tick: t => t >= 60 ? fmt(t).slice(0, -2) : t.toFixed(t < 10 ? 2 : 1) + ' s', fmt, minSpan: 2, empty: 'No full lap yet: its lap times show here once it laps',
     ref: AI.bestLap != null && !AI.big ? { v: AI.bestLap, label: `best ${fmt(AI.bestLap)}` } : null };
-  const hb = aiHumanBest();
-  if (hb) lapc.refs = [{ v: hb.t, label: `${AI.big ? 'best by a driver: ' : ''}${fmt(hb.t)} ${hb.name.slice(0, 18)}`, col: '#f2c14e', right: true }];   // (gold: the lap to beat)   // (full screen: the best so far is a line)
+  const hb = aiHumanBest(), nb = aiNetBest();
+  lapc.refs = [hb && { v: hb.t, label: `${AI.big ? 'best by a driver: ' : ''}${fmt(hb.t)} ${hb.name.slice(0, 18)}`, col: '#f2c14e', right: true, short: fmt(hb.t) },   // (gold: the lap to beat)   // (full screen: the best so far is a line)
+    nb && { v: nb.t, label: `${AI.big ? 'best by a network: ' : ''}${fmt(nb.t)} ${nb.name.slice(0, 18)}${AI.big && nb.creator ? ` (${nb.creator.slice(0, 14)})` : ''}`, col: '#58d6e6', right: true, short: fmt(nb.t) }].filter(Boolean);   // (#352: cyan, a network's)
   if (!AI.big) { const lapping = AI.bestLap != null && laps.some(t => t != null); if (lapping) lapc.series = lapc.series.slice(0, 1); aiPlot(AI.el.querySelector('#aiChart'), lapping ? lapc : score); return; }
   aiPlot(AI.el.querySelector('#aiChart'), score); aiPlot(AI.el.querySelector('#aiChart2'), lapc);
 }

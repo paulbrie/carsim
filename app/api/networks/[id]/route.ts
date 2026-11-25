@@ -6,7 +6,7 @@ import { publicName } from '@/lib/format';
 export const dynamic = 'force-dynamic';
 type Ctx = { params: Promise<{ id: string }> };
 
-// GET: a saved network, to watch it drive (#336: the networks page's Watch it drive, /sim/index.html?net=<id>). No
+// GET: a saved network, to watch it drive (#336's preview; the duels' page, /duel, which drives it against a human's lap). No
 // sign-in, as the page itself: only what it takes to drive (its inputs, size and driving weights: the best ones) and
 // what the page already shows about it. Not the optimiser's state, the chart or who saved it beyond the page's name.
 export async function GET(_req: Request, { params }: Ctx) {

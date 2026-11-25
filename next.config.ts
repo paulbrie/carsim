@@ -9,11 +9,11 @@ const nextConfig: NextConfig = {
   // `next dev` reached through a public host (e.g. the box's https://<host>/projects/carsim): Next blocks
   // its dev resources (HMR, so hydration) for hosts it doesn't know
   allowedDevOrigins: (process.env.ALLOWED_DEV_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
-  // short addresses for the sim's own page (a static file, public/sim): driving alone, and the networks' lab
+  // the old addresses of driving alone and the lab (gone: the sim is only in race rooms and the map editor)
   async redirects() {
     return [
-      { source: '/drive', destination: '/sim/index.html', permanent: false },
-      { source: '/lab', destination: '/sim/index.html?lab=1', permanent: false },
+      { source: '/drive', destination: '/lobby', permanent: false },
+      { source: '/lab', destination: '/lobby', permanent: false },
     ];
   },
   async headers() {

@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { Brand } from '@/components/brand';
-import { withBase } from '@/lib/base-path';
 
 export function SiteFooter() {
   const col = 'space-y-2.5 text-sm';
@@ -14,9 +13,7 @@ export function SiteFooter() {
         </div>
         <nav aria-label="Play" className={col}>
           <div className="eyebrow text-muted-foreground/70">Play</div>
-          <a className={`block ${a}`} href={withBase('/drive')}>Drive</a>
-          <a className={`block ${a}`} href={withBase('/lab')}>Train a network</a>
-          <Link className={`block ${a}`} href="/lobby">Race others</Link>
+          <Link className={`block ${a}`} href="/lobby">Race rooms</Link>
         </nav>
         <nav aria-label="Explore" className={col}>
           <div className="eyebrow text-muted-foreground/70">Explore</div>

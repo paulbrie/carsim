@@ -39,9 +39,6 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<{
               ['Your networks', 'saved on the server, for anyone to load and beat.'],
             ].map(([b, t]) => <li key={b} className="flex gap-3"><span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" /><span><b className="font-medium text-foreground">{b}</b>: {t}</span></li>)}
           </ul>
-          <p className="text-sm text-muted-foreground">
-            Just want to drive, or train a network on your own? <a className="font-medium text-foreground underline underline-offset-4" href={withBase('/drive')}>Drive now</a>, no account needed.
-          </p>
         </section>
 
         <section className="panel space-y-5 p-6 sm:p-8" aria-labelledby="signin-title">

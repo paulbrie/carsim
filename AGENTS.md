@@ -23,10 +23,10 @@ See README.md for the layout. Notes:
   index.html, the page's title) `ui.py`, the start menu's tracks (driving a map alone, #329) `tracks.py`, the car's setup (the drive, the split,
   the tires' pressure, kept per car: `SETUP`, #332) `setup.py`, a network's laps as best laps, marked with its name and maker (#333) `net-laps.py`, a saved network's preview (the networks page's Watch it drive, `?net=<id>`, #336) `preview.py`, a training kept whole in the browser (the chart, the last exam, the rivals; storage full: the chart shortened, then a warning, #341) `keep.py`,
   a lap to follow (the driver's best lap kept, the lab's choice, the review against it, #340) `follow.py`,
-  the sound's switch (M, the rail's Sound, #343) `sound.py`,
+  the sound's switch (M, the rail's Sound, #343) `sound.py`, watching a leaderboard duel (`?mp=1&watch=1`, the page `/duel/...` as the room) `watch.py`,
   last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, watch, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -176,7 +176,10 @@ See README.md for the layout. Notes:
   handler, before the editor's and the replay's returns: a key that must work everywhere goes there. Keys pressed in a
   page around the sim (the race room's panel) don't reach its frame: pass on the ones that matter (`SimHandle.mute`).
 - Dev server: `npm run dev` on port 7001 (3000 is the admin). `next.config.ts` is read at start: a change to it
-  (the `/drive` and `/lab` redirects) needs a restart.
+  (the `/drive` and `/lab` redirects, now to `/lobby`) needs a restart.
+- No standalone sim: `server.mjs` redirects `/sim/index.html` to the lobby unless the browser loads it in a frame
+  (`Sec-Fetch-Dest: iframe`): race rooms and the map editor. A headless test that opens the sim must put it in an
+  iframe (or send that header).
 - The database (#318, README: The database): Postgres, `DATABASE_URL` in `.env.local`, the container from
   `docker compose up -d` (port 5554). Tables in `lib/db/schema.mjs`: change it, then `npm run db:generate` and commit
   the new file in `migrations/` (the server applies it at its next start). The stores are async (`await

@@ -6,7 +6,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Brand } from '@/components/brand';
 import { UserMenu } from '@/components/user-menu';
 import { cn } from '@/lib/utils';
-import { withBase } from '@/lib/base-path';
 
 export type NavKey = 'home' | 'leaderboard' | 'networks' | 'tnn' | 'tech' | 'race' | 'maps' | 'signin';
 export interface NavUser { name: string; image: string | null; admin?: boolean }
@@ -39,7 +38,7 @@ export function SiteNav({ user, active, children, className }: { user: NavUser |
         <div className="ml-auto flex items-center gap-2">
           {children}
           <Button asChild size="lg" className="hidden px-3.5 font-semibold sm:inline-flex">
-            <a href={withBase('/drive')}><Play className="fill-current" /> Drive</a>
+            <Link href="/lobby"><Play className="fill-current" /> Drive</Link>
           </Button>
           {user ? <UserMenu user={user} /> : active !== 'signin' && <Button asChild variant="glass" size="lg" className="px-3.5"><Link href="/signin">Sign in</Link></Button>}
           <DropdownMenu>
@@ -47,8 +46,6 @@ export function SiteNav({ user, active, children, className }: { user: NavUser |
               <Button variant="ghost" size="icon-lg" className="md:hidden" aria-label="Menu"><Menu /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem asChild><a href={withBase('/drive')}>Drive now</a></DropdownMenuItem>
-              <DropdownMenuItem asChild><a href={withBase('/lab')}>Train a network</a></DropdownMenuItem>
               {LINKS.map(l => <DropdownMenuItem key={l.key} asChild><Link href={l.href}>{l.label}</Link></DropdownMenuItem>)}
               <DropdownMenuItem asChild><Link href="/#how">How it works</Link></DropdownMenuItem>
             </DropdownMenuContent>

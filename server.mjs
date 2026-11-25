@@ -88,7 +88,20 @@ if (dev) {
 // maxPayload: a best lap's path (#310) is the biggest message
 const wss = new WebSocketServer({ noServer: true, maxPayload: 80 * 1024, perMessageDeflate: false });
 
+// The sim's page is not a page of its own: only race rooms and the map editor show it, in a frame. Opened in the
+// browser's window (Sec-Fetch-Dest: document) it goes to the lobby; the page checks it is in a frame too (a proxy
+// that drops the header must not break the rooms, so only an explicit 'document' is turned away here).
+const simPages = new Set([`${base}/sim`, `${base}/sim/`, `${base}/sim/index.html`]);
 const server = createServer((req, res) => {
+  const path = (req.url || '/').split('?')[0];
+  if (simPages.has(path)) {
+    if (req.headers['sec-fetch-dest'] === 'document') {
+      res.writeHead(302, { location: `${base}/lobby`, 'cache-control': 'no-store', vary: 'Sec-Fetch-Dest' });
+      res.end();
+      return;
+    }
+    res.setHeader('vary', 'Sec-Fetch-Dest');
+  }
   if (req.url === `${base}/api/health`) {
     // (200 with db: false when the database is away: the process is up, and Railway's check is of the process)
     pingDb().then(db => {

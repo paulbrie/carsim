@@ -3,14 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSubject } from 'subjecto/react';
 import { toast } from 'sonner';
-import { Brain, Flag, LogIn, Play, Users } from 'lucide-react';
+import { Flag, LogIn, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SiteNav } from '@/components/site-nav';
 import { GroundControl, LapsControl, StatusBadge, TrackPicker, WeatherControl, groundName } from '@/components/race-controls';
 import { cn } from '@/lib/utils';
-import { withBase } from '@/lib/base-path';
 import { useMaps } from '@/lib/client/maps';
 import { connect, me$, onError, room$, rooms$, send, setWantedRoom, status$ } from '@/lib/client/net';
 import { ChatBox } from '@/components/chat';
@@ -147,18 +146,6 @@ export function Lobby({ user }: { user: { name: string; image: string | null; ad
               </ul>
             )}
 
-            <div className="grid gap-3 pt-4 sm:grid-cols-2">
-              <a href={withBase('/drive')} className="group rounded-2xl border border-white/8 bg-white/3 p-5 outline-none transition-colors hover:border-human/40 focus-visible:ring-2 focus-visible:ring-ring">
-                <Play className="size-5 fill-current text-human" aria-hidden />
-                <p className="mt-3 font-semibold">Drive alone</p>
-                <p className="mt-1 text-sm text-muted-foreground">No room, no clock but yours: any car, bots if you like, the course editor.</p>
-              </a>
-              <a href={withBase('/lab')} className="group rounded-2xl border border-white/8 bg-white/3 p-5 outline-none transition-colors hover:border-tnn/40 focus-visible:ring-2 focus-visible:ring-ring">
-                <Brain className="size-5 text-tnn" aria-hidden />
-                <p className="mt-3 font-semibold">Train a network</p>
-                <p className="mt-1 text-sm text-muted-foreground">Open the lab and teach a tiny neural network to drive a lap.</p>
-              </a>
-            </div>
           </section>
         </div>
       </main>

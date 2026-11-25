@@ -67,16 +67,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
             </p>
             <div className="rise rise-3 flex flex-wrap items-center gap-3">
               <Button asChild size="xl" className="glow-human">
-                <a href={withBase('/drive')}><Play className="fill-current" /> Drive now</a>
+                <Link href="/lobby"><Play className="fill-current" /> Drive now</Link>
               </Button>
               <Button asChild size="xl" variant="tnn">
-                <a href={withBase('/lab')}><Brain /> Train a network</a>
-              </Button>
-              <Button asChild size="xl" variant="glass">
-                <Link href="/lobby"><Users /> Race others</Link>
+                <Link href="/lobby"><Brain /> Train a network</Link>
               </Button>
             </div>
-            <p className="rise rise-4 text-sm text-muted-foreground">No account needed to drive or train. Keyboard, in a desktop browser.</p>
+            <p className="rise rise-4 text-sm text-muted-foreground">Sign in and open a race room, alone or with others: drive, or train a network in its lab. Keyboard, in a desktop browser.</p>
           </div>
 
           <div className="rise rise-2 min-w-0">
@@ -109,8 +106,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
         <div className="grid gap-5 lg:grid-cols-3">
           <Way tone="human" icon={<Gauge />} kicker="Just drive" title="Take the wheel"
             body="Pick one of fifteen cars, from a dune buggy to a 567 kW Mustang, and a ground: sand that ruts under your tyres, firm earth, or tarmac. Every gate, as fast as you can."
-            points={['No account, no setup', 'Bots to race against, and replays', 'Race rooms for up to eight drivers']}>
-            <Button asChild size="lg" className="px-4"><a href={withBase('/drive')}><Play className="fill-current" /> Drive now</a></Button>
+            points={['A room of your own, or up to eight drivers', 'A ghost of your best lap to chase', 'Every valid lap on the leaderboard']}>
+            <Button asChild size="lg" className="px-4"><Link href="/lobby"><Play className="fill-current" /> Open a race room</Link></Button>
           </Way>
           <Way tone="both" icon={<Swords />} kicker="Drive and build" title="Race your own creation"
             body="Set a lap, then train a network on the same track with the same car and find out which of you is quicker. Your best laps and your networks' sit side by side on the leaderboard."
@@ -120,7 +117,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
           <Way tone="tnn" icon={<Brain />} kicker="Just build" title="Never touch the wheel"
             body="Choose what the network sees, how big it is and what it is punished for. Press Train and watch it go from leaving the road at the first bend to lapping, in minutes, on every core you give it."
             points={['Runs in your browser, nothing to install', 'See every weight pull, live', 'Save it, share it, load anyone’s']}>
-            <Button asChild size="lg" variant="tnn" className="px-4"><a href={withBase('/lab')}><Brain /> Open the lab</a></Button>
+            <Button asChild size="lg" variant="tnn" className="px-4"><Link href="/lobby"><Brain /> Train in a race room</Link></Button>
           </Way>
         </div>
         <Shot src="/showcase/drive.webp" w={1440} h={900} alt="The drive: a red Audi RS 6 Avant on the start line seen from behind, the lap timer at the top, the minimap and the controls on the right, the speedometer at the bottom."
@@ -197,7 +194,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
             [<Gauge key="i" />, 'Suspension and drivetrain', 'Sprung wheels on uneven ground, rear or all-wheel drive with a front-to-rear split you can move, traction control and ABS you can switch off.'],
             [<Repeat key="i" />, 'Damage that stays', 'Hit a gate post and the body crumples, glass cracks and breaks, parts come off, and the car drives worse for it.'],
             [<Timer key="i" />, 'Laps to the thousandth', 'Every gate in order or the lap does not count. Checkpoint splits, replays, and in race rooms a ghost car of the best lap.'],
-            [<Users key="i" />, 'Tracks you can make', 'A course editor with banking, bridges and grading, a circuit generator, and weather from clear sky to rain.'],
+            [<Users key="i" />, 'Tracks made with care', 'Shaped in a course editor with banking, bridges and grading, some from a circuit generator, and raced in weather from clear sky to rain.'],
           ].map(([icon, t, b]) => (
             <div key={t as string} className="rounded-2xl border border-white/8 bg-white/3 p-5">
               <div className="mb-3 flex size-9 items-center justify-center rounded-lg bg-white/6 text-foreground [&_svg]:size-4.5">{icon}</div>
@@ -238,8 +235,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
             {lead ? <>The lap to beat on {track(lead.board.track).name} is <span className="num text-foreground">{fmtLap(Math.min(lead.duel.human.time, lead.duel.tnn.time))}</span>, set by a {lead.duel.gap < 0 ? `network of ${lead.duel.tnn.weights} weights` : 'person'}.</> : 'Set the first lap, or train the first network.'}
           </p>
           <div className="relative mt-8 flex flex-wrap justify-center gap-3">
-            <Button asChild size="xl" className="glow-human"><a href={withBase('/drive')}><Play className="fill-current" /> Drive now</a></Button>
-            <Button asChild size="xl" variant="tnn"><a href={withBase('/lab')}><Brain /> Train a network</a></Button>
+            <Button asChild size="xl" className="glow-human"><Link href="/lobby"><Play className="fill-current" /> Drive now</Link></Button>
+            <Button asChild size="xl" variant="tnn"><Link href="/lobby"><Brain /> Train a network</Link></Button>
           </div>
         </div>
       </section>
@@ -269,7 +266,9 @@ function Headline({ board, duel, track, net, full }: { board: Board; duel: Duel;
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <GapBadge gap={duel.gap} />
-        <a href={withBase('/drive')} className="text-sm font-medium text-muted-foreground hover:text-foreground">Think you can beat both? →</a>
+        {duel.human.ghost && duel.tnn.saved
+          ? <Link href={`/duel/${encodeURIComponent(board.track)}/${board.ground}/${encodeURIComponent(duel.vehicle)}`} className="text-sm font-medium text-muted-foreground hover:text-foreground">Watch this duel →</Link>
+          : <Link href="/lobby" className="text-sm font-medium text-muted-foreground hover:text-foreground">Think you can beat both? →</Link>}
       </div>
 
       {net && (

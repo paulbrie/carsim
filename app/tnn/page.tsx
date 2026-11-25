@@ -7,7 +7,6 @@ import { SiteFooter } from '@/components/site-footer';
 import { NetDiagram, WeightGrid } from '@/components/net-diagram';
 import { EvolutionDemo, NeuronPlayground } from '@/components/tnn-explainer';
 import { carName, groundLabel } from '@/components/showcase';
-import { withBase } from '@/lib/base-path';
 import { fmtGap, fmtLap, publicName } from '@/lib/format';
 import { INPUT_HINTS, netShape } from '@/lib/tnn';
 import { showcase, type Network, type Scoreboard } from '@/lib/showcase/store.mjs';
@@ -79,7 +78,7 @@ export default async function TinyNeuralNetworks() {
             showing it how. This page explains how it works and how it learns. If you can multiply and add, you can follow all of it.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <Button asChild size="lg" variant="tnn" className="px-4"><a href={withBase('/lab')}><Brain /> Train one now</a></Button>
+            <Button asChild size="lg" variant="tnn" className="px-4"><Link href="/lobby"><Brain /> Train one now</Link></Button>
             <Button asChild size="lg" variant="glass" className="px-4"><a href="#neuron">Start reading <ArrowRight /></a></Button>
           </div>
           <dl className="mt-12 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/8 bg-white/8 lg:grid-cols-4">
@@ -351,8 +350,8 @@ export default async function TinyNeuralNetworks() {
               Pick a car and a track, choose what your network sees and how big it is, and press Train. Then see if you can beat it yourself.
             </p>
             <div className="relative mt-8 flex flex-wrap justify-center gap-3">
-              <Button asChild size="xl" variant="tnn"><a href={withBase('/lab')}><Brain /> Open the lab</a></Button>
-              <Button asChild size="xl" className="glow-human"><a href={withBase('/drive')}><Play className="fill-current" /> Drive it yourself</a></Button>
+              <Button asChild size="xl" variant="tnn"><Link href="/lobby"><Brain /> Open the lab</Link></Button>
+              <Button asChild size="xl" className="glow-human"><Link href="/lobby"><Play className="fill-current" /> Drive it yourself</Link></Button>
               <Button asChild size="xl" variant="glass"><Link href="/networks">See trained networks <ArrowRight /></Link></Button>
             </div>
           </div>

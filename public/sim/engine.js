@@ -5534,6 +5534,24 @@ setInterval(() => {
   PV.still = car.vel.length() < 1 ? (PV.still || 0) + 1 : 0;
   if (PV.still >= 4) { PV.still = 0; aiDrive(true); flash('Stuck: from the start again', '#9fd4ff', 1.8); }
 }, 1000);
+// ---------- watching a duel: ?mp=1&watch=1 in the page /duel/<track>/<ground>/<car> ----------
+// The page is the room: course, ground, car, the human's lap as the ghost, then the network to drive ('watch'). Only the
+// camera (C) and the sound (M) answer; the rest of the keys never reach the sim (no driving, no lab: nothing to take over).
+MP.watch = MP.on && MPQ.get('watch') === '1';
+if (MP.watch) {
+  document.body.classList.add('watch');
+  document.head.insertAdjacentHTML('beforeend', '<style>body.watch #uiRail,body.watch #aiPanel{display:none!important}</style>');
+  const pass = e => e.ctrlKey || e.metaKey || e.altKey || e.code === 'KeyC' || e.code === 'KeyM';
+  addEventListener('keydown', e => { if (!pass(e)) e.stopImmediatePropagation(); }, true);
+  addEventListener('keyup', e => { if (!pass(e)) e.stopImmediatePropagation(); }, true);
+}
+function mpWatch(n) {
+  if (!MP.watch) return;
+  if (!aiPreviewLoad(n)) { flash('That network does not fit this sim', '#ffd88a', 6); mpPost({ t: 'watch', ok: false }); return; }
+  aiDrive(true); mpPost({ t: 'watch', ok: true });
+}
+// it keeps driving (stuck: the preview's own restart from the grid, above)
+setInterval(() => { if (MP.watch && AI.preview && !AI.drive && !AI.training && !window.__sim?.paused) aiDrive(true); }, 1000);
 // back to this browser's own training, with its own settings
 function aiPreviewEnd() {
   const P = AI.preview; if (!P) return;
@@ -6049,6 +6067,7 @@ function mpMessage(m) {
     case 'hits': mpPeerHits(m.all); break;
     case 'records': MP.records = m; mpApplyBest(); break;
     case 'ghost': mpGhostMsg(m); break;
+    case 'watch': mpWatch(m.network); break;
     case 'focus': try { window.focus(); } catch (e) { } break;
   }
 }
@@ -7495,7 +7514,7 @@ function aiDrive(on, race = false) {
   if (on) {
     restartRun(); AI.dst = { i: -1, dist: 0, lat: 0 }; AI.dCtl = null; AI.dAcc = 0; AI.map = null;
     if (race) aiRaceStart();
-    flash(race ? 'Autopilot against the rival (any driving key takes over)' : 'Autopilot: hands off (any driving key takes over)', '#9fd4ff', 2.5);
+    if (!MP.watch) flash(race ? 'Autopilot against the rival (any driving key takes over)' : 'Autopilot: hands off (any driving key takes over)', '#9fd4ff', 2.5);
   }
   aiShow();
 }

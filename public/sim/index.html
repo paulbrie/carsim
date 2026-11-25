@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Carsim</title>
+<!-- not a page of its own: only race rooms and the map editor show the sim, in a frame -->
+<script>if (window.top === window) location.replace(new URL('../lobby', location.href));</script>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#c9b48f;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
   canvas{display:block}

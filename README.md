@@ -11,8 +11,9 @@ car by car and track by track, is the leaderboard.
 | | |
 |---|---|
 | `/` | the home page, public: the closest duel on the board, the three ways in, the scoreboard, how a network drives and learns, the simulator, the findings (`app/page.tsx`) |
-| `/drive`, `/lab` | the sim alone (`/sim/index.html`), and the same with the TNN lab opening once a car and ground are picked (`?lab=1`); redirects in `next.config.ts`; no account needed. Its start menu picks the track first: the race rooms' maps or the course of one's own (below) |
+| `/drive`, `/lab` | old addresses, now redirects to `/lobby` (`next.config.ts`): there is no driving alone any more. The sim (`/sim/index.html`) is only shown in a frame, by a race room and the map editor: opened in the browser's window it redirects to the lobby (`server.mjs`, by the request's `Sec-Fetch-Dest`) |
 | `/leaderboard`, `/networks` | public: humans vs networks on every track; every saved network drawn from its weights |
+| `/duel/<track>/<ground>/<car>` | public: a duel of the leaderboard to watch (its Watch the duel): the saved network drives live in the sim (a frame, `?mp=1&watch=1`, `scripts/patches/watch.py`), the human's best lap is the ghost car, setting off with each of its laps; nobody drives (only C and M answer). Only for a saved network and a human lap kept with its path (`ghost` on the board's human laps; `Showcase.trace`) (`components/duel-view.tsx` is the room around the sim) |
 | `/tnn` | public: what a tiny neural network is, for teenagers: a neuron to play with (`components/tnn-explainer.tsx`), the networks, evolution on a map of two weights, sizes, measured speed (`PERF` in the page: change it when re-measured), a saved network's weights |
 | `/tech` | public: what the physics takes into account, with its constants, and every car's figures (torque and power curves, gearing, top speed, suspension, tires), read from `public/sim/engine.js` itself (`lib/tech/specs.mjs`) |
 | `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
@@ -26,7 +27,7 @@ car by car and track by track, is the leaderboard.
   laid out now (`courseKey` there is the sim's, and `test/showcase.test.mjs` runs the sim's own against it). A lap on
   an earlier layout, or a network trained on a course that is no map's (the solo sim's own figure-8, a circuit of
   one's own), is on no board; the network still shows in `/networks`.
-- **Watch it drive** (#336, `/networks`, signed in or not): each network's card opens the sim at
+- **Watch it drive** (#336; its button on `/networks` removed with the standalone sim, the code still in the engine): the sim at
   `/sim/index.html?net=<id>` (`scripts/patches/preview.py`). It fetches the network from `/api/networks/<id>` (public:
   what it takes to drive, its best weights, and its maker's name as the page shows it), takes its ground, car and
   track (the map its course is; the figure-8 when it learnt a course of its maker's own) and drives it, a bar at the
@@ -538,7 +539,7 @@ tabs pair by themselves (*standing*), on the app's pages too (no panel there: a 
 `state`, `text`, `click`, `reload` and `goto`). An agent on the box, which reads the key from `.env.local`, lists them and
 takes one: `node scripts/bridge.mjs pages`, `node scripts/bridge.mjs take [pageId]` (routes `/api/bridge/agent/pages` and
 `/take`, header `x-bridge-key`). `goto {path}` sends the tab to another of the app's pages, e.g. from the lobby to
-`/sim/index.html`, and the pairing goes with it into the sim (from a sim, only to the sim's pages). So an agent can work in
+a race room, and the pairing goes with it into the room's sim (from a sim, only to the sim's pages). So an agent can work in
 the super admin's browser overnight: through reloads, restarts and the app's own changes. Disconnect turns it off for that
 tab.
 Server: `lib/bridge/store.mjs` (in memory, the pairings kept in the database), `app/api/bridge/page/*` (the super admin's session and the pairing's
@@ -561,7 +562,7 @@ guests never are). Only the super admin can create, edit and delete maps; anyone
   the last one tried, for the editor to open on).
 - **Saved** in the database (table `maps`, `lib/maps/store.mjs`), through
   `/api/maps` (GET for anyone signed in; POST, PUT, DELETE for the super admin, 403 for others).
-- **Driving a map alone** (#329, `scripts/patches/tracks.py`): the sim alone (`/drive`, `/lab`) opens on a menu whose
+- **Driving a map alone** (#329, `scripts/patches/tracks.py`; no longer reachable: the sim is only shown in race rooms and the map editor): the sim alone opened on a menu whose
   first row is every map, drawn, and **Your course** (the editor's or the generator's, kept aside in this browser,
   `carsim.course.mine`, while it drives a map). A pick is built at once on the ground of the moment, and stays the
   sim's course after a reload; a browser that never had a course of its own starts on the rooms' figure-8. From
@@ -616,7 +617,8 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
   **Shift+drag** or **right-drag** looks around: the chase camera swings round the car (drag right:
   the view turns right; down: from higher up), the cockpit view turns your head (up to ~130° each way);
   let go and it eases back behind after 0.7 s. The orbit (C) and editor cameras keep their own mouse controls.
-  Opened without `?mp=1`, `/sim/index.html` is the single-player sim as it was (editor, bots, replays).
+  Without `?mp=1` the sim is still the single-player sim as it was (editor, bots, replays), but only the map editor shows it
+  (`?edit=1`): the page itself redirects to the lobby unless it is loaded in a frame.
 - **Physics run in each browser.** A client reports its car 20 times a second; the server relays
   the positions to the room; the others interpolate it 120 ms in the past, then carry it on to where it is now
   (#322: along its heading at its speed, turning at its rate, with its slide, over those 120 ms and the trip here,
@@ -778,6 +780,5 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 
 - Car-to-car contact in a race is still each side's own: both see the touch, and each pushes only its own car,
   so with a lot of lag (or a sudden swerve the other side can't predict) they may see it a little differently.
-- The single-player sim (`/sim/index.html`) still has its own editor, saved in that browser only;
-  its Export can be imported as a map by the super admin.
+- The single-player sim is gone from the site (only a frame may load `/sim/index.html`).
 - Rooms are in memory only: one replica, and a restart clears them.

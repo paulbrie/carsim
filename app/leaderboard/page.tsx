@@ -6,7 +6,6 @@ import { SiteNav } from '@/components/site-nav';
 import { SiteFooter } from '@/components/site-footer';
 import { BoardCard, GapBadge, carName, groundLabel } from '@/components/showcase';
 import { TrackOutline } from '@/components/track-outline';
-import { withBase } from '@/lib/base-path';
 import { fmtLap, netLabel, publicName } from '@/lib/format';
 import { showcase, type Scoreboard } from '@/lib/showcase/store.mjs';
 
@@ -49,7 +48,15 @@ export default async function Leaderboard() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{carName(d.vehicle)}</p>
                       <p className="num truncate text-xs text-muted-foreground">{t.name} · {groundLabel(b.ground)}</p>
-                      <GapBadge gap={d.gap} className="mt-2" />
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <GapBadge gap={d.gap} />
+                        {d.human.ghost && d.tnn.saved && (
+                          <Link href={`/duel/${encodeURIComponent(b.track)}/${b.ground}/${encodeURIComponent(d.vehicle)}`}
+                            className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 text-xs font-medium text-muted-foreground outline-none transition-colors hover:border-white/25 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+                            <Play className="size-3 fill-current" aria-hidden /> Watch the duel
+                          </Link>
+                        )}
+                      </div>
                     </div>
                     <div className="num text-right text-sm">
                       <p className={tnnAhead ? 'text-muted-foreground' : 'font-semibold text-human'} title={`Human: ${publicName(d.human.name, !!user)}`}>{fmtLap(d.human.time)}</p>
@@ -81,8 +88,8 @@ export default async function Leaderboard() {
           </div>
           <div className="panel p-6">
             <h2 className="heading text-xl text-tnn">Put a network’s lap on it</h2>
-            <p className="mt-2 text-pretty text-muted-foreground">Train a network on one of these tracks, sign in and press Save to server. Its best exam lap goes on the board under its car.</p>
-            <Button asChild size="lg" variant="tnn" className="mt-5 px-4"><a href={withBase('/lab')}><Brain /> Open the lab</a></Button>
+            <p className="mt-2 text-pretty text-muted-foreground">Train a network on one of these tracks in a race room’s lab and press Save to server. Its best exam lap goes on the board under its car.</p>
+            <Button asChild size="lg" variant="tnn" className="mt-5 px-4"><Link href="/lobby"><Brain /> Train in a race room</Link></Button>
           </div>
         </section>
       </main>

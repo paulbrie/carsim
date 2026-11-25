@@ -5550,6 +5550,15 @@ function mpWatch(n) {
   if (!aiPreviewLoad(n)) { flash('That network does not fit this sim', '#ffd88a', 6); mpPost({ t: 'watch', ok: false }); return; }
   aiDrive(true); mpPost({ t: 'watch', ok: true });
 }
+// its decisions, for the page's card (10 a second): what it sees (each input, raw and as the lab shows it), its hidden
+// layer, its outputs and what was applied (the handbrake: asked, and let through by the rules)
+setInterval(() => {
+  if (!MP.watch || !AI.drive || !AI.lastCtl || document.hidden) return;
+  const ins = AI.names.map((name, i) => [name, AI.shows[i] ? AI.shows[i](aiX[i]) : aiX[i].toFixed(2), aiX[i]]);   // (as the lab lists them)
+  const c = AI.lastCtl;
+  mpPost({ t: 'decision', dt: AI_DT, ins, hid: Array.from(aiHid.subarray(0, AI.h)), out: Array.from(aiY.subarray(0, AI.nOut)),
+    ctl: { steer: c.steer, throttle: c.throttle, brake: c.brake, handbrake: !!c.handbrake, hbHeld: !!AI.hbHeld }, kmh: Math.round(car.vel.length() * 3.6) });
+}, 100);
 // it keeps driving (stuck: the preview's own restart from the grid, above)
 setInterval(() => { if (MP.watch && AI.preview && !AI.drive && !AI.training && !window.__sim?.paused) aiDrive(true); }, 1000);
 // back to this browser's own training, with its own settings

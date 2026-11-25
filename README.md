@@ -382,10 +382,20 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   Off road, leaving the course (8 m from the line) ends a try anyway, before the gate posts.
 - **How it learns:** evolution strategies, no gradients through the physics. A generation tries 16 noisy
   copies of the weights (±pairs) for 15 s each from one place on the line (random, or half the time 100 m
-  before where it last went wrong), scores each by the metres covered (100 m less for ending off the course,
-  stuck or wrecked), and moves the weights toward the better ones (by rank, with Adam). Then an exam: the new
-  weights from the start line for a lap; the best exam's weights are the autopilot. Physics only, 12 ms a
-  frame; the ground's ruts are put back after every try.
+  before where it last went wrong, round the lap from the line: a flying exam going off just after the line
+  practises arriving there at speed; and from the line, standing, when the exam went wrong in its first 100 m:
+  with rolling starts no try practised pulling away, `aiTryFrom`, #348), scores each by the metres covered (100 m
+  less for ending off the course, stuck or wrecked), and moves the weights toward the better ones (by rank, with
+  Adam). Then an exam: the new weights from the start line for a lap; the best exam's weights are the autopilot.
+  Physics only, 12 ms a frame; the ground's ruts are put back after every try.
+  **A training that has lost the lap goes back to the best** (#348, `aiLost`): once it laps, 20 exams in a row
+  without a lap put the best weights back (as Back to the best does). What pays on one generation's 15 s stretch
+  can cost on another's, and training used to wander off its first laps for good: on prod's figure-8 with the X7
+  (8 inputs with offset, exams from the line, 600 generations, four seeded runs headless) the generations whose
+  exam lapped were 18 / 0 / 0 / 0 / 0 / 0 per hundred in one run, 24 / 91 / 45 / 15 / 9 / 0 in another; with it
+  31 / 53 / 41 / 40 / 16 / 30 and 24 / 91 / 65 / 67 / 32 / 59 (flying exams with rolling starts: 23 then none, against
+  69 / 37 / 38 / 90 / 60 / 35). The best lap is no faster for it by itself; one run of the ten on the fixed engine never lapped (as that
+  seed didn't before).
 - **Watch at 1×** runs the training at real speed, with the sound, to follow every try (it learns the same, only
   slower); **Full speed** goes back. The panel shows the decisions a second: the network runs on the main thread,
   in the sim's input step, as it needs the car's physics state, which lives there (31 ns a decision for the 16

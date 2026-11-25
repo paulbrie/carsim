@@ -7077,9 +7077,33 @@ function aiLineAt(d) {
   if (AI.s0path !== Pt) { const g = TRACK.gates[0]; let bi = 0, bd = Infinity; Pt.P.forEach((q, j) => { const e = (q.x - g.p.x) ** 2 + (q.z - g.p.z) ** 2; if (e < bd) { bd = e; bi = j; } }); AI.s0path = Pt; AI.s0 = bi; }
   return Pt.P[((AI.s0 + Math.round(d / Pt.ds)) % Pt.n + Pt.n) % Pt.n];
 }
+// A training that has lost the lap goes back to the best (#348). Its tries are 15 s stretches, one place on the lap a
+// generation, and what pays on one stretch costs on another: after its first laps a training's weights wandered off
+// them and its exams went off at one bend, for thousands of generations (on the X7's figure-8, laps in 100 of 600
+// generations at best, in none after the first 100 at worst; the user's own: its best 4030 generations back). So once
+// it has a lap, AI_LOST exams in a row without one take it back to the best weights (as Back to the best does), to look
+// around them afresh. AI.backs: how many times in this training.
+const AI_LOST = 20;
+function aiLost(lap) {
+  if (lap != null || AI.bestLap == null || !AI.best) { AI.lost = 0; return; }
+  if (++AI.lost < AI_LOST || AI.best.length !== AI.w.length) return;
+  AI.w.set(AI.best); AI.m.fill(0); AI.lost = 0; AI.backs = (AI.backs || 0) + 1;
+}
+// Where a generation's tries start (d metres on from the start line; 0: at the line, from a standstill as an exam starts):
+// anywhere on the lap, or half the time 100 m before where the last exam went wrong, so that it practises there. Round
+// the lap from the line (#348): a flying exam that goes off just after the line goes off arriving there at speed, and
+// starting its tries at 1 m, from a standstill, never practised that. An exam that went wrong in its first 100 m, pulling
+// away (AI.failStand): from the line, standing, the only place an exam starts from (with rolling starts no try did, and
+// one from scratch learnt to keep going but never to get going: its exams stayed on the line).
+function aiTryFrom() {
+  const len = botPath().len;
+  if (AI.fail == null || Math.random() >= 0.5) return 1 + Math.random() * (len - 1);
+  if (AI.failStand) return 0;
+  return ((AI.fail - 100) % len + len) % len || 1;
+}
 // a step of the training; false when the frame's work should stop (a generation done)
 function aiTick() {
-  if (!AI.cands && !AI.exam) { aiNewGen(); AI.from = AI.fail != null && Math.random() < 0.5 ? Math.max(1, AI.fail - 100) : 1 + Math.random() * (botPath().len - 1); AI.scen = aiScenario(); }
+  if (!AI.cands && !AI.exam) { aiNewGen(); AI.from = aiTryFrom(); AI.scen = aiScenario(); }
   if (!AI.ep) AI.exam ? aiExamStart(AI.w) : aiStartEpisode(AI.cands[AI.ci], AI.from, AI_CFG.window, 0, 1, AI.scen);
   const E = AI.ep, len = botPath().len;
   let fit = aiStep();
@@ -7093,10 +7117,11 @@ function aiTick() {
     let solo = fit, dist = E.st.dist; AI.lastRace = null;
     if (AI.examSolo) { AI.lastRace = AI.last; AI.last = AI.examSolo.last; solo = AI.examSolo.fit; dist = AI.examSolo.dist; fit = solo - aiRaceCost(AI.lastRace); AI.examSolo = null; }
     AI.exam = false;
-    AI.fail = AI.last.why !== 'lap' ? dist % len : null;                 // half the next tries start 100 m before: practise where it goes wrong
+    AI.fail = AI.last.why !== 'lap' ? dist % len : null; AI.failStand = dist < 100;   // half the next tries start 100 m before: practise where it goes wrong
     const lapT = AI.last.lap;
     if (fit > AI.bestFit) { AI.bestFit = fit; AI.bestSolo = solo; AI.best = Float32Array.from(E.w); AI.bestLap = lapT; AI.sinceBest = AI.dry = 0; AI.bestAt = Date.now(); }
     else if (AI.bestLap != null) { AI.sinceBest++; AI.dry++; }          // it laps: how long since a better one (dry: in this training, #337)
+    aiLost(lapT);
     if (AI.stopAfter && AI.bestLap != null && AI.dry >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
     if (AI.gens && AI.gen + 1 >= AI.genEnd) AI.autoStop = `${AI.gens} generation${AI.gens > 1 ? 's' : ''} done`;   // (gen counts this one just below)
     AI.hist.push([Math.round(fit), Math.round(AI.tryAvg), lapT]); AI.lastExam = AI.last; AI.lastExamRace = AI.lastRace;
@@ -7203,7 +7228,7 @@ function aiParTake(tab) {
 function aiParPlan() {
   const P = AI_POOL;
   if (P.gen || P.exams.size > Math.max(1, aiPoolOk())) return;
-  aiNewGen(); AI.from = AI.fail != null && Math.random() < 0.5 ? Math.max(1, AI.fail - 100) : 1 + Math.random() * (botPath().len - 1); AI.scen = aiScenario();
+  aiNewGen(); AI.from = aiTryFrom(); AI.scen = aiScenario();
   P.gen = { left: AI_CFG.pop };
   for (let i = 0; i < AI_CFG.pop; i++) P.jobs.push({ kind: 'try', i, w: AI.cands[i], from: AI.from, scen: AI.scen, epoch: P.epoch });
 }
@@ -7233,9 +7258,10 @@ function aiParExams() {
     P.exams.delete(P.next++);
     const { j, r } = x, lapT = r.last.lap;
     AI.last = r.last; AI.lastRace = r.race;
-    AI.fail = r.last.why !== 'lap' ? r.dist % len : null;
+    AI.fail = r.last.why !== 'lap' ? r.dist % len : null; AI.failStand = r.dist < 100;
     if (r.fit > AI.bestFit) { AI.bestFit = r.fit; AI.bestSolo = r.solo; AI.best = Float32Array.from(j.w); AI.bestLap = lapT; AI.sinceBest = AI.dry = 0; AI.bestAt = Date.now(); }
     else if (AI.bestLap != null) { AI.sinceBest++; AI.dry++; }
+    aiLost(lapT);
     if (AI.stopAfter && AI.bestLap != null && AI.dry >= AI.stopAfter) AI.autoStop = `no better lap in ${AI.stopAfter} generation${AI.stopAfter > 1 ? 's' : ''}`;
     if (AI.gens && AI.gen + 1 >= AI.genEnd) AI.autoStop = `${AI.gens} generation${AI.gens > 1 ? 's' : ''} done`;
     AI.hist.push([Math.round(r.fit), Math.round(j.tryAvg), lapT]); AI.lastExam = AI.last; AI.lastExamRace = AI.lastRace;
@@ -7404,7 +7430,7 @@ function aiTrain(on) {
   if (on && AI.preview) aiPreviewEnd();                               // (#336: train their own, not the one previewed)
   AI.autoStop = false;
   if (on) AI.stopWhy = null;
-  if (on) { AI.genEnd = AI.gen + AI.gens; AI.dry = 0; }               // so many more, from now; and as many without a better lap (#337)
+  if (on) { AI.genEnd = AI.gen + AI.gens; AI.dry = 0; AI.lost = 0; }   // so many more, from now; and as many without a better lap (#337), or a lap (#348)
   if (on && !aiAllowed()) { flash('Not during a race', '#ffd88a', 1.5); return; }
   if (on) {
     if (rp.on) stopReplay();
@@ -7442,7 +7468,7 @@ function aiReexam() {
 // training carries on from the best weights (after wandering off from them), not from where it got to
 function aiBackToBest() {
   if (!AI.best) return;
-  AI.w = Float32Array.from(AI.best); AI.m.fill(0); AI.sinceBest = AI.dry = 0;
+  AI.w = Float32Array.from(AI.best); AI.m.fill(0); AI.sinceBest = AI.dry = AI.lost = 0;
   AI.cands = null; AI.exam = false; AI.ep = null;
   aiSave(); aiShow(); flash('Training carries on from the best', '#9fd4ff', 1.5);
 }

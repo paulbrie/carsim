@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Toaster } from '@/components/ui/sonner';
+import { bridgeAgentKey } from '@/lib/bridge/store.mjs';
+import { withBase } from '@/lib/base-path';
 import './globals.css';
 
 const SITE = process.env.SITE_URL || 'https://carsim.paulbrie.com';
@@ -23,6 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-dvh antialiased">
         {children}
         <Toaster theme="dark" position="top-center" richColors />
+        {/* the Claude bridge on every page, where the server has an agent key (the dev box, #348): it pairs the super admin's
+            tab by itself (and does nothing for anyone else), so an agent can bring it to the sim with no code; see public/sim/bridge.js */}
+        {bridgeAgentKey() ? <script type="module" async src={withBase('/sim/bridge.js')} /> : null}
       </body>
     </html>
   );

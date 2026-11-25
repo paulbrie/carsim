@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Bridge, BridgeError, BRIDGE_LIMITS, bridgeOn } from '../lib/bridge/store.mjs';
+import { Bridge, BridgeError, BRIDGE_LIMITS, bridgeAgentKey, bridgeOn } from '../lib/bridge/store.mjs';
 
 test('bridge: a page pairs, an agent claims its code, commands go down the stream and come back answered', async () => {
   let t = 1000;
@@ -67,4 +67,47 @@ test('bridge: wrong codes are limited, so a code can\'t be guessed', () => {
   t += BRIDGE_LIMITS.codeMs + 1;
   const again = b.pair('google:admin');
   assert.ok(b.claim(again.code, 'Claude').agentToken);
+});
+
+test('bridge: an agent with the server\'s key takes a page without a code (#348)', () => {
+  let t = 1000;
+  const key = 'k'.repeat(30), b = new Bridge({ now: () => t, key });
+  assert.throws(() => new Bridge({ now: () => t }).list(key), e => e.status === 404);   // no key on the server: no keyed agents
+  assert.throws(() => b.list('wrong'), e => e.status === 403);
+  assert.throws(() => b.take(key, '', 'Claude'), e => e.status === 404);              // no page open
+  const one = b.pair('google:admin', { standing: true }); t += 10;
+  const two = b.pair('google:admin');
+  b.attach(one.pageId, one.pageToken, () => {});                                     // only the first is connected
+  const row = id => b.list(key).find(p => p.pageId === id);
+  assert.deepEqual([row(one.pageId).connected, row(one.pageId).standing, row(two.pageId).connected, row(two.pageId).standing], [true, true, false, false]);
+  const sent = [];
+  b.attach(one.pageId, one.pageToken, (e, d) => sent.push([e, d]));
+  const got = b.take(key, '', 'Claude');                                             // the newest connected one
+  assert.equal(got.pageId, one.pageId);
+  assert.equal(sent.at(-1)[1].agent, 'Claude'); assert.equal(sent.at(-1)[1].code, null);
+  const again = b.take(key, one.pageId, 'Claude 2');                                 // taken again: the first token is dropped
+  assert.throws(() => b.status(got.agentToken), e => e.status === 401);
+  assert.equal(b.status(again.agentToken).page.connected, true);
+  assert.equal(bridgeAgentKey({ CLAUDE_BRIDGE_AGENT_KEY: 'short' }), '');            // too short to count
+  assert.equal(bridgeAgentKey({ CLAUDE_BRIDGE_AGENT_KEY: key }), key);
+});
+
+test('bridge: pairings are kept, and a new server (a restart, a deploy) carries on with them (#348)', async () => {
+  let saved = [];
+  const keeper = { load: async () => saved, save: async l => { saved = JSON.parse(JSON.stringify(l)); } };
+  const a = new Bridge({ keeper }); await a.ready;
+  const { pageId, pageToken, code } = a.pair('google:admin');
+  const { agentToken } = a.claim(code, 'Claude');
+  await new Promise(r => setTimeout(r, 300));                                         // (kept a moment later)
+  assert.equal(saved.length, 1); assert.equal(saved[0].pageToken, pageToken); assert.equal('waiting' in saved[0], false);
+  const b = new Bridge({ keeper }); await b.ready;                                    // the server again
+  const sent = [];
+  b.attach(pageId, pageToken, (e, d) => sent.push([e, d]));                          // the page's stream reconnects
+  assert.equal(sent[0][1].agent, 'Claude');
+  const p = b.command(agentToken, { type: 'state' });                                // and the agent's token still works
+  b.result(pageId, pageToken, { id: sent.at(-1)[1].id, ok: true, data: 1 });
+  assert.deepEqual(await p, { ok: true, data: 1 });
+  b.close(pageId, pageToken);
+  await new Promise(r => setTimeout(r, 300));
+  assert.deepEqual(saved, []);
 });

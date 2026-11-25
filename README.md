@@ -510,14 +510,25 @@ the panel's log: `state` (car, lap, autopilot, race, the panels' text), `screens
 `set` (a field), `key`, `get` (a value of `window.__sim`), `sim` (a few of its functions by name, e.g. `aiSaveServer(name)`: the autopilot
 saved on the server, as Save to server does without its name prompt; `aiForget()`: Start over without its confirm), `reload`. No
 arbitrary JavaScript; the bridge's own panel and password fields are out of its reach. Write to it in the panel
-(`node scripts/bridge.mjs events` reads it). **Disconnect** ends it; a reload keeps it; a server restart ends it.
+(`node scripts/bridge.mjs events` reads it). **Disconnect** ends it; a reload keeps it, and so does a restart or a deploy (#348: the
+pairings are kept in the database, `app_meta` `bridge.pairings`; the page's stream reconnects to the new server). Tokens are
+kept per app URL in `~/.carsim-bridge.json`, so a claim on the deployed site doesn't replace the dev box's.
 On the deployed site too (#346), for the super admin alone (nobody else gets the button, #338): an agent there
 claims with `CARSIM_URL=https://carsim.paulbrie.com node scripts/bridge.mjs claim <code>` (the MCP tools: the same `CARSIM_URL`); past 10 wrong codes
 in 10 minutes no claim is taken until they age out. `CLAUDE_BRIDGE=off` on the server turns it off (no button,
 `/api/bridge/*` answers 404: `bridgeOn` in `lib/bridge/store.mjs`).
 As MCP tools (`sim_pair`, `sim_state`, `sim_screenshot` (an image), `sim_command`, `sim_events`, `sim_status`):
 `scripts/bridge-mcp.mjs`, which `.mcp.json` starts for Claude Code in this project.
-Server: `lib/bridge/store.mjs` (in memory), `app/api/bridge/page/*` (the super admin's session and the pairing's
+**Without a code** (#348): with `CLAUDE_BRIDGE_AGENT_KEY` (24+ characters) in the server's environment (the dev box's
+`.env.local`; not the deployed site's), `app/layout.tsx` loads `public/sim/bridge.js` on every page and the super admin's
+tabs pair by themselves (*standing*), on the app's pages too (no panel there: a badge while an agent is connected, and only
+`state`, `text`, `click`, `reload` and `goto`). An agent on the box, which reads the key from `.env.local`, lists them and
+takes one: `node scripts/bridge.mjs pages`, `node scripts/bridge.mjs take [pageId]` (routes `/api/bridge/agent/pages` and
+`/take`, header `x-bridge-key`). `goto {path}` sends the tab to another of the app's pages, e.g. from the lobby to
+`/sim/index.html`, and the pairing goes with it into the sim (from a sim, only to the sim's pages). So an agent can work in
+the super admin's browser overnight: through reloads, restarts and the app's own changes. Disconnect turns it off for that
+tab.
+Server: `lib/bridge/store.mjs` (in memory, the pairings kept in the database), `app/api/bridge/page/*` (the super admin's session and the pairing's
 token), `app/api/bridge/agent/*` (the agent's token); the page: `public/sim/bridge.js` (`scripts/patches/bridge.py`
 loads it and puts the renderer on `__sim` for the screenshots).
 

@@ -10,8 +10,10 @@ import { createInterface } from 'node:readline';
 
 const BASE = (process.env.CARSIM_URL || 'http://localhost:7001/projects/carsim').replace(/\/+$/, '');
 const KEEP = path.join(os.homedir(), '.carsim-bridge.json');
-const kept = () => { try { return JSON.parse(fs.readFileSync(KEEP, 'utf8')); } catch { return {}; } };
-const save = o => fs.writeFileSync(KEEP, JSON.stringify({ ...kept(), ...o }), { mode: 0o600 });
+// one token per app URL, as scripts/bridge.mjs keeps them (#348); a token kept before that (at the top) serves an app with none
+const file = () => { try { return JSON.parse(fs.readFileSync(KEEP, 'utf8')); } catch { return {}; } };
+const kept = () => { const f = file(); return f.byUrl?.[BASE] || { agentToken: f.agentToken, pageId: f.pageId, seq: f.seq }; };
+const save = o => { const f = file(); f.byUrl = { ...f.byUrl, [BASE]: { ...kept(), ...o } }; fs.writeFileSync(KEEP, JSON.stringify(f), { mode: 0o600 }); };
 
 async function call(p, { method = 'GET', body, auth = true } = {}) {
   const r = await fetch(BASE + '/api/bridge/agent' + p, {

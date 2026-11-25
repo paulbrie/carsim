@@ -14,13 +14,28 @@
 //   get        {path, slice?, pick?}       → its value (window.__sim's, e.g. "ai.hist", "lap.best", "VEH.key"; read only; a list:
 //                                            slice [from, to], and of its items the fields picked)
 //   reload     {}                          → {} (then the page reloads, and pairs again by itself)
+//   goto       {path}                      → {} (then this frame goes to another of the app's sim pages, e.g.
+//                                            "/sim/index.html" (single player: its menu picks the track), and pairs again)
+// Standing (#348): when the server has an agent key (CLAUDE_BRIDGE_AGENT_KEY: the dev box), the page pairs by itself as
+// it loads, and again if its pairing ends, so that an agent with the key can take it with no one to read it a code.
+// Disconnect stops that for this tab.
+// The app's other pages (#348): on a server with an agent key, app/layout.tsx loads this on every page, where it runs
+// without a sim (APP): no panel, a badge while an agent is connected, and only state, text, click, reload and goto (any
+// of the app's pages: from the lobby to /sim/index.html, say). A goto into a sim page hands the pairing to the sim's
+// bridge there (its sessionStorage key), so the agent carries on in it.
 // No arbitrary JavaScript; never the bridge's own panel, password fields, or the app's API.
-const BASE = location.pathname.replace(/\/sim\/[^/]*$/, ''), API = BASE + '/api/bridge/page';
+const BASE = new URL(import.meta.url).pathname.replace(/\/sim\/bridge\.js$/, ''), API = BASE + '/api/bridge/page';
+const APP = !location.pathname.startsWith(BASE + '/sim/');
 const SIM_FNS = ['restartRun', 'respawn', 'switchVehicle', 'setSurface', 'setCamMode', 'placeAtGate', 'step', 'toggleEditor', 'setBots',
   'aiTrainSync', 'aiTry', 'aiDrive', 'aiDemo', 'aiSaveServer', 'aiForget', 'repairCar', 'startReplay', 'stopReplay'];
-const KEEP = 'carsim.bridge';
-const st = { pageId: null, token: null, es: null, agent: null, code: null, codeUntil: 0, log: [], shot: null, el: null, btn: null };
+const SIM_KEEP = 'carsim.bridge', APP_KEEP = 'carsim.bridge.app', KEEP = APP ? APP_KEEP : SIM_KEEP, OFF = 'carsim.bridge.off';
+const st = { pageId: null, token: null, es: null, agent: null, code: null, codeUntil: 0, log: [], shot: null, el: null, btn: null, standing: false };
+const userOff = () => { try { return sessionStorage.getItem(OFF) === '1'; } catch (e) { return false; } };
+const setUserOff = on => { try { on ? sessionStorage.setItem(OFF, '1') : sessionStorage.removeItem(OFF); } catch (e) { } };
+// paired by itself again (standing), a moment after a pairing ended, unless the user disconnected
+function standAgain() { if (st.standing && !st.pageId && !userOff()) setTimeout(() => { if (!st.pageId && !userOff()) connect(true); }, 3000); }
 const S = () => window.__sim;
+const APP_COMMANDS = ['state', 'text', 'click', 'reload', 'goto'];
 
 // ---------------------------------------------------------------- talking to the server
 async function post(path, body = {}) {
@@ -35,21 +50,22 @@ function listen() {
   const es = st.es = new EventSource(`${API}/stream?pageId=${encodeURIComponent(st.pageId)}&t=${encodeURIComponent(st.token)}`);
   es.addEventListener('status', e => { const d = JSON.parse(e.data); st.agent = d.agent; st.code = d.code; st.codeUntil = d.codeUntil || 0; show(); });
   es.addEventListener('command', e => run(JSON.parse(e.data)));
-  es.addEventListener('ended', e => { const d = JSON.parse(e.data); end(`Pairing ended: ${d.why}`); });
+  es.addEventListener('ended', e => { const d = JSON.parse(e.data); end(`Pairing ended: ${d.why}`); standAgain(); });
   es.onerror = () => { if (st.pageId) show('reconnecting…'); };
   es.onopen = () => { post('/hello', { url: location.href, title: document.title }).catch(() => { }); show(); };
 }
-async function connect() {
-  try { Object.assign(st, (({ pageId, pageToken, code, expiresAt }) => ({ pageId, token: pageToken, code, codeUntil: expiresAt }))(await post('/pair')), { agent: null }); }
+async function connect(standing = false) {
+  if (!standing) setUserOff(false);
+  try { Object.assign(st, (({ pageId, pageToken, code, expiresAt }) => ({ pageId, token: pageToken, code, codeUntil: expiresAt }))(await post('/pair', { standing })), { agent: null }); }
   catch (e) { note(`Could not pair: ${e.message}`); return; }
-  keep(); listen(); note('Waiting for Claude: give it the code'); show();
+  keep(); listen(); note(standing ? 'Open to this machine\'s Claude (no code needed), or give a Claude the code' : 'Waiting for Claude: give it the code'); show();
 }
 function end(why) {
   st.es?.close(); st.es = null;
   Object.assign(st, { pageId: null, token: null, agent: null, code: null });
   keep(); if (why) note(why); show();
 }
-async function disconnect() { try { await post('/close'); } catch (e) { } end('Disconnected'); }
+async function disconnect() { setUserOff(true); try { await post('/close'); } catch (e) { } end('Disconnected'); }
 
 // ---------------------------------------------------------------- the commands
 async function run({ id, type, args = {}, agent }) {
@@ -58,11 +74,17 @@ async function run({ id, type, args = {}, agent }) {
   let res;
   try {
     if (!Object.hasOwn(COMMANDS, type)) throw new Error(`No such command: ${type} (${Object.keys(COMMANDS).join(', ')})`);
+    if (APP && !APP_COMMANDS.includes(type)) throw new Error(`Not on this page (no sim here): ${APP_COMMANDS.join(', ')}; goto a sim page first`);
     res = { ok: true, data: (await COMMANDS[type](args)) ?? {} };
   }
   catch (e) { res = { ok: false, error: e.message || String(e) }; note(`  ✕ ${res.error}`); }
   try { await post('/result', { id, ...res }); } catch (e) { note(`  ✕ could not answer: ${e.message}`); }
   if (type === 'reload' && res.ok) setTimeout(() => location.reload(), 100);
+  if (type === 'goto' && res.ok) setTimeout(() => {
+    // into a sim page (from an app page): the pairing goes to the sim's bridge there, which says hello and carries on
+    if (res.data.sim && APP) try { sessionStorage.setItem(SIM_KEEP, JSON.stringify({ pageId: st.pageId, token: st.token })); sessionStorage.removeItem(APP_KEEP); st.es?.close(); } catch (e) { }
+    location.assign(res.data.url);
+  }, 100);
 }
 const mine = el => !el || st.el?.contains(el) || st.btn?.contains(el);
 function find({ selector, text, nth = 0 }) {
@@ -95,6 +117,7 @@ function plain(v, d = 0) {
 const text = sel => document.querySelector(sel)?.innerText?.trim() || '';
 const COMMANDS = {
   state() {
+    if (APP) return { url: location.href, title: document.title, visible: document.visibilityState, app: true };
     const s = S(); if (!s) throw new Error('The sim is still loading');
     const c = s.car, A = s.ai, C = s.COURSE();
     return {
@@ -152,6 +175,15 @@ const COMMANDS = {
     return { value: Array.isArray(v) && Array.isArray(slice) ? v.map(x => plain(x, 1)) : plain(v) ?? null };
   },
   reload() { return {}; },
+  // another of the app's sim pages, in this frame (the same origin and app: /sim/...); the pairing goes with it (sessionStorage)
+  // (an app page: any of the app's pages; a sim page, in its frame: only the sim's)
+  goto({ path } = {}) {
+    const p = String(path || ''), u = new URL(p.startsWith(BASE + '/') ? p : BASE + (p.startsWith('/') ? p : '/' + p), location.origin);
+    const sim = u.pathname.startsWith(BASE + '/sim/');
+    if (u.origin !== location.origin || !(u.pathname === BASE || u.pathname.startsWith(BASE + '/'))) throw new Error(`Only the app's pages (${BASE}/...)`);
+    if (!APP && !sim) throw new Error(`From the sim, only the sim's pages (${BASE}/sim/...)`);
+    return { url: u.pathname + u.search, sim };
+  },
 };
 // a picture of the 3D view, taken just after it is drawn (WebGL keeps nothing after)
 function hook(r) {
@@ -177,6 +209,7 @@ addEventListener('error', e => { if (st.pageId) note(`✕ error: ${e.message}${e
 addEventListener('unhandledrejection', e => { if (st.pageId) note(`✕ unhandled: ${String(e.reason && (e.reason.message || e.reason)).slice(0, 200)}`); });
 function note(s) { st.log.push(`${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} ${s}`); if (st.log.length > 40) st.log.shift(); show(); }
 function show(extra) {
+  if (st.badge) { st.badge.style.display = st.agent ? '' : 'none'; st.badge.textContent = `🤝 ${st.agent || 'Claude'}`; }
   if (!st.el) return;
   const on = !!st.pageId, q = s => st.el.querySelector(s);
   st.btn.classList.toggle('on', !!st.agent);
@@ -245,9 +278,17 @@ function ui() {
 
 // ---------------------------------------------------------------- start: for the super admin only
 (async () => {
-  try { const r = await fetch(API + '/can', { credentials: 'same-origin' }); if (!(await r.json()).can) return; } catch (e) { return; }
-  while (!S()) await new Promise(r => setTimeout(r, 300));
-  ui();
+  try { const r = await fetch(API + '/can', { credentials: 'same-origin' }), c = await r.json(); if (!c.can) return; st.standing = !!c.standing; } catch (e) { return; }
+  if (APP) {                                                           // an app page: a badge, no panel; and only when standing
+    if (!st.standing) return;
+    const b = st.badge = document.createElement('div'); b.title = 'A Claude session can work in this tab (bridge)';
+    b.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:2147483647;font:600 12px/1 system-ui,sans-serif;color:#fff;background:#7a3cff;border-radius:999px;padding:6px 10px;display:none;pointer-events:none';
+    document.body.append(b);
+  } else {
+    while (!S()) await new Promise(r => setTimeout(r, 300));
+    ui();
+  }
   try { const k = JSON.parse(sessionStorage.getItem(KEEP) || 'null'); if (k) { Object.assign(st, { pageId: k.pageId, token: k.token }); await post('/hello', { url: location.href, title: document.title }); listen(); note('Reconnected'); } }
-  catch (e) { end(e.status === 404 ? 'The pairing ended (the server restarted?): Connect again' : ''); }
+  catch (e) { end(e.status === 404 ? (st.standing ? '' : 'The pairing ended (the server restarted?): Connect again') : ''); }
+  if (!st.pageId && st.standing && !userOff()) connect(true);          // (standing: paired by itself, #348)
 })();

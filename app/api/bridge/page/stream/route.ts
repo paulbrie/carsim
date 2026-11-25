@@ -1,5 +1,5 @@
 import { adminSession } from '@/auth';
-import { bridge, bridgeOn } from '@/lib/bridge/store.mjs';
+import { bridgeOn, bridgeReady } from '@/lib/bridge/store.mjs';
 import { json } from '@/lib/bridge/http';
 
 export const dynamic = 'force-dynamic';
@@ -7,12 +7,12 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   if (!bridgeOn()) return json({ error: 'Not found.' }, 404);
   if (!(await adminSession())) return json({ error: 'Only the super admin can pair the sim with Claude.' }, 403);
-  const q = new URL(req.url).searchParams, enc = new TextEncoder();
+  const q = new URL(req.url).searchParams, enc = new TextEncoder(), br = await bridgeReady();   // (the kept pairings read in: a page back after a restart)
   let detach: (() => void) | null = null, ping: ReturnType<typeof setInterval> | null = null;
   const stream = new ReadableStream({
     start(c) {
       const send = (event: string, data: unknown) => { try { c.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)); } catch { /* closed */ } };
-      try { detach = bridge().attach(q.get('pageId') || '', q.get('t') || '', send); }
+      try { detach = br.attach(q.get('pageId') || '', q.get('t') || '', send); }
       catch (e) { send('ended', { why: (e as Error).message }); c.close(); return; }
       ping = setInterval(() => send('ping', {}), 15_000);
       req.signal.addEventListener('abort', () => { if (ping) clearInterval(ping); detach?.(); try { c.close(); } catch { /* closed */ } });

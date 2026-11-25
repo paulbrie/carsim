@@ -42,6 +42,9 @@ BLOCK = r"""
    ===================================================================== */
 const AI_SIZES = [0, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64];          // the hidden layer's units (0: none), each size a training of its own
 const AI_T = 150, AI_DT = 1 / 60, AI_BUDGET = 12, AI_BUDGET_BLIND = 15, AI_LAP_BONUS = 5;
+// the time a lap has, in an exam (and what its bonus counts down from): AI_T, or a long course's length at 10 m/s (#348:
+// a flying exam on a 2.1 km course, two laps in 150 s, ran out of time before its timed lap, however fast)
+const aiLapT = () => Math.max(AI_T, botPath().len / 10);
 // the training's settings (aiTrainSync may try others): tries a generation, noise, step size, the bearings' scale
 const AI_CFG = { pop: 16, sigma: 0.3, lr: 0.2, bearing: 2, off: 8, window: 15, crash: 100, crashKmh: 0, lostAfter: 20, pace: 1, gCorner: 0.84, gBrake: 0.76, gAccel: 0, racingLine: false, lineW: 0, lookTime: false, rolling: false, flying: false, examLaps: 1, rival: 'off', rivalShare: 0.5, rivalEvery: 10, rivalCar: '', cores: 1, draw: true, ped3d: true, speed: 1, onRoad: false, hbTurn: false, hbNoBrake: false, hbLock: 0.3 };
 // the rival (#311): another of this car on the course, near enough to matter within AI_RV_NEAR m along the line
@@ -521,7 +524,7 @@ function aiStep() {
   const dmg = 1 - carCondition(), kmh = Math.max(0, prog) / Math.max(timed, 1) * 3.6, extra = Math.max(0, E.driven - E.max);
   const gain = R ? E.st.dist - R.st.dist : 0, cpen = R ? AI_PEN.contact * E.contact - AI_PEN.gain * gain : 0;   // the rival: its impacts, the metres gained on it
   const pen = AI_PEN.offRoad * E.offM + AI_PEN.damage * dmg + (car.wrecked ? AI_PEN.wreck : 0) + AI_PEN.smooth * E.swing + AI_PEN.path * extra - AI_PEN.speed * kmh + cpen;
-  const fit = (why === 'lap' ? len + AI_LAP_BONUS * Math.max(0, AI_T - run) : prog / E.laps) - pen;   // (not all the laps: below any that did them)
+  const fit = (why === 'lap' ? len + AI_LAP_BONUS * Math.max(0, aiLapT() - run) : prog / E.laps) - pen;   // (not all the laps: below any that did them)
   const vEnd = Math.round(Math.hypot(car.vel.x, car.vel.z) * 3.6);   // (km/h, as it ended: what ending badly costs, aiEndCost)
   AI.last = { why, at: Math.round(prog), vEnd, t: +E.t.toFixed(1), lap: why === 'lap' ? +run.toFixed(2) : null, laps: E.times.map(x => +x.toFixed(2)), hb: +E.hb.toFixed(1), hbHeld: +E.hbHeld.toFixed(1), x: Math.round(car.pos.x), z: Math.round(car.pos.z), offM: Math.round(E.offM), dmg: Math.round(dmg * 100), wrecked: car.wrecked, pen: Math.round(pen), kmh: Math.round(kmh), swing: +E.swing.toFixed(1), extra: Math.round(extra),
     rival: R ? { kind: E.sc.kind, contact: +E.contact.toFixed(1), touches: E.touches, gain: Math.round(gain), cpen: Math.round(cpen), dmgF: dmg } : null };
@@ -551,6 +554,7 @@ function aiGroundBack() {
 function aiExamKind() {
   return [AI_CFG.flying ? (AI_CFG.examLaps > 1 ? 'flying2x' + AI_CFG.examLaps : 'flying2') : 'line', AI_CFG.pace, AI_CFG.gCorner, AI_CFG.gBrake, AI_CFG.gAccel, AI_CFG.racingLine ? AI_CFG.lineW : '-',
     AI_CFG.lookTime ? 't' : 'm', AI_CFG.off + (AI_CFG.onRoad ? 'road' : ''), aiDemoNow() ? 'demo' : '', JSON.stringify(AI_PEN), ...(aiRaceExam() ? ['race:' + AI_CFG.rival + (aiRivalKey() !== VEH.key ? ':' + aiRivalKey() + ':' + (AI.rv?.brain?.lap ?? '') : '')] : []),
+    ...(aiLapT() > AI_T ? ['T' + Math.round(aiLapT())] : []),        // (a long course's lap time, #348)
     ...(car.awd && car.split !== 0.5 ? ['split' + car.split] : []),
     ...(AI.nOut > 2 && (AI_CFG.hbTurn || AI_CFG.hbNoBrake) ? ['hb' + (AI_CFG.hbTurn ? 'turn' + AI_CFG.hbLock : '') + (AI_CFG.hbNoBrake ? 'nobrake' : '')] : [])].join(' ');   // (the handbrake's rules)   // (all-wheel drive split unevenly: another car to drive)
 }
@@ -564,11 +568,11 @@ function aiExamRun(w) {
   aiExamStart(w); let fit; while ((fit = aiStep()) == null) { }
   AI.ep = null; AI.lastRace = null;
   if (!aiRaceExam()) return { fit, solo: fit };
-  const solo = AI.last; aiStartEpisode(w, 0, AI_T, 0, 1, aiRaceScen()); while (aiStep() == null) { }
+  const solo = AI.last; aiStartEpisode(w, 0, aiLapT(), 0, 1, aiRaceScen()); while (aiStep() == null) { }
   AI.ep = null; AI.lastRace = AI.last; AI.last = solo;
   return { fit: fit - aiRaceCost(AI.lastRace), solo: fit };
 }
-const aiExamStart = w => { AI_CFG.flying ? aiStartEpisode(w, 0, AI_T * (1 + AI_CFG.examLaps) / 2, botPath().len, AI_CFG.examLaps) : aiStartEpisode(w, 0, AI_T); AI.ep.exam = true; };   // (an exam: staying on the road is a must)
+const aiExamStart = w => { AI_CFG.flying ? aiStartEpisode(w, 0, aiLapT() * (1 + AI_CFG.examLaps) / 2, botPath().len, AI_CFG.examLaps) : aiStartEpisode(w, 0, aiLapT()); AI.ep.exam = true; };   // (an exam: staying on the road is a must)
 // the racing line's point d metres on from the start line (botPath's start, s0, is elsewhere)
 function aiLineAt(d) {
   const Pt = botPath();
@@ -614,7 +618,7 @@ function aiTick() {
   if (AI.exam) {                                                       // the generation's result
     if (aiRaceExam() && !AI.examSolo) {                                // the lap done: now the race
       AI.examSolo = { fit, last: AI.last, dist: E.st.dist };
-      aiStartEpisode(E.w, 0, AI_T, 0, 1, aiRaceScen()); return true;
+      aiStartEpisode(E.w, 0, aiLapT(), 0, 1, aiRaceScen()); return true;
     }
     let solo = fit, dist = E.st.dist; AI.lastRace = null;
     if (AI.examSolo) { AI.lastRace = AI.last; AI.last = AI.examSolo.last; solo = AI.examSolo.fit; dist = AI.examSolo.dist; fit = solo - aiRaceCost(AI.lastRace); AI.examSolo = null; }
@@ -705,7 +709,7 @@ const aiPoolOk = () => AI_POOL.ws.filter(x => x.ok).length;
 // the job's drive, begun (in the tab: stepped a frame at a time; in a worker: all at once)
 function aiParBegin(j) {
   if (j.kind === 'try') aiStartEpisode(j.w, j.from, AI_CFG.window, 0, 1, j.scen);
-  else if (j.kind === 'race') aiStartEpisode(j.w, 0, AI_T, 0, 1, aiRaceScen());   // (the best against the newest rival: aiRvKeep)
+  else if (j.kind === 'race') aiStartEpisode(j.w, 0, aiLapT(), 0, 1, aiRaceScen());   // (the best against the newest rival: aiRvKeep)
   else { j.phase = 0; aiExamStart(j.w); }
 }
 // a drive of it ended with this score: the job's result (null: an exam's race, next)
@@ -715,7 +719,7 @@ function aiParEnd(j, fit) {
   if (j.kind === 'race') { const cost = aiRaceCost(AI.last); return { fit: -cost, cost, why: AI.last.why }; }
   if (!j.phase) {
     j.lap = { fit, last: AI.last, dist: E.st.dist };
-    if (aiRaceExam()) { j.phase = 1; aiStartEpisode(j.w, 0, AI_T, 0, 1, aiRaceScen()); return null; }
+    if (aiRaceExam()) { j.phase = 1; aiStartEpisode(j.w, 0, aiLapT(), 0, 1, aiRaceScen()); return null; }
     return { fit, solo: fit, last: AI.last, race: null, dist: E.st.dist };
   }
   return { fit: j.lap.fit - aiRaceCost(AI.last), solo: j.lap.fit, last: j.lap.last, race: AI.last, dist: j.lap.dist };
@@ -1330,7 +1334,7 @@ function aiTrainSync(gens = 1, cfg) {
 function aiTry(w, log = 0, race = false) {
   AI.sync = true; aiTrain(true);
   w = w || AI.best || AI.w;                                           // (after aiTrain: a change of exam re-examines the best first)
-  if (race && aiRival()) aiStartEpisode(w, 0, AI_T, 0, 1, aiRaceScen()); else aiExamStart(w);   // race: the exam's race with the rival
+  if (race && aiRival()) aiStartEpisode(w, 0, aiLapT(), 0, 1, aiRaceScen()); else aiExamStart(w);   // race: the exam's race with the rival
   const trace = []; let fit = null, n = 0;
   while ((fit = aiStep()) == null) if (log && ++n % log === 0) trace.push([+AI.ep.t.toFixed(1), Math.round(AI.ep.st.dist), +AI.ep.st.lat.toFixed(1), +car.vel.length().toFixed(1), +car.steer.toFixed(2), +AI.ctl.throttle.toFixed(2), +AI.ctl.brake.toFixed(2), AI.ctl.handbrake ? 1 : 0]);
   const r = { ...AI.last, fit, trace };
@@ -1518,7 +1522,7 @@ function aiRvKeep() {
   }
   const keep = AI.last, kr = AI.lastRace;
   if (AI.bestSolo == null) { const x = aiExamRun(AI.best); AI.bestFit = x.fit; AI.bestSolo = x.solo; }
-  else { aiStartEpisode(AI.best, 0, AI_T, 0, 1, aiRaceScen()); while (aiStep() == null) { } AI.ep = null; AI.bestFit = AI.bestSolo - aiRaceCost(AI.last); }
+  else { aiStartEpisode(AI.best, 0, aiLapT(), 0, 1, aiRaceScen()); while (aiStep() == null) { } AI.ep = null; AI.bestFit = AI.bestSolo - aiRaceCost(AI.last); }
   AI.last = keep; AI.lastRace = kr;
 }
 // Race it, each frame: (after ours decided, from simulate) the rival decides every AI_DT as trained, and takes its controls

@@ -403,6 +403,12 @@ the database's `autopilots`, at most 50 a driver; only the one who saved it, or 
   100 m, a try that went faster and then off late in its window scored about as well as a careful one, while an exam
   needs a whole lap without a mistake: on prod's figure-8 (X7, headless, 400 generations) 300 m with 25 s tries lapped in
   159 and 236 generations of two runs (best 51.5 s, 52.4 s), against 11, 45 and 98 (53.6–54.6 s) with the defaults.
+  With 16 hidden units: defaults 59 and 92 generations lapped of 400 (56.0 s, 51.0 s); 300 m and 25 s, 307 and 186
+  (49.6 s, 51.9 s); 100 m + 3 m a km/h and 25 s, 254 and 380 (52.3 s, 49.3 s); 300 m, 25 s and only lapping steps, 386 and
+  389 (49.6 s, 51.3 s). That last, with 2 m a km/h, from scratch in the super admin's browser with every other setting at
+  its default, then flying exams: 45.65 s flying in Drive it on the figure-8 with the X7 (the driver's record there: 46.02).
+  **A lap's time in an exam** grows with the course (`aiLapT`: 150 s, or the course's length at 10 m/s): a flying exam on a
+  2.1 km course had 150 s for its two laps, and ran out of time before the timed one however fast it went.
 - **Watch at 1×** runs the training at real speed, with the sound, to follow every try (it learns the same, only
   slower); **Full speed** goes back. The panel shows the decisions a second: the network runs on the main thread,
   in the sim's input step, as it needs the car's physics state, which lives there (31 ns a decision for the 16

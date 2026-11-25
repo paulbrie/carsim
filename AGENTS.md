@@ -24,9 +24,10 @@ See README.md for the layout. Notes:
   the tires' pressure, kept per car: `SETUP`, #332) `setup.py`, a network's laps as best laps, marked with its name and maker (#333) `net-laps.py`, a saved network's preview (the networks page's Watch it drive, `?net=<id>`, #336) `preview.py`, a training kept whole in the browser (the chart, the last exam, the rivals; storage full: the chart shortened, then a warning, #341) `keep.py`,
   a lap to follow (the driver's best lap kept, the lab's choice, the review against it, #340) `follow.py`,
   the sound's switch (M, the rail's Sound, #343) `sound.py`, watching a leaderboard duel (`?mp=1&watch=1`, the page `/duel/...` as the room) `watch.py`, a saved network's whole configuration and its history over circuits (#351) `net-save.py`,
+  the read-out top left (the tires' slip and sinking, the car as set; the dial has the speed, the revs and the gear, #350) `hud.py`,
   last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, watch, net-save, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, watch, net-save, hud, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes
@@ -177,6 +178,9 @@ See README.md for the layout. Notes:
   would go to every worker): kept in `finishLap` by `aiKeepLap`, only laps `aiLapClean` passes; anything else that ends
   a lap for the driver must call it too, and anything that moves the car within a lap must stay visible to it on the
   replay's tape (a jump, a stop). The review (`aiMapCmp`) reads `AI.map` and the lap's profile at the same line points.
+- The read-out top left (#350, `hud.py`) is built once (`hudBuild`) and then only updated: the tires' picture by
+  style, the two lines when their text changes. Its markup needs `public/sim/ui.css` (`body #hud …`). The speed, the
+  revs and the gear are the dial's (`drawGauge`): don't put them back there.
 - The sound (#343): mute through `setMuted(on)` (`sound.py`), not by writing `muted`; M is handled first in the sim's key
   handler, before the editor's and the replay's returns: a key that must work everywhere goes there. Keys pressed in a
   page around the sim (the race room's panel) don't reach its frame: pass on the ones that matter (`SimHandle.mute`).

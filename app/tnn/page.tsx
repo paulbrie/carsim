@@ -192,7 +192,7 @@ export default async function TinyNeuralNetworks() {
               and leaves the road at the first bend.
             </Card>
             <Card icon={<Repeat />} title="Then, a generation at a time">
-              Make 16 copies of the driver, each with its weights nudged at random. Each copy drives for 15 seconds from the same spot. The
+              Make 16 copies of the driver: 8 random nudges of its weights, each one way and the other. Each copy drives for 15 seconds from the same spot. The
               score is the metres it covers along the track, with points taken off for leaving the road, damaging the car or crashing. Then the
               weights move toward the nudges that scored best.
             </Card>

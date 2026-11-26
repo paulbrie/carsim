@@ -123,7 +123,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
       <Section id="play" eyebrow="Three ways in" title="Drive. Build. Or both.">
         <div className="grid gap-5 lg:grid-cols-3">
           <Way tone="human" icon={<Gauge />} kicker="Just drive" title="Take the wheel"
-            body="Pick one of fifteen cars, from a dune buggy to a 567 kW Mustang, and a ground: sand that ruts under your tyres, firm earth, or tarmac. Every gate, as fast as you can."
+            body="Pick one of sixteen cars, from a dune buggy to a 567 kW Mustang, and a ground: sand that ruts under your tyres, firm earth, or tarmac. Every gate, as fast as you can."
             points={['A room of your own, or up to eight drivers', 'A ghost of your best lap to chase', 'Every valid lap on the leaderboard']}>
             <Button asChild size="lg" className="px-4"><Link href="/lobby"><Play className="fill-current" /> Open a race room</Link></Button>
           </Way>
@@ -208,7 +208,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
             [<Mountain key="i" />, 'Ground that gives way', 'Tyres sink into sand, dig ruts and throw roost; earth is firm; tarmac grips. The ruts a lap leaves are there on the next one.'],
-            [<Wrench key="i" />, 'Cars with their real numbers', 'Fifteen cars with their engines’ torque curves, gearboxes, weight and drivetrains, and synthesised engine sounds from a flat-four to a supercharged V8.'],
+            [<Wrench key="i" />, 'Cars with their real numbers', 'Sixteen cars with their engines’ torque curves, gearboxes, weight and drivetrains, and synthesised engine sounds from a flat-four to a supercharged V8.'],
             [<Gauge key="i" />, 'Suspension and drivetrain', 'Sprung wheels on uneven ground, rear or all-wheel drive with a front-to-rear split you can move, traction control and ABS you can switch off.'],
             [<Repeat key="i" />, 'Damage that stays', 'Hit a gate post and the body crumples, glass cracks and breaks, parts come off, and the car drives worse for it.'],
             [<Timer key="i" />, 'Laps to the thousandth', 'Every gate in order or the lap does not count. Checkpoint splits, replays, and in race rooms a ghost car of the best lap.'],

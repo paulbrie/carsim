@@ -2,7 +2,7 @@
 
 **Human drivers against tiny neural networks**, on the same simulated cars and tracks (https://carsim.paulbrie.com).
 A person can just drive, drive and build networks, or just build networks: both sides use the same vehicle sim.
-Drive alone with no account; sign in with Google to race up to eight drivers in a room (fifteen cars, sand, earth or
+Drive alone with no account; sign in with Google to race up to eight drivers in a room (sixteen cars, sand, earth or
 road, the figure-8 or a map the super admin made) and to save a network on the server. The best lap of each side,
 car by car and track by track, is the leaderboard.
 

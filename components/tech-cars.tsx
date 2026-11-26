@@ -200,7 +200,7 @@ export function CarCards({ cars }: { cars: CarSpec[] }) {
             <h3 className="heading mt-1.5 text-2xl">{c.name}</h3>
             <p className="mt-1 text-sm text-muted-foreground">{c.blurb}</p>
             <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[['Peak power', `${n0(e.peakPower)} kW`, `at ${n0(e.peakPowerRpm)} rpm`], ['Peak torque', `${n0(e.peakTorque)} N·m`, e.peakTorqueRpm[0] === e.peakTorqueRpm[1] ? `at ${n0(e.peakTorqueRpm[0])} rpm` : `${n0(e.peakTorqueRpm[0])}–${n0(e.peakTorqueRpm[1])} rpm`],
+              {[['Peak power', `${n0(e.peakPower)} kW`, `at ${n0(e.peakPowerRpm)} rpm${(m => m && +m[1] !== Math.round(e.peakPower) ? ` (the maker’s ${m[1]} kW: the sim’s curve)` : '')(c.blurb?.match(/(\d+) ?kW/))}`], ['Peak torque', `${n0(e.peakTorque)} N·m`, e.peakTorqueRpm[0] === e.peakTorqueRpm[1] ? `at ${n0(e.peakTorqueRpm[0])} rpm` : `${n0(e.peakTorqueRpm[0])}–${n0(e.peakTorqueRpm[1])} rpm`],
                 ['Power/mass', `${n0(c.powerToWeight)} kW/t`, `${n1(c.mass / e.peakPower)} kg per kW`],
                 ['Top speed', `${n0(top)} km/h`, `about, in ${ord(topGear)} gear`]].map(([k, v, s]) => (
                 <div key={k} className="rounded-xl bg-white/4 px-3 py-2.5">
@@ -225,8 +225,8 @@ export function CarCards({ cars }: { cars: CarSpec[] }) {
                 ['Idle / limiter', `${n0(e.idle)} / ${n0(e.limiter)} rpm`],
                 ['Converter stall', `${n0(e.stall)} rpm`, 'The engine speed the converter (the buggy: its centrifugal clutch) lets the engine reach at full throttle from rest'],
                 ['Driveline efficiency', pct(e.efficiency)],
-                ['Shifts up at', `${n0(e.shiftUp[0])}–${n0(e.shiftUp[1])} rpm`, 'From a light foot to full throttle'],
-                ['Shifts down below', `${n0(e.shiftDown[0])}–${n0(e.shiftDown[1])} rpm`, 'From a light foot to full throttle'],
+                ['Shifts up at', e.shiftUp[0] === e.shiftUp[1] ? `${n0(e.shiftUp[0])} rpm` : `${n0(e.shiftUp[0])}–${n0(e.shiftUp[1])} rpm`, e.shiftUp[0] === e.shiftUp[1] ? 'Whatever the throttle' : 'From a light foot to full throttle'],
+                ['Shifts down below', e.shiftDown[0] === e.shiftDown[1] ? `${n0(e.shiftDown[0])} rpm` : `${n0(e.shiftDown[0])}–${n0(e.shiftDown[1])} rpm`, e.shiftDown[0] === e.shiftDown[1] ? 'Whatever the throttle' : 'From a light foot to full throttle'],
               ]} />
               <div className="sm:col-span-2">
                 <h4 className="eyebrow mb-2 text-[0.62rem] text-muted-foreground/80">Gearbox · final drive {n2(e.finalDrive)} · reverse {n2(e.reverse)}</h4>

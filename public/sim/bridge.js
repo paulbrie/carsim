@@ -1,7 +1,8 @@
-// Claude bridge, the sim's side: a Claude session working in this page, seen by the user (lib/bridge/store.mjs has
-// the server's side and the plan; scripts/bridge.mjs, the agent's). The super admin only: the 🤝 Claude button shows
-// for them. Connect shows a 6-digit code; the agent claims it and sends commands, carried out here and logged in the
-// panel; the user can write to it; Disconnect ends it. A reload keeps the pairing (this tab's sessionStorage).
+// The agent bridge, the sim's side: an AI agent (a Claude session, or any other that speaks MCP or HTTP) working in this
+// page, seen by the user (lib/bridge/store.mjs has the server's side and the plan; scripts/bridge.mjs and /api/mcp, the
+// agent's). For every signed-in driver (#355): the 🤝 Agent button shows for them. Connect shows a code (8 characters);
+// the agent claims it and sends commands, carried out here and logged in the panel; the user can write to it;
+// Disconnect ends it. A reload keeps the pairing (this tab's sessionStorage).
 //
 // Commands (type → args → data):
 //   state      {}                          → the sim at a glance: car, lap, autopilot, race, what the panels say
@@ -16,8 +17,9 @@
 //   reload     {}                          → {} (then the page reloads, and pairs again by itself)
 //   goto       {path}                      → {} (then this frame goes to another of the app's sim pages, e.g.
 //                                            "/sim/index.html" (single player: its menu picks the track), and pairs again)
-// Standing (#348): when the server has an agent key (CLAUDE_BRIDGE_AGENT_KEY: the dev box), the page pairs by itself as
-// it loads, and again if its pairing ends, so that an agent with the key can take it with no one to read it a code.
+// Standing (#348): when the server has an agent key (CLAUDE_BRIDGE_AGENT_KEY: the dev box), the super admin's page pairs
+// by itself as it loads, and again if its pairing ends, so that an agent with the key can take it with no one to read
+// it a code.
 // Disconnect stops that for this tab.
 // The app's other pages (#348): on a server with an agent key, app/layout.tsx loads this on every page, where it runs
 // without a sim (APP): no panel, a badge while an agent is connected, and only state, text, click, reload and goto (any
@@ -58,7 +60,7 @@ async function connect(standing = false) {
   if (!standing) setUserOff(false);
   try { Object.assign(st, (({ pageId, pageToken, code, expiresAt }) => ({ pageId, token: pageToken, code, codeUntil: expiresAt }))(await post('/pair', { standing })), { agent: null }); }
   catch (e) { note(`Could not pair: ${e.message}`); return; }
-  keep(); listen(); note(standing ? 'Open to this machine\'s Claude (no code needed), or give a Claude the code' : 'Waiting for Claude: give it the code'); show();
+  keep(); listen(); note(standing ? 'Open to this machine\'s agent (no code needed), or give an agent the code' : 'Waiting for your agent: give it the code'); show();
 }
 function end(why) {
   st.es?.close(); st.es = null;
@@ -70,7 +72,7 @@ async function disconnect() { setUserOff(true); try { await post('/close'); } ca
 // ---------------------------------------------------------------- the commands
 async function run({ id, type, args = {}, agent }) {
   const line = `${type}${Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 80) : ''}`;
-  note(`▸ ${agent || 'Claude'}: ${line}`);
+  note(`▸ ${agent || 'Agent'}: ${line}`);
   let res;
   try {
     if (!Object.hasOwn(COMMANDS, type)) throw new Error(`No such command: ${type} (${Object.keys(COMMANDS).join(', ')})`);
@@ -209,20 +211,23 @@ addEventListener('error', e => { if (st.pageId) note(`✕ error: ${e.message}${e
 addEventListener('unhandledrejection', e => { if (st.pageId) note(`✕ unhandled: ${String(e.reason && (e.reason.message || e.reason)).slice(0, 200)}`); });
 function note(s) { st.log.push(`${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} ${s}`); if (st.log.length > 40) st.log.shift(); show(); }
 function show(extra) {
-  if (st.badge) { st.badge.style.display = st.agent ? '' : 'none'; st.badge.textContent = `🤝 ${st.agent || 'Claude'}`; }
+  if (st.badge) { st.badge.style.display = st.agent ? '' : 'none'; st.badge.textContent = `🤝 ${st.agent || 'Agent'}`; }
   if (!st.el) return;
   const on = !!st.pageId, q = s => st.el.querySelector(s);
   st.btn.classList.toggle('on', !!st.agent);
-  st.btn.textContent = st.agent ? `🤝 ${st.agent}` : '🤝 Claude';
+  st.btn.textContent = st.agent ? `🤝 ${st.agent}` : '🤝 Agent';
   q('#brStat').textContent = !on ? 'Not connected.' : st.agent ? `${st.agent} is connected and can work in this page.${extra ? ' (' + extra + ')' : ''}`
-    : `Give Claude this code (valid ${Math.max(0, Math.ceil((st.codeUntil - Date.now()) / 60000))} min)${extra ? ' · ' + extra : ''}:`;
-  q('#brCode').textContent = on && !st.agent && st.code ? st.code.replace(/(\d{3})(\d{3})/, '$1 $2') : '';
+    : `Give your agent this code (valid ${Math.max(0, Math.ceil((st.codeUntil - Date.now()) / 60000))} min)${extra ? ' · ' + extra : ''}:`;
+  q('#brCode').textContent = on && !st.agent && st.code ? pretty(st.code) : '';
+  q('#brHow').style.display = st.agent ? 'none' : '';
   q('#brCodeRow').style.display = on && !st.agent && st.code ? '' : 'none';
   q('#brConnect').style.display = on ? 'none' : '';
   q('#brClose').style.display = on ? '' : 'none';
   q('#brMsgRow').style.display = st.agent ? '' : 'none';
   q('#brLog').textContent = st.log.slice(-14).join('\n');
 }
+// a code as shown and copied: XXXX-XXXX (the server takes it with or without the dash, in any case)
+const pretty = c => String(c).replace(/^(.{4})(.{4})$/, '$1-$2');
 function ui() {
   document.head.insertAdjacentHTML('beforeend', `<style>
     #brBtn{position:fixed;top:492px;right:12px;font:inherit;font-size:13px;font-weight:700;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(20,14,6,.65);z-index:4}
@@ -230,16 +235,18 @@ function ui() {
     body.mp-race #brBtn{display:none!important}
     #brPanel{display:none;position:fixed;width:300px;max-height:calc(100vh - 24px);overflow:auto;pointer-events:auto;z-index:5;background:rgba(20,14,6,.88)}
     #brPanel .lt{font-size:12px;letter-spacing:2px;opacity:.85} #brPanel button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:6px 10px;margin:6px 4px 0 0;cursor:pointer;color:#fff;background:#ffffff26}
-    #brPanel button:hover{background:#ffffff40} #brCode{font-size:30px;font-weight:800;letter-spacing:4px;font-variant-numeric:tabular-nums;margin:4px 0}
+    #brPanel button:hover{background:#ffffff40} #brCode{font:800 24px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:2px;margin:4px 0;user-select:all}
+    #brHow{font-size:11.5px;line-height:1.4;opacity:.8;margin:2px 0 4px} #brHow a{color:inherit} #brHow code{font:11px ui-monospace,monospace;word-break:break-all;user-select:all}
     #brCodeRow{display:flex;align-items:center;gap:10px} #brPanel #brCopy{margin:0;padding:6px 12px} #brPanel #brCopy.ok{background:#2f9e55}
     #brLog{white-space:pre-wrap;font:11px/1.35 ui-monospace,monospace;opacity:.8;max-height:180px;overflow:auto;margin-top:6px}
     #brMsg{width:100%;box-sizing:border-box;font:inherit;font-size:12px;background:#ffffff1f;color:#fff;border:1px solid #ffffff40;border-radius:4px;padding:4px;margin-top:6px}
   </style>`);
-  const b = st.btn = document.createElement('button'); b.id = 'brBtn'; b.textContent = '🤝 Claude'; b.title = 'Let a Claude session work in this page (you see what it does)';
+  const b = st.btn = document.createElement('button'); b.id = 'brBtn'; b.textContent = '🤝 Agent'; b.title = 'Let an AI agent work in this page (you see what it does)';
   const p = st.el = document.createElement('div'); p.id = 'brPanel'; p.className = 'panel';
-  p.innerHTML = `<div class="lt">CLAUDE BRIDGE</div><div id="brStat"></div><div id="brCodeRow"><div id="brCode"></div><button id="brCopy" title="Copy the code, to paste it to Claude">Copy</button></div>
+  p.innerHTML = `<div class="lt">AGENT BRIDGE</div><div id="brStat"></div><div id="brCodeRow"><div id="brCode"></div><button id="brCopy" title="Copy the code, to paste it to your agent">Copy</button></div>
+    <div id="brHow">Your agent connects over MCP at <code>${location.origin}${BASE}/api/mcp</code> and calls <code>sim_pair</code> with the code. <a href="${BASE}/developers" target="_blank" rel="noopener">How to set it up</a></div>
     <button id="brConnect">Connect</button><button id="brClose">Disconnect</button>
-    <div id="brMsgRow"><input id="brMsg" placeholder="Write to Claude, Enter to send"></div><div id="brLog"></div>`;
+    <div id="brMsgRow"><input id="brMsg" placeholder="Write to your agent, Enter to send"></div><div id="brLog"></div>`;
   document.body.append(b, p);
   b.addEventListener('click', e => { e.currentTarget.blur(); p.style.display = p.style.display === 'block' ? 'none' : 'block'; place(); show(); });
   p.querySelector('#brConnect').addEventListener('click', e => { e.currentTarget.blur(); connect(); });
@@ -247,8 +254,8 @@ function ui() {
   p.querySelector('#brCopy').addEventListener('click', async e => {
     const bt = e.currentTarget; bt.blur(); if (!st.code) return;
     let ok = false;
-    try { await navigator.clipboard.writeText(st.code); ok = true; } catch (err) {   // (in a room's iframe the clipboard may be refused: the old way)
-      const t = document.createElement('textarea'); t.value = st.code; t.style.cssText = 'position:fixed;opacity:0'; document.body.append(t); t.select();
+    try { await navigator.clipboard.writeText(pretty(st.code)); ok = true; } catch (err) {   // (in a room's iframe the clipboard may be refused: the old way)
+      const t = document.createElement('textarea'); t.value = pretty(st.code); t.style.cssText = 'position:fixed;opacity:0'; document.body.append(t); t.select();
       try { ok = document.execCommand('copy'); } catch (err2) { } t.remove();
     }
     bt.textContent = ok ? 'Copied ✓' : 'Copy failed'; bt.classList.toggle('ok', ok);
@@ -276,12 +283,12 @@ function ui() {
   place();
 }
 
-// ---------------------------------------------------------------- start: for the super admin only
+// ---------------------------------------------------------------- start: for whoever is signed in (#355)
 (async () => {
   try { const r = await fetch(API + '/can', { credentials: 'same-origin' }), c = await r.json(); if (!c.can) return; st.standing = !!c.standing; } catch (e) { return; }
   if (APP) {                                                           // an app page: a badge, no panel; and only when standing
     if (!st.standing) return;
-    const b = st.badge = document.createElement('div'); b.title = 'A Claude session can work in this tab (bridge)';
+    const b = st.badge = document.createElement('div'); b.title = 'An AI agent can work in this tab (bridge)';
     b.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:2147483647;font:600 12px/1 system-ui,sans-serif;color:#fff;background:#7a3cff;border-radius:999px;padding:6px 10px;display:none;pointer-events:none';
     document.body.append(b);
   } else {

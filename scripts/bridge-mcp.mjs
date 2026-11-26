@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// The Claude bridge as an MCP server over stdio (as trafficsim's scripts/claude-bridge-mcp.ts, cut to the sim): a Claude
-// session's tools for working in the super admin's own sim page (public/sim/bridge.js carries the commands out there;
+// The agent bridge as an MCP server over stdio (as trafficsim's scripts/claude-bridge-mcp.ts, cut to the sim): an agent's
+// tools for working in a driver's own sim page (public/sim/bridge.js carries the commands out there;
 // lib/bridge/store.mjs relays them). Same HTTP API and token file (~/.carsim-bridge.json) as scripts/bridge.mjs.
 // .mcp.json starts it for Claude Code in this project. CARSIM_URL: the app (default http://localhost:7001/projects/carsim).
+// One file, nothing to install (Node 18+): the site serves it for download (/carsim-mcp.mjs, with its own URL as the
+// default), for agents that take a command rather than a URL. The same tools over HTTP: /api/mcp (lib/bridge/mcp.mjs).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -40,7 +42,7 @@ async function meanwhile() {
 const text = s => ({ content: [{ type: 'text', text: typeof s === 'string' ? s : JSON.stringify(s, null, 2) }] });
 const TOOLS = {
   sim_pair: {
-    description: 'Pair with the sim page showing this 6-digit code (the user: 🤝 Claude → Connect, in the sim).',
+    description: 'Pair with the sim page showing this code (the driver: Agent → Connect, in the sim; 8 characters like K7QF-2M9X, valid 10 minutes).',
     inputSchema: { type: 'object', properties: { code: { type: 'string' }, name: { type: 'string', description: 'your name, shown to the user' } }, required: ['code'] },
     run: async ({ code, name }) => { const r = await call('/claim', { method: 'POST', body: { code, agent: name || 'Claude' }, auth: false }); save({ agentToken: r.agentToken, pageId: r.pageId, seq: 0 }); return text(`Paired with page ${r.pageId}.`); },
   },

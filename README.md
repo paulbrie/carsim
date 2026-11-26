@@ -533,11 +533,32 @@ The server keeps 2000 generations of the current chart (and a training up to 512
 - Without the pace note, or with bearings in radians (a hairpin's jumps from +180° to −180°), or always
   starting from the start line, it never got past the first sharp bend.
 
-## Claude bridge: a Claude session working in your sim
+## The simulator for code and agents (#355)
 
-For the super admin (as trafficsim's bridge, cut to the sim): **Claude** (in the rail) →
-**Connect** shows a 6-digit code (10 minutes); a Claude session claims it with `node scripts/bridge.mjs claim
-<code>` and then works in that page, in the browser it runs in (yours, with its frame rate), every command shown in
+`/developers` (and the same text as markdown for agents, `/developers.md`: both are `docs/simulator.md`, with the
+site's address put in its examples) documents two ways in:
+
+- **`/carsim.mjs`: the simulator as one module to download.** The engine as the game runs it, without a screen, with
+  three.js inside it: `import { createSim } from './carsim.mjs'`, then `sim.step({ steer, throttle, brake })`,
+  `sim.state()`, `sim.observe()` (what the lab's networks are shown), `sim.course()`, `sim.setup()`, `sim.autopilot(net)`
+  (a saved network at the wheel), `sim.raw` (the engine's `__sim`). Node, a browser or a worker; about 100× real time,
+  200 MB and 3 s a sim; the same controls give the same drive. Built on request from `public/sim/engine.js` as it is
+  (`lib/sim-module/`: `build.mjs` puts the engine's source inside a function whose parameters are the page's globals,
+  the trick the autopilot's workers use, so each `createSim()` is a world of its own and nothing touches the real
+  globals; `api.template.js` is the API, in the engine's scope; `serve.mjs` builds once per engine). Its build id is
+  its ETag. `node scripts/build-sim-module.mjs [out.mjs]` writes it to a file.
+- **The agent bridge for everyone, and as an MCP server.** Below. `/api/mcp` is the bridge's tools over MCP's
+  Streamable HTTP (`lib/bridge/mcp.mjs`: JSON answers, the session from `initialize` in `Mcp-Session-Id`; `sim_pair`
+  makes the pairing the session's, kept with it through restarts); `/carsim-mcp.mjs` is `scripts/bridge-mcp.mjs` to
+  download, with the site's address as its default, for agents that start a command.
+
+## The agent bridge: an AI agent working in your sim
+
+For every signed-in driver (#355; it was the super admin's alone), each for their own pages (as trafficsim's bridge,
+cut to the sim): **Agent** (in the rail) →
+**Connect** shows a code (8 characters such as `K7QF-2M9X`, 10 minutes); an agent claims it (MCP: `sim_pair`; a Claude
+session on the box: `node scripts/bridge.mjs claim
+<code>`) and then works in that page, in the browser it runs in (yours, with its frame rate), every command shown in
 the panel's log: `state` (car, lap, autopilot, race, the panels' text), `screenshot` (the 3D view), `text`, `click`,
 `set` (a field), `key`, `get` (a value of `window.__sim`), `sim` (a few of its functions by name, e.g. `aiSaveServer(name)`: the autopilot
 saved on the server, as Save to server does without its name prompt; `aiForget()`: Start over without its confirm), `reload`. No
@@ -545,13 +566,21 @@ arbitrary JavaScript; the bridge's own panel and password fields are out of its 
 (`node scripts/bridge.mjs events` reads it). **Disconnect** ends it; a reload keeps it, and so does a restart or a deploy (#348: the
 pairings are kept in the database, `app_meta` `bridge.pairings`; the page's stream reconnects to the new server). Tokens are
 kept per app URL in `~/.carsim-bridge.json`, so a claim on the deployed site doesn't replace the dev box's.
-On the deployed site too (#346), for the super admin alone (nobody else gets the button, #338): an agent there
-claims with `CARSIM_URL=https://carsim.paulbrie.com node scripts/bridge.mjs claim <code>` (the MCP tools: the same `CARSIM_URL`); past 10 wrong codes
-in 10 minutes no claim is taken until they age out. `CLAUDE_BRIDGE=off` on the server turns it off (no button,
-`/api/bridge/*` answers 404: `bridgeOn` in `lib/bridge/store.mjs`).
+On the deployed site too (#346): an agent there
+claims with `CARSIM_URL=https://carsim.paulbrie.com node scripts/bridge.mjs claim <code>` (the MCP tools: the same `CARSIM_URL`), or
+connects to `https://carsim.paulbrie.com/api/mcp`. `CLAUDE_BRIDGE=off` on the server turns it off (no button,
+`/api/bridge/*` and `/api/mcp` answer 404: `bridgeOn` in `lib/bridge/store.mjs`).
+What keeps one driver's page from another's agent (#355): a pairing belongs to the user who made it (the page's
+routes give the store their session's id, and it refuses anyone else's); a code is 8 of 32 characters (40 bits), works
+once and for 10 minutes; past 10 wrong codes in 10 minutes from one address none of its claims is taken until they age
+out (600 from everyone: no one's), so a stranger's guesses don't lock a driver out; a driver has 4 pairings at most (one
+more ends the one unused the longest); an agent's name is cut to plain text. An agent does in the page what its driver
+could do there: nothing it does is trusted more by the server.
+In a race room, Enter typed in the panel's message box sends the message (it opened the room's chat instead, and the
+message stayed unsent: the sim's Enter-for-chat now leaves the sim's own fields alone, `mpTyping` in `mp-block.js`).
 As MCP tools (`sim_pair`, `sim_state`, `sim_screenshot` (an image), `sim_command`, `sim_events`, `sim_status`):
 `scripts/bridge-mcp.mjs`, which `.mcp.json` starts for Claude Code in this project.
-**Without a code** (#348): with `CLAUDE_BRIDGE_AGENT_KEY` (24+ characters) in the server's environment (the dev box's
+**Without a code** (#348; the super admin's pages only: the key never lists or takes another driver's): with `CLAUDE_BRIDGE_AGENT_KEY` (24+ characters) in the server's environment (the dev box's
 `.env.local`; not the deployed site's), `app/layout.tsx` loads `public/sim/bridge.js` on every page and the super admin's
 tabs pair by themselves (*standing*), on the app's pages too (no panel there: a badge while an agent is connected, and only
 `state`, `text`, `click`, `reload` and `goto`). An agent on the box, which reads the key from `.env.local`, lists them and
@@ -560,8 +589,8 @@ takes one: `node scripts/bridge.mjs pages`, `node scripts/bridge.mjs take [pageI
 a race room, and the pairing goes with it into the room's sim (from a sim, only to the sim's pages). So an agent can work in
 the super admin's browser overnight: through reloads, restarts and the app's own changes. Disconnect turns it off for that
 tab.
-Server: `lib/bridge/store.mjs` (in memory, the pairings kept in the database), `app/api/bridge/page/*` (the super admin's session and the pairing's
-token), `app/api/bridge/agent/*` (the agent's token); the page: `public/sim/bridge.js` (`scripts/patches/bridge.py`
+Server: `lib/bridge/store.mjs` (in memory, the pairings kept in the database), `app/api/bridge/page/*` (the driver's session and the pairing's
+token), `app/api/bridge/agent/*` (the agent's token), `app/api/mcp` (an MCP session); the page: `public/sim/bridge.js` (`scripts/patches/bridge.py`
 loads it and puts the renderer on `__sim` for the screenshots).
 
 ## Maps and the super admin
@@ -743,8 +772,9 @@ a domain's root (Railway). Google's redirect URI there:
    process's memory, so more replicas would split them.
 2. Variables: `AUTH_SECRET` (`openssl rand -base64 32`; the server won't start without it in production: every
    page would fail with Auth.js's `MissingSecret`), `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (and `AUTH_GUEST=1` only if
-   guests should be allowed). `PORT` is Railway's. Node 24 (`engines`). The Claude bridge is on there for
-   the super admin (`CLAUDE_BRIDGE=off` to turn it off).
+   guests should be allowed). `PORT` is Railway's. Node 24 (`engines`). The agent bridge is on there for
+   every signed-in driver (`CLAUDE_BRIDGE=off` to turn it off), and `/carsim.mjs` is built there from the deployed engine
+   (it reads `public/sim/engine.js`, `node_modules/three` and `lib/sim-module/api.template.js` from the app's folder).
    The maps, the best laps and the saved autopilots are in Postgres: add a **Postgres** service to the project and
    set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on the app (the private one: no TLS needed). The server applies
    the migrations when it starts and won't start without the database. Coming from a deploy that kept them as
@@ -784,6 +814,8 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `lib/client/net.ts` | the browser's socket, subjecto Subjects |
 | `components/race-room.tsx` | the race page: panel, best laps, standings, results |
 | `components/sim-frame.tsx` | the sim iframe and its postMessage bridge |
+| `lib/sim-module/`, `app/carsim.mjs`, `docs/simulator.md`, `app/developers`, `app/developers.md` | the simulator as a module to download, and its documentation (the page and the markdown) |
+| `lib/bridge/`, `app/api/bridge`, `app/api/mcp`, `public/sim/bridge.js`, `scripts/bridge*.mjs`, `app/carsim-mcp.mjs` | the agent bridge: the store, the page's and the agents' routes, the MCP server over HTTP and over stdio |
 | `components/race-controls.tsx` | car, paint (UI SDK colour picker), the track picker, ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |
 | `public/sim/` | the engine |

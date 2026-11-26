@@ -7,7 +7,7 @@ import { Brand } from '@/components/brand';
 import { UserMenu } from '@/components/user-menu';
 import { cn } from '@/lib/utils';
 
-export type NavKey = 'home' | 'leaderboard' | 'networks' | 'tnn' | 'tech' | 'race' | 'maps' | 'signin';
+export type NavKey = 'home' | 'leaderboard' | 'networks' | 'tnn' | 'tech' | 'developers' | 'race' | 'maps' | 'signin';
 export interface NavUser { name: string; image: string | null; admin?: boolean }
 
 const LINKS: { key: NavKey; href: string; label: string }[] = [
@@ -16,6 +16,7 @@ const LINKS: { key: NavKey; href: string; label: string }[] = [
   { key: 'networks', href: '/networks', label: 'Networks' },
   { key: 'tnn', href: '/tnn', label: 'What is a TNN?' },
   { key: 'tech', href: '/tech', label: 'Tech' },
+  { key: 'developers', href: '/developers', label: 'Developers' },
 ];
 
 /** The bar at the top of every page: the logo, where to go, Drive, and who you are. */

@@ -94,7 +94,7 @@ const ITEMS = [
   null,
   { own: 'sound', icon: 'sound', label: 'Sound', key: 'M', value: true, title: 'The sound on or off (it is remembered)' },
   { own: 'keys', icon: 'keys', label: 'Keys', key: 'H', title: 'Every key' },
-  { id: 'brBtn', icon: 'claude', label: 'Claude' },
+  { id: 'brBtn', icon: 'claude', label: 'Agent' },
 ];
 const rail = document.createElement('div'); rail.id = 'uiRail'; rail.className = 'panel';
 for (const it of ITEMS) {

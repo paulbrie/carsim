@@ -6508,7 +6508,9 @@ if (MP.on) {
   // the chat (#325): Enter opens the race page's line to write on (a wrecked car's Enter still repairs it); the keys
   // held let go, as whenever the page loses the focus (the keyups go to the page, not to us)
   const keysUp = () => { for (const k in keys) keys[k] = false; };
-  addEventListener('keydown', e => { if (e.code === 'Enter' && !e.repeat && !car.wrecked && !ed.on) { e.stopImmediatePropagation(); e.preventDefault(); keysUp(); mpPost({ t: 'chatKey' }); } }, true);
+  // (not while typing in a field of the sim's own: the agent bridge's message box, the lab's: Enter is theirs, #355)
+  const mpTyping = t => !!t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || '') || t.isContentEditable === true);
+  addEventListener('keydown', e => { if (e.code === 'Enter' && !e.repeat && !car.wrecked && !ed.on && !mpTyping(e.target)) { e.stopImmediatePropagation(); e.preventDefault(); keysUp(); mpPost({ t: 'chatKey' }); } }, true);
   addEventListener('blur', keysUp);
   const help = document.getElementById('help');
   help.innerHTML = '<b>W/↑</b> throttle &nbsp; <b>S/↓</b> brake / reverse &nbsp; <b>A D/← →</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>R</b> back to last gate<br><b>C</b> camera &nbsp; <b>Shift/right-drag</b> look around &nbsp; <b>P</b> pause &nbsp; <b>Shift+P</b> tire pressure &nbsp; <b>4</b> 2WD/4WD (AWD cars: front/rear split) &nbsp; <b>U</b> car setup (drive, tires) &nbsp; <b>X</b> driver aids &nbsp; <b>Y</b> replay (not in a race) &nbsp; <b>I</b> TNN lab (not in a race) &nbsp; <b>M</b> mute &nbsp; <b>Enter</b> chat &nbsp; <b>H</b> hide this';

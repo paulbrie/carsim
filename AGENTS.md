@@ -78,7 +78,8 @@ See README.md for the layout. Notes:
 - The chat (#325): `lib/race/chat.mjs` (main room in the database, mutes) and the hub's `chat` / `chatDel` / `chatMute`
   messages; a race room's chat is `room.chat`. Only the server decides who is the admin (the signed ticket's `admin`):
   the page's delete and mute buttons are only a view. In a race, Enter in the sim posts `chatKey` to the page
-  (`mp-block.js`): keep Enter free for it there (a wrecked car's Enter still repairs).
+  (`mp-block.js`): keep Enter free for it there (a wrecked car's Enter still repairs; Enter typed in one of the sim's
+  own fields is that field's, `mpTyping`, #355).
 - Best laps (#304): in a race (`?mp=1`) the timer's BEST comes from the server (`mpApplyBest`, from the
   room's `records`), not localStorage; anything that rebuilds the course or changes the car or ground must
   leave `loadBest` / `mpApplyBest` to set it. The server only takes a lap no longer than the time since the
@@ -127,7 +128,20 @@ See README.md for the layout. Notes:
   reason to `aiHalt(drive, why)`, not a bare `aiTrain(false)` (that is for the user's own Pause). A flash alone isn't
   enough: the full-screen lab covers the sim. The training is driven by animation frames, and by `aiBgKick`'s message loop
   while the tab is hidden: a new per-frame step of the training goes in `aiTrainFrame`, which both call.
-- Claude bridge (README; the super admin only, in production too (#346; `CLAUDE_BRIDGE=off` turns it off, `bridgeOn`; there `CARSIM_URL` is the site's)): to work in the super admin's own browser, ask them for the code (🤝 Claude → Connect) and
+- The simulator as a module (#355, `/carsim.mjs`, `lib/sim-module/`): the engine's source goes whole inside a function whose
+  parameters are the page's globals (`PAGE_GLOBALS` in `build.mjs`), as a worker's engine but in any JS: **a browser global
+  the engine starts to name that Node lacks must be added to that list** (or the module throws a ReferenceError in Node where
+  the page works), and top-level engine code must keep working on the stub DOM (the workers' rule). `api.template.js` reads
+  the engine's functions and state by name (`simulate`, `aiTrack`, `aiObserve`, `aiPlaceCar`, `aiGroundBack`, `botPath`,
+  `SETUP`, `lap`...): rename one, change it there; `test/sim-module.test.mjs` builds the module and uses all of it, and runs
+  the first example of `docs/simulator.md` as written. That file is the developers' page and `/developers.md` both: a
+  change to the module's API, the bridge's commands or its tools is a change there. The module never fetches or writes.
+- The agent bridge is every signed-in driver's (#355), so its store trusts no caller: every page route passes the session's
+  user id and the store refuses a pairing that isn't theirs; `list` / `take` (the agent key) see only pairings made with the
+  super admin's session (`admin`); a new agent route must take a token or a claimed code, never a page id alone. The MCP
+  server's tools (`lib/bridge/mcp.mjs`) and the stdio one's (`scripts/bridge-mcp.mjs`, also served as `/carsim-mcp.mjs`) are
+  the same list (a test compares the names): add a tool to both. `/api/mcp` reads no cookie on purpose (its CORS is open).
+- Claude bridge (README; every signed-in driver's since #355, the code-less access below the super admin's only; in production too (#346; `CLAUDE_BRIDGE=off` turns it off, `bridgeOn`; there `CARSIM_URL` is the site's)): to work in the super admin's own browser, ask them for the code (🤝 Agent → Connect) and
   `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
   (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.
   Or the MCP tools (`.mcp.json` → `scripts/bridge-mcp.mjs`): `sim_pair { code }`, `sim_state`, `sim_screenshot`, `sim_command`.

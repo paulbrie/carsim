@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The Claude bridge, the agent's side (lib/bridge/store.mjs has the plan; public/sim/bridge.js, the page's):
-//   node scripts/bridge.mjs claim <code> [name]    take the sim page showing that code (🤝 Claude → Connect)
+// The agent bridge, the agent's side (lib/bridge/store.mjs has the plan; public/sim/bridge.js, the page's):
+//   node scripts/bridge.mjs claim <code> [name]    take the sim page showing that code (🤝 Agent → Connect)
 //   node scripts/bridge.mjs status                 the page paired with
 //   node scripts/bridge.mjs <command> [json args]  a command, e.g. state · screenshot '{"maxWidth":800}' (saved to a file)
 //                                                  click '{"text":"Train"}' · key '{"code":"KeyI"}' · get '{"path":"ai.hist"}'

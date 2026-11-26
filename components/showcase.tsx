@@ -46,6 +46,7 @@ export function BoardCard({ board, track, full, limit, className }: { board: Boa
         </div>
         {board.human && board.tnn && <GapBadge gap={board.tnn.time - board.human.time} className="hidden sm:inline-flex" />}
       </header>
+      <div className="overflow-x-auto">{/* (a phone: the table scrolls, not cut off) */}
       <table className="w-full text-sm">
         <thead>
           <tr className="eyebrow text-[0.62rem] text-muted-foreground/80">
@@ -59,6 +60,7 @@ export function BoardCard({ board, track, full, limit, className }: { board: Boa
           {rows.map(r => <Row key={r.vehicle} r={r} lead={lead} full={full} />)}
         </tbody>
       </table>
+      </div>
       {limit != null && board.rows.length > limit && (
         <div className="border-t border-white/6 px-5 py-3 text-sm">
           <Link href={`/leaderboard#${board.track}-${board.ground}`} className="font-medium text-muted-foreground hover:text-foreground">All {board.rows.length} cars →</Link>
@@ -76,7 +78,7 @@ function Row({ r, lead, full }: { r: BoardRow; lead: number; full: boolean }) {
         <>
           <span className={cn('num font-medium', time === lead && (side === 'human' ? 'text-human' : 'text-tnn'))}>{fmtLap(time)}</span>
           <span className="block max-w-36 truncate text-xs text-muted-foreground sm:ml-auto">{sub}</span>
-          {kind && <span className="block max-w-36 truncate text-[0.7rem] text-muted-foreground/70 sm:ml-auto" title={kind}>{kind}</span>}
+          {kind && <span className="block max-w-36 text-[0.7rem] leading-snug text-pretty text-muted-foreground/70 sm:ml-auto">{kind}</span>}
         </>
       )}
     </td>

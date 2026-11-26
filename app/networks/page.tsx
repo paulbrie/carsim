@@ -69,8 +69,8 @@ export default async function Networks({ searchParams }: { searchParams: Promise
               const shape = netShape(n), h = rival(n), gap = h && n.bestLap != null ? n.bestLap - h.time : null, track = trackName(n.track);
               return (
                 <li key={n.id} className="panel flex flex-col p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="eyebrow text-tnn">{shape.weights} weights{n.h ? ` · ${n.h} hidden` : ''}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                    <p className="eyebrow whitespace-nowrap text-tnn">{shape.weights} weights{n.h ? ` · ${n.h} hidden` : ''}</p>
                     {n.fastest && <span className="eyebrow shrink-0 rounded-full border border-tnn/30 bg-tnn/10 px-2 py-1 text-[0.62rem] text-tnn">fastest for its car on this track</span>}
                   </div>
                   <h2 className="mt-2 line-clamp-2 font-semibold text-pretty" title={n.name}>{n.name}</h2>

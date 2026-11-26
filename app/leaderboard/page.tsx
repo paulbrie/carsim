@@ -44,8 +44,8 @@ export default async function Leaderboard() {
               {duels.map(({ b, d }) => {
                 const t = track(b.track), tnnAhead = d.gap < 0;
                 return (
-                  <li key={`${b.track}-${b.ground}-${d.vehicle}`} className="panel flex items-center gap-4 p-4">
-                    <TrackOutline wp={t.wp} width={64} height={48} stroke={2.2} className="h-12 w-16 shrink-0 text-foreground" />
+                  <li key={`${b.track}-${b.ground}-${d.vehicle}`} className="panel flex min-w-0 items-center gap-3 p-4 sm:gap-4">
+                    <TrackOutline wp={t.wp} width={64} height={48} stroke={2.2} className="hidden h-12 w-16 shrink-0 text-foreground sm:block" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{carName(d.vehicle)}</p>
                       <p className="num truncate text-xs text-muted-foreground">{t.name} · {groundLabel(b.ground)}</p>
@@ -59,7 +59,7 @@ export default async function Leaderboard() {
                         )}
                       </div>
                     </div>
-                    <div className="num text-right text-sm">
+                    <div className="num shrink-0 text-right text-sm">
                       <p className={tnnAhead ? 'text-muted-foreground' : 'font-semibold text-human'} title={`Human: ${publicName(d.human.name, !!user)}`}>{fmtLap(d.human.time)}</p>
                       <p className={tnnAhead ? 'font-semibold text-tnn' : 'text-muted-foreground'} title={`Network: ${netLabel(d.tnn, !!user)}, ${d.tnn.weights} weights, ${lapKind(d.tnn)}`}>{fmtLap(d.tnn.time)}</p>
                     </div>

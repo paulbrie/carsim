@@ -8,8 +8,9 @@ import { BoardCard, GapBadge, carName, groundLabel } from '@/components/showcase
 import { TrackOutline } from '@/components/track-outline';
 import { fmtLap, netLabel, publicName } from '@/lib/format';
 import { showcase, type Scoreboard } from '@/lib/showcase/store.mjs';
+import { withBase } from '@/lib/base-path';
 
-export const metadata = { title: 'Leaderboard', description: 'Humans against tiny neural networks: the best lap of each, car by car, on every track.' };
+export const metadata = { title: 'Leaderboard', description: 'Humans against tiny neural networks: the best lap of each, car by car, on every track.', alternates: { canonical: withBase('/leaderboard') } };
 export const dynamic = 'force-dynamic';
 
 export default async function Leaderboard() {

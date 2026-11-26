@@ -9,12 +9,21 @@ import { NetDiagram, WeightGrid } from '@/components/net-diagram';
 import { TrackOutline } from '@/components/track-outline';
 import { BoardCard, GapBadge, SideTag, carName, groundLabel } from '@/components/showcase';
 import { withBase } from '@/lib/base-path';
+import { siteUrl } from '@/lib/site';
 import { fmtLap, fmtLength, netLabel, publicName } from '@/lib/format';
 import { INPUT_HINTS, netShape } from '@/lib/tnn';
 import { VEHICLES } from '@/lib/race/shared.mjs';
 import { showcase, type Board, type Duel, type Network, type Scoreboard, type Track } from '@/lib/showcase/store.mjs';
 
+export const metadata = { alternates: { canonical: withBase('/') } };
 export const dynamic = 'force-dynamic';
+
+const JSON_LD = {
+  '@context': 'https://schema.org', '@type': 'WebApplication', name: 'Carsim', url: siteUrl('/'),
+  description: 'Human drivers against tiny neural networks, on the same simulated cars and tracks.',
+  applicationCategory: 'GameApplication', operatingSystem: 'Any (a web browser)', author: { '@type': 'Person', name: 'Paul Brie' },
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
 
 // the network every training starts as (scripts/patches/autopilot.py: AI_DEFAULT_INPUTS), drawn when none is saved yet
 const STARTER = { inputs: ['speed', 'line6', 'line15', 'line30', 'offset', 'yaw', 'pace'], handbrake: false, h: 0, w: null };
@@ -45,6 +54,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
 
   return (
     <div className="relative overflow-x-clip">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
       <SiteNav user={user} active="home" />
 
       {/* ------------------------------------------------------------ the opening */}

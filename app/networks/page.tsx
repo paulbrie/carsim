@@ -9,8 +9,9 @@ import { carName, groundLabel } from '@/components/showcase';
 import { ago, fmtGap, fmtLap, publicName } from '@/lib/format';
 import { netShape } from '@/lib/tnn';
 import { showcase, type Network, type Scoreboard } from '@/lib/showcase/store.mjs';
+import { withBase } from '@/lib/base-path';
 
-export const metadata = { title: 'Networks', description: 'Every tiny neural network trained on Carsim and saved: its wiring, its weights, its best lap.' };
+export const metadata = { title: 'Networks', description: 'Every tiny neural network trained on Carsim and saved: its wiring, its weights, its best lap.', alternates: { canonical: withBase('/networks') } };
 export const dynamic = 'force-dynamic';
 
 export default async function Networks() {

@@ -4,10 +4,12 @@ import { SiteNav } from '@/components/site-nav';
 import { SiteFooter } from '@/components/site-footer';
 import { CarCards, CarTable } from '@/components/tech-cars';
 import { techSpecs, type GroundSpec } from '@/lib/tech/specs.mjs';
+import { withBase } from '@/lib/base-path';
 
 export const metadata = {
   title: 'Tech specs',
   description: 'What the Carsim physics takes into account, 240 times a second: engine, gearbox, tires on soft ground, suspension, drag, damage. And every car with its figures.',
+  alternates: { canonical: withBase('/tech') },
 };
 export const dynamic = 'force-dynamic';
 

@@ -10,10 +10,12 @@ import { carName, groundLabel } from '@/components/showcase';
 import { fmtGap, fmtLap, publicName } from '@/lib/format';
 import { INPUT_HINTS, netShape } from '@/lib/tnn';
 import { showcase, type Network, type Scoreboard } from '@/lib/showcase/store.mjs';
+import { withBase } from '@/lib/base-path';
 
 export const metadata = {
   title: 'What is a tiny neural network?',
   description: 'A tiny neural network is an artificial brain of a few dozen numbers. Here is how one learns to drive a car round a track, explained without the scary maths.',
+  alternates: { canonical: withBase('/tnn') },
 };
 export const dynamic = 'force-dynamic';
 

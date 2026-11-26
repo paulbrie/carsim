@@ -8,6 +8,7 @@ import { SiteFooter } from '@/components/site-footer';
 import { GapBadge, carName, groundLabel } from '@/components/showcase';
 import { DuelView } from '@/components/duel-view';
 import { fmtLap, netLabel, publicName } from '@/lib/format';
+import { withBase } from '@/lib/base-path';
 import { showcase } from '@/lib/showcase/store.mjs';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,7 @@ type Ctx = { params: Promise<{ track: string; ground: string; vehicle: string }>
 /** A duel of the leaderboard, to watch (public): the network drives live, the human's best lap is the ghost. */
 export async function generateMetadata({ params }: Ctx) {
   const { track, ground, vehicle } = await params;
-  return { title: `Duel: ${carName(vehicle)} on ${track} (${ground})` };
+  return { title: `Duel: ${carName(vehicle)} on ${track} (${ground})`, alternates: { canonical: withBase(`/duel/${encodeURIComponent(track)}/${ground}/${vehicle}`) } };
 }
 
 export default async function DuelPage({ params }: Ctx) {

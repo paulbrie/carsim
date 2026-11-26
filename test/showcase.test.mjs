@@ -54,6 +54,7 @@ test('the scoreboard: car by car, the best human lap and the best network lap on
   assert.deepEqual(road.rows.map(r => [r.vehicle, r.human?.time ?? null, r.human?.name ?? null, r.tnn?.time ?? null, r.tnn?.weights ?? null]),
     [['rs6', 30, 'Bob Ray', 29.5, 6], ['x7', 34, 'Ann Lee', 36, 43], ['gle63', null, null, 35, 6]]);
   assert.deepEqual([road.human.time, road.human.vehicle, road.tnn.time, road.tnn.id], [30, 'rs6', 29.5, fast.id]);
+  assert.deepEqual([road.tnn.room, road.tnn.exam], [false, 29.5]);                                  // its exam lap: that is the time
   assert.deepEqual(road.duels.map(d => [d.vehicle, +d.gap.toFixed(3)]), [['rs6', -0.5], ['x7', 2]]);              // the closest first
   assert.deepEqual([b.boards[1].human, b.boards[1].tnn.time, b.boards[2].human.time, b.boards[2].tnn], [null, 41, 40, null]);
   // the networks: newest first, each with its track (none for a course that is no map's), drawn from its best weights
@@ -100,5 +101,7 @@ test('a network\'s laps in the race rooms are network laps on the scoreboard, na
   const b = await new Showcase(T.db, { now: () => t, ttlMs: 0 }).board(), road = b.boards[0];
   assert.deepEqual(road.rows.map(r => [r.vehicle, r.human?.name ?? null, r.tnn && [r.tnn.name, r.tnn.ownerName, r.tnn.time, r.tnn.saved, r.tnn.room]]),
     [['rs6', 'Ann Lee', ['Swift', 'Cleo Park', 30.5, true, true]], ['x7', null, ['Unsaved network', 'Ann Lee', 40, false, true]]]);
+  // which lap it is: the saved network's exam lap is kept beside a quicker one from a room; an unsaved one has none
+  assert.deepEqual(road.rows.map(r => [r.tnn.room, r.tnn.exam]), [[true, 33], [true, null]]);
   assert.equal(road.tnn.id, saved.id);                                                         // the saved network's own id
 });

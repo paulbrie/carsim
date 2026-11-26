@@ -4,10 +4,12 @@ import { SiteNav } from '@/components/site-nav';
 import { SiteFooter } from '@/components/site-footer';
 import { CarCards, CarTable } from '@/components/tech-cars';
 import { techSpecs, type GroundSpec } from '@/lib/tech/specs.mjs';
+import { withBase } from '@/lib/base-path';
 
 export const metadata = {
   title: 'Tech specs',
   description: 'What the Carsim physics takes into account, 240 times a second: engine, gearbox, tires on soft ground, suspension, drag, damage. And every car with its figures.',
+  alternates: { canonical: withBase('/tech') },
 };
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +70,7 @@ export default async function Tech() {
           ]} />
           <Part icon={<CircleDot />} title="Wheels and differentials" items={[
             'Each wheel has its own spin and inertia. Its new spin is solved together with the tire’s force at that spin (Newton’s method, bracketed), so a wheel can’t shake between slipping both ways at walking pace.',
-            'Rear-wheel drive, or all-wheel drive through a centre differential with a front/rear split (4 changes it: 50/50, 40/60, 30/70, 20/80; the dune buggy switches between rear and four-wheel drive).',
+            'Rear-wheel drive, or all-wheel drive through a centre differential with a front/rear split (the 4 key changes it: 50/50, 40/60, 30/70, 20/80; the dune buggy switches between rear and four-wheel drive).',
             'Limited-slip differentials on both axles: a quarter of the two wheels’ difference in speed is shared out each step, up to 500 N·m.',
           ]} />
           <Part icon={<Disc3 />} title="Brakes and driver aids" items={[
@@ -179,7 +181,7 @@ function GroundTable({ grounds }: { grounds: GroundSpec[] }) {
     ['Stiffness, fresh / packed (MPa/m)', g => g.rigid ? `${mpa(g.stiffness)}, rigid` : `${mpa(g.stiffness)} / ${mpa(g.packedStiffness)}`],
     ['Friction tan φ, fresh / packed', g => g.rigid ? f(g.friction) : `${f(g.friction)} / ${f(g.packedFriction)}`],
     ['Cohesion (kPa)', g => f(g.cohesion / 1000, 1)],
-    ['Slip at peak grip, s₀', g => f(g.slipPeak, 2)],
+    ['Slip at 63 % of the grip, s₀', g => f(g.slipPeak, 2)],
     ['Slip angle at peak, rad', g => f(g.slipAngle, 3)],
     ['Grip lost sliding', g => g.slide ? `${Math.round(g.slide * 100)} %` : 'none'],
     ['Digs and ruts', g => g.rigid ? 'no' : `yes (dig ${f(g.dig, 4)})`],

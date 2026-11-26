@@ -9,12 +9,21 @@ import { NetDiagram, WeightGrid } from '@/components/net-diagram';
 import { TrackOutline } from '@/components/track-outline';
 import { BoardCard, GapBadge, SideTag, carName, groundLabel } from '@/components/showcase';
 import { withBase } from '@/lib/base-path';
+import { siteUrl } from '@/lib/site';
 import { fmtLap, fmtLength, netLabel, publicName } from '@/lib/format';
 import { INPUT_HINTS, netShape } from '@/lib/tnn';
 import { VEHICLES } from '@/lib/race/shared.mjs';
 import { showcase, type Board, type Duel, type Network, type Scoreboard, type Track } from '@/lib/showcase/store.mjs';
 
+export const metadata = { alternates: { canonical: withBase('/') } };
 export const dynamic = 'force-dynamic';
+
+const JSON_LD = {
+  '@context': 'https://schema.org', '@type': 'WebApplication', name: 'Carsim', url: siteUrl('/'),
+  description: 'Human drivers against tiny neural networks, on the same simulated cars and tracks.',
+  applicationCategory: 'GameApplication', operatingSystem: 'Any (a web browser)', author: { '@type': 'Person', name: 'Paul Brie' },
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
 
 // the network every training starts as (scripts/patches/autopilot.py: AI_DEFAULT_INPUTS), drawn when none is saved yet
 const STARTER = { inputs: ['speed', 'line6', 'line15', 'line30', 'offset', 'yaw', 'pace'], handbrake: false, h: 0, w: null };
@@ -35,7 +44,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
   const track = (id: string) => data.tracks.find(t => t.id === id)!;
   // the closest fight on the board: the one to open with
   const fights = data.boards.flatMap(b => b.duels.map(d => ({ board: b, duel: d }))).sort((a, b) => Math.abs(a.duel.gap) - Math.abs(b.duel.gap));
-  const lead = fights[0] ?? null;
+  // the one to open with is one a visitor can watch (a saved network, a human lap with a path: /duel), else the closest
+  const watchable = (f: (typeof fights)[number]) => f.duel.human.ghost && f.duel.tnn.saved;
+  const lead = fights.find(watchable) ?? fights[0] ?? null;
+  const watch = lead && watchable(lead) ? `/duel/${encodeURIComponent(lead.board.track)}/${lead.board.ground}/${encodeURIComponent(lead.duel.vehicle)}` : null;
   const lapped = data.networks.filter(n => n.bestLap != null && n.track);
   const star: Network | null = (lead && data.networks.find(n => n.id === lead.duel.tnn.id)) || lapped[0] || null;
   const smallest = lapped.length ? lapped.reduce((a, b) => (b.weights < a.weights ? b : a)) : null;
@@ -45,6 +57,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
 
   return (
     <div className="relative overflow-x-clip">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
       <SiteNav user={user} active="home" />
 
       {/* ------------------------------------------------------------ the opening */}
@@ -66,7 +79,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
               learned from nothing in a browser tab. Take them on, or train your own.
             </p>
             <div className="rise rise-3 flex flex-wrap items-center gap-3">
-              <Button asChild size="xl" className="glow-human">
+              {watch && (
+                <Button asChild size="xl" className="glow-human">
+                  <Link href={watch}><Eye /> Watch a duel</Link>
+                </Button>
+              )}
+              <Button asChild size="xl" variant={watch ? 'glass' : 'default'} className={watch ? undefined : 'glow-human'}>
                 <Link href="/lobby"><Play className="fill-current" /> Drive now</Link>
               </Button>
               <Button asChild size="xl" variant="tnn">
@@ -77,7 +95,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
           </div>
 
           <div className="rise rise-2 min-w-0">
-            {lead ? <Headline board={lead.board} duel={lead.duel} track={track(lead.board.track)} net={star} full={full} />
+            {lead ? <Headline board={lead.board} duel={lead.duel} track={track(lead.board.track)} net={star} full={full} watch={watch} />
               : <StarterCard />}
           </div>
         </div>
@@ -105,7 +123,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
       <Section id="play" eyebrow="Three ways in" title="Drive. Build. Or both.">
         <div className="grid gap-5 lg:grid-cols-3">
           <Way tone="human" icon={<Gauge />} kicker="Just drive" title="Take the wheel"
-            body="Pick one of fifteen cars, from a dune buggy to a 567 kW Mustang, and a ground: sand that ruts under your tyres, firm earth, or tarmac. Every gate, as fast as you can."
+            body="Pick one of sixteen cars, from a dune buggy to a 567 kW Mustang, and a ground: sand that ruts under your tyres, firm earth, or tarmac. Every gate, as fast as you can."
             points={['A room of your own, or up to eight drivers', 'A ghost of your best lap to chase', 'Every valid lap on the leaderboard']}>
             <Button asChild size="lg" className="px-4"><Link href="/lobby"><Play className="fill-current" /> Open a race room</Link></Button>
           </Way>
@@ -127,7 +145,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
       {/* ------------------------------------------------------------ the scoreboard */}
       {data.boards.length > 0 && (
         <Section id="scoreboard" eyebrow="The scoreboard" title="Where it stands, car by car."
-          lead="Each row is one car on one track: the best lap a person has driven in a race room, and the best lap a saved network has driven in its exam. Same sim, same timing.">
+          lead="Each row is one car on one track: the best lap a person has driven in a race room, and the best lap a network has driven, in its exam or in a race room. Same sim, same timing.">
           <div className="grid gap-5 lg:grid-cols-2">
             {data.boards.filter(b => b.duels.length).concat(data.boards.filter(b => !b.duels.length)).slice(0, 4)
               .map(b => <BoardCard key={`${b.track}-${b.ground}`} board={b} track={track(b.track)} full={full} limit={5} />)}
@@ -190,7 +208,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
             [<Mountain key="i" />, 'Ground that gives way', 'Tyres sink into sand, dig ruts and throw roost; earth is firm; tarmac grips. The ruts a lap leaves are there on the next one.'],
-            [<Wrench key="i" />, 'Cars with their real numbers', 'Fifteen cars with their engines’ torque curves, gearboxes, weight and drivetrains, and synthesised engine sounds from a flat-four to a supercharged V8.'],
+            [<Wrench key="i" />, 'Cars with their real numbers', 'Sixteen cars with their engines’ torque curves, gearboxes, weight and drivetrains, and synthesised engine sounds from a flat-four to a supercharged V8.'],
             [<Gauge key="i" />, 'Suspension and drivetrain', 'Sprung wheels on uneven ground, rear or all-wheel drive with a front-to-rear split you can move, traction control and ABS you can switch off.'],
             [<Repeat key="i" />, 'Damage that stays', 'Hit a gate post and the body crumples, glass cracks and breaks, parts come off, and the car drives worse for it.'],
             [<Timer key="i" />, 'Laps to the thousandth', 'Every gate in order or the lap does not count. Checkpoint splits, replays, and in race rooms a ghost car of the best lap.'],
@@ -247,13 +265,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ n
 }
 
 /** The opening card: the closest duel on the board, on its track, and the network that drove it. */
-function Headline({ board, duel, track, net, full }: { board: Board; duel: Duel; track: Track; net: Network | null; full: boolean }) {
+function Headline({ board, duel, track, net, full, watch }: { board: Board; duel: Duel; track: Track; net: Network | null; full: boolean; watch: string | null }) {
   const tnnAhead = duel.gap < 0;
   return (
     <div className="panel relative overflow-hidden p-5 sm:p-7">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="eyebrow text-muted-foreground">The closest duel right now</p>
+          <p className="eyebrow text-muted-foreground">{watch ? 'The closest duel you can watch' : 'The closest duel right now'}</p>
           <h2 className="heading mt-1.5 text-2xl">{track.name}</h2>
           <p className="num mt-1 text-xs text-muted-foreground">{carName(duel.vehicle)} · {groundLabel(board.ground)} · {fmtLength(track.length)}</p>
         </div>
@@ -266,8 +284,8 @@ function Headline({ board, duel, track, net, full }: { board: Board; duel: Duel;
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <GapBadge gap={duel.gap} />
-        {duel.human.ghost && duel.tnn.saved
-          ? <Link href={`/duel/${encodeURIComponent(board.track)}/${board.ground}/${encodeURIComponent(duel.vehicle)}`} className="text-sm font-medium text-muted-foreground hover:text-foreground">Watch this duel →</Link>
+        {watch
+          ? <Link href={watch} className="text-sm font-medium text-muted-foreground hover:text-foreground">Watch this duel →</Link>
           : <Link href="/lobby" className="text-sm font-medium text-muted-foreground hover:text-foreground">Think you can beat both? →</Link>}
       </div>
 

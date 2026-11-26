@@ -185,7 +185,7 @@ export function EvolutionDemo() {
         <dl className="mt-5 grid grid-cols-3 gap-3 text-sm">
           <div className="rounded-xl border border-white/8 bg-black/25 p-3"><dt className="eyebrow text-[0.6rem] text-muted-foreground/80">Generation</dt><dd className="num mt-1 text-xl font-semibold">{gen.n}</dd></div>
           <div className="rounded-xl border border-white/8 bg-black/25 p-3"><dt className="eyebrow text-[0.6rem] text-muted-foreground/80">Drives</dt><dd className="num mt-1 text-xl font-semibold">{gen.m} m</dd></div>
-          <div className="rounded-xl border border-white/8 bg-black/25 p-3"><dt className="eyebrow text-[0.6rem] text-muted-foreground/80">Of the best</dt><dd className="num mt-1 text-xl font-semibold">{Math.round((gen.m / best) * 100)} %</dd></div>
+          <div className="rounded-xl border border-white/8 bg-black/25 p-3"><dt className="eyebrow text-[0.6rem] text-muted-foreground/80">Of the map’s top</dt><dd className="num mt-1 text-xl font-semibold">{Math.round((gen.m / best) * 100)} %</dd></div>
         </dl>
         <div className="mt-5 flex flex-wrap gap-2">
           <Button variant="tnn" size="lg" className="px-3.5" onClick={() => setGen(g => generation(g, gauss.current))} disabled={running}><StepForward /> Next generation</Button>

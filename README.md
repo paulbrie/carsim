@@ -2,7 +2,7 @@
 
 **Human drivers against tiny neural networks**, on the same simulated cars and tracks (https://carsim.paulbrie.com).
 A person can just drive, drive and build networks, or just build networks: both sides use the same vehicle sim.
-Drive alone with no account; sign in with Google to race up to eight drivers in a room (fifteen cars, sand, earth or
+Drive alone with no account; sign in with Google to race up to eight drivers in a room (sixteen cars, sand, earth or
 road, the figure-8 or a map the super admin made) and to save a network on the server. The best lap of each side,
 car by car and track by track, is the leaderboard.
 
@@ -33,8 +33,10 @@ car by car and track by track, is the leaderboard.
   track (the map its course is; the figure-8 when it learnt a course of its maker's own) and drives it, a bar at the
   bottom saying whose it is (✕ ends it). Nothing of it is kept: the visitor's own lab training and settings in that
   browser stay as they were (`aiSave` does nothing while `AI.preview`; Train goes back to their own). Still for 4 s
-  (against a post, off the road), it starts again from the grid. It drives with the visitor's lab settings (racing
-  line, pace), which a saved network doesn't carry: one trained with others may drive a little differently.
+  (against a post, off the road), it starts again from the grid. It drives with the settings it was saved with (#351's
+  configuration, in `/api/networks/<id>` as `config`: the lab's, the penalties, the car's setup), the duel's page too, so its
+  lap is its exam's and not one with the visitor's settings; the visitor's go back at the end and nothing is written. A
+  network saved before #351 has none and drives with this browser's (its bar says so).
 - **Names on public pages**: a visitor who is not signed in sees "Paul B." (`publicName`, `lib/format.ts`); signed in,
   the full name.
 - **The look**: one dark theme, tokens in `app/globals.css` (`--human` orange, also the primary; `--tnn` cyan; classes

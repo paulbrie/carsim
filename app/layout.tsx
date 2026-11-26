@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from 'next';
 import { Toaster } from '@/components/ui/sonner';
 import { bridgeAgentKey } from '@/lib/bridge/store.mjs';
 import { withBase } from '@/lib/base-path';
+import { SITE } from '@/lib/site';
 import './globals.css';
 
-const SITE = process.env.SITE_URL || 'https://carsim.paulbrie.com';
 const DESCRIPTION = 'Human drivers against tiny neural networks, on the same simulated cars and tracks. Drive, train a network in your browser, or do both.';
 
 export const metadata: Metadata = {

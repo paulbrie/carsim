@@ -4,12 +4,13 @@ import { auth } from '@/auth';
 import { Button } from '@/components/ui/button';
 import { SiteNav } from '@/components/site-nav';
 import { SiteFooter } from '@/components/site-footer';
-import { BoardCard, GapBadge, carName, groundLabel } from '@/components/showcase';
+import { BoardCard, GapBadge, carName, groundLabel, lapKind } from '@/components/showcase';
 import { TrackOutline } from '@/components/track-outline';
 import { fmtLap, netLabel, publicName } from '@/lib/format';
 import { showcase, type Scoreboard } from '@/lib/showcase/store.mjs';
+import { withBase } from '@/lib/base-path';
 
-export const metadata = { title: 'Leaderboard', description: 'Humans against tiny neural networks: the best lap of each, car by car, on every track.' };
+export const metadata = { title: 'Leaderboard', description: 'Humans against tiny neural networks: the best lap of each, car by car, on every track.', alternates: { canonical: withBase('/leaderboard') } };
 export const dynamic = 'force-dynamic';
 
 export default async function Leaderboard() {
@@ -29,7 +30,7 @@ export default async function Leaderboard() {
         <p className="eyebrow text-primary">Leaderboard</p>
         <h1 className="display mt-3 text-4xl text-balance sm:text-6xl"><span className="text-human">Humans</span> <span className="text-muted-foreground/60">vs.</span> <span className="text-tnn">networks</span></h1>
         <p className="mt-4 max-w-3xl text-lg text-pretty text-muted-foreground">
-          One row for each car on each track: the best lap a person has driven in a race room, and the best lap a saved network has driven in its exam.
+          One row for each car on each track: the best lap a person has driven in a race room, and the best lap a network has driven, either in its exam (a saved network) or in a race room (saved or not, and each says which).
           Same simulator, same timing. Laps count on a track as it is laid out now.
         </p>
 
@@ -37,14 +38,14 @@ export default async function Leaderboard() {
           <section aria-label="Duels" className="mt-10">
             <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="heading text-2xl">The duels</h2>
-              <p className="num text-sm text-muted-foreground">same car, same track · networks lead <span className="text-tnn">{tnn}</span>, humans <span className="text-human">{duels.length - tnn}</span></p>
+              <p className="num text-sm text-muted-foreground">same car, same track · networks lead <span className="text-tnn">{tnn}</span>, humans <span className="text-human">{duels.length - tnn}</span> · gap = network’s lap less the human’s: − is the network ahead</p>
             </div>
             <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {duels.map(({ b, d }) => {
                 const t = track(b.track), tnnAhead = d.gap < 0;
                 return (
-                  <li key={`${b.track}-${b.ground}-${d.vehicle}`} className="panel flex items-center gap-4 p-4">
-                    <TrackOutline wp={t.wp} width={64} height={48} stroke={2.2} className="h-12 w-16 shrink-0 text-foreground" />
+                  <li key={`${b.track}-${b.ground}-${d.vehicle}`} className="panel flex min-w-0 items-center gap-3 p-4 sm:gap-4">
+                    <TrackOutline wp={t.wp} width={64} height={48} stroke={2.2} className="hidden h-12 w-16 shrink-0 text-foreground sm:block" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{carName(d.vehicle)}</p>
                       <p className="num truncate text-xs text-muted-foreground">{t.name} · {groundLabel(b.ground)}</p>
@@ -58,9 +59,9 @@ export default async function Leaderboard() {
                         )}
                       </div>
                     </div>
-                    <div className="num text-right text-sm">
+                    <div className="num shrink-0 text-right text-sm">
                       <p className={tnnAhead ? 'text-muted-foreground' : 'font-semibold text-human'} title={`Human: ${publicName(d.human.name, !!user)}`}>{fmtLap(d.human.time)}</p>
-                      <p className={tnnAhead ? 'font-semibold text-tnn' : 'text-muted-foreground'} title={`Network: ${netLabel(d.tnn, !!user)}, ${d.tnn.weights} weights`}>{fmtLap(d.tnn.time)}</p>
+                      <p className={tnnAhead ? 'font-semibold text-tnn' : 'text-muted-foreground'} title={`Network: ${netLabel(d.tnn, !!user)}, ${d.tnn.weights} weights, ${lapKind(d.tnn)}`}>{fmtLap(d.tnn.time)}</p>
                     </div>
                   </li>
                 );

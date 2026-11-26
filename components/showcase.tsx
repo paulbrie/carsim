@@ -5,7 +5,7 @@ import { TrackOutline } from '@/components/track-outline';
 import { cn } from '@/lib/utils';
 import { fmtGap, fmtLap, fmtLength, netLabel, publicName } from '@/lib/format';
 import { GROUNDS, VEHICLES } from '@/lib/race/shared.mjs';
-import type { Board, BoardRow, Track } from '@/lib/showcase/store.mjs';
+import type { Board, BoardRow, NetworkLap, Track } from '@/lib/showcase/store.mjs';
 
 export const carName = (key: string) => VEHICLES.find(v => v.key === key)?.name ?? key;
 export const groundLabel = (key: string) => GROUNDS.find(g => g.key === key)?.name ?? key;
@@ -18,6 +18,9 @@ export function SideTag({ side, className }: { side: 'human' | 'tnn'; className?
     </span>
   );
 }
+
+/** Which lap a network's time is: its exam lap, or one it drove in a race room (and then, if saved, its exam lap when that is another). */
+export const lapKind = (n: NetworkLap) => !n.room ? 'exam lap' : `race-room lap${!n.saved ? ', not saved' : n.exam != null && n.exam !== n.time ? `; exam ${fmtLap(n.exam)}` : ''}`;
 
 /** Who is ahead, and by how much: gap is the network's lap less the human's. */
 export function GapBadge({ gap, className }: { gap: number; className?: string }) {
@@ -67,12 +70,13 @@ export function BoardCard({ board, track, full, limit, className }: { board: Boa
 
 function Row({ r, lead, full }: { r: BoardRow; lead: number; full: boolean }) {
   const gap = r.human && r.tnn ? r.tnn.time - r.human.time : null;
-  const cell = (time: number | undefined, sub: string | null | undefined, side: 'human' | 'tnn') => (
+  const cell = (time: number | undefined, sub: string | null | undefined, side: 'human' | 'tnn', kind?: string) => (
     <td className="px-2 py-2.5 text-right align-top">
       {time == null ? <span className="text-muted-foreground/50">—</span> : (
         <>
           <span className={cn('num font-medium', time === lead && (side === 'human' ? 'text-human' : 'text-tnn'))}>{fmtLap(time)}</span>
           <span className="block max-w-36 truncate text-xs text-muted-foreground sm:ml-auto">{sub}</span>
+          {kind && <span className="block max-w-36 truncate text-[0.7rem] text-muted-foreground/70 sm:ml-auto" title={kind}>{kind}</span>}
         </>
       )}
     </td>
@@ -81,7 +85,7 @@ function Row({ r, lead, full }: { r: BoardRow; lead: number; full: boolean }) {
     <tr className="border-t border-white/5">
       <th scope="row" className="max-w-40 truncate py-2.5 pr-2 pl-5 text-left align-top font-medium">{carName(r.vehicle)}</th>
       {cell(r.human?.time, r.human && publicName(r.human.name, full), 'human')}
-      {cell(r.tnn?.time, r.tnn && netLabel(r.tnn, full), 'tnn')}
+      {cell(r.tnn?.time, r.tnn && netLabel(r.tnn, full), 'tnn', r.tnn ? lapKind(r.tnn) : undefined)}
       <td className={cn('num hidden py-2.5 pr-5 pl-2 text-right align-top text-xs sm:table-cell', gap == null ? 'text-muted-foreground/50' : gap < 0 ? 'text-tnn' : 'text-human')}>{gap == null ? '—' : fmtGap(gap)}</td>
     </tr>
   );

@@ -4,7 +4,7 @@ import { auth } from '@/auth';
 import { Button } from '@/components/ui/button';
 import { SiteNav } from '@/components/site-nav';
 import { SiteFooter } from '@/components/site-footer';
-import { BoardCard, GapBadge, carName, groundLabel } from '@/components/showcase';
+import { BoardCard, GapBadge, carName, groundLabel, lapKind } from '@/components/showcase';
 import { TrackOutline } from '@/components/track-outline';
 import { fmtLap, netLabel, publicName } from '@/lib/format';
 import { showcase, type Scoreboard } from '@/lib/showcase/store.mjs';
@@ -30,7 +30,7 @@ export default async function Leaderboard() {
         <p className="eyebrow text-primary">Leaderboard</p>
         <h1 className="display mt-3 text-4xl text-balance sm:text-6xl"><span className="text-human">Humans</span> <span className="text-muted-foreground/60">vs.</span> <span className="text-tnn">networks</span></h1>
         <p className="mt-4 max-w-3xl text-lg text-pretty text-muted-foreground">
-          One row for each car on each track: the best lap a person has driven in a race room, and the best lap a saved network has driven in its exam.
+          One row for each car on each track: the best lap a person has driven in a race room, and the best lap a network has driven, either in its exam (a saved network) or in a race room (saved or not, and each says which).
           Same simulator, same timing. Laps count on a track as it is laid out now.
         </p>
 
@@ -38,7 +38,7 @@ export default async function Leaderboard() {
           <section aria-label="Duels" className="mt-10">
             <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="heading text-2xl">The duels</h2>
-              <p className="num text-sm text-muted-foreground">same car, same track · networks lead <span className="text-tnn">{tnn}</span>, humans <span className="text-human">{duels.length - tnn}</span></p>
+              <p className="num text-sm text-muted-foreground">same car, same track · networks lead <span className="text-tnn">{tnn}</span>, humans <span className="text-human">{duels.length - tnn}</span> · gap = network’s lap less the human’s: − is the network ahead</p>
             </div>
             <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {duels.map(({ b, d }) => {
@@ -61,7 +61,7 @@ export default async function Leaderboard() {
                     </div>
                     <div className="num text-right text-sm">
                       <p className={tnnAhead ? 'text-muted-foreground' : 'font-semibold text-human'} title={`Human: ${publicName(d.human.name, !!user)}`}>{fmtLap(d.human.time)}</p>
-                      <p className={tnnAhead ? 'font-semibold text-tnn' : 'text-muted-foreground'} title={`Network: ${netLabel(d.tnn, !!user)}, ${d.tnn.weights} weights`}>{fmtLap(d.tnn.time)}</p>
+                      <p className={tnnAhead ? 'font-semibold text-tnn' : 'text-muted-foreground'} title={`Network: ${netLabel(d.tnn, !!user)}, ${d.tnn.weights} weights, ${lapKind(d.tnn)}`}>{fmtLap(d.tnn.time)}</p>
                     </div>
                   </li>
                 );

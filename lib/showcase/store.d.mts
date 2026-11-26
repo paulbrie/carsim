@@ -9,8 +9,8 @@ export interface Network {
 }
 /** ghost: the lap's path is kept (it can be watched against, /duel). */
 export interface HumanLap { id: string; name: string; image: string | null; time: number; at: number; ghost: boolean }
-/** A network's best lap: its exam lap (room: false) or one it drove in a race room (#333). saved: id is a saved network's. */
-export interface NetworkLap { id: string; name: string; ownerName: string; time: number; weights: number; h: number; gen: number | null; saved: boolean; room: boolean }
+/** A network's best lap: its exam lap (room: false) or one it drove in a race room (#333). saved: id is a saved network's; exam: that network's exam lap (null: none, or not saved). */
+export interface NetworkLap { id: string; name: string; ownerName: string; time: number; weights: number; h: number; gen: number | null; saved: boolean; room: boolean; exam: number | null }
 export interface BoardRow { vehicle: string; human: HumanLap | null; tnn: NetworkLap | null }
 export interface Duel { vehicle: string; human: HumanLap; tnn: NetworkLap; gap: number }
 export interface Board {

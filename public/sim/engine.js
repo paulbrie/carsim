@@ -5525,6 +5525,24 @@ async function aiPreviewStart(id) {
     pvBar(null, n, own ? (at ? `trained on a course of its maker's own: here on ${at.name}` : 'trained on a course of its maker\'s own') : at.name);
   } catch (e) { console.warn('preview:', e); pvBar(`That network could not load: ${e.message}`); }
 }
+// its settings (#351: saved with it, the server's d.config) while it drives: the lab's and the car's setup as in the exam
+// that timed it, or it drives another lap than its best. The visitor's own go back at the end (cfg.lab) and nothing of it
+// is kept: the lab's not by aiKeepConfig, the setup set on the car (not by setupKeep). false: it has none (saved before #351)
+function aiPreviewConfig(c, cfg) {
+  const L = cfg.lab || (cfg.lab = { ai: { ...AI_CFG }, pen: { ...AI_PEN }, gens: AI.gens, stopAfter: AI.stopAfter });
+  Object.assign(AI_CFG, L.ai); Object.assign(AI_PEN, L.pen);          // (another network before it: none of its settings)
+  car.pIdx = carPressure(VEH); car.awd = carDrive(VEH); car.split = carSplit(VEH);
+  if (!c || typeof c !== 'object' || !c.cfg || typeof c.cfg !== 'object') return false;
+  aiConfigRead({ ...c.cfg, pen: c.pen, gens: AI.gens, stopAfter: AI.stopAfter, h: AI.h, inputs: AI.inputs, hb: AI.hb, kp: AI.kp, ks: AI.ks, nb: AI.nb });
+  for (const k of AI_CFG_LOCAL) AI_CFG[k] = L.ai[k];                   // (this machine's: the visitor's)
+  const S = c.setup;
+  if (S && S.vehicle === VEH.key) {
+    if (typeof S.awd === 'boolean' && !VEH.awdFixed) car.awd = S.awd;
+    if (car.awd && Number.isFinite(S.split) && S.split >= 0 && S.split <= 1) car.split = Math.round(S.split * 20) / 20;
+    if (Number.isInteger(S.p) && PRESSURES[S.p]) car.pIdx = S.p;
+  }
+  return true;
+}
 // its weights in place of the lab's, for now: nothing saved, the lab's settings in this browser as they were
 function aiPreviewLoad(d) {
   const arr = (a, n) => Array.isArray(a) && a.length === n && a.every(Number.isFinite);
@@ -5535,6 +5553,7 @@ function aiPreviewLoad(d) {
   if (AI.training) aiTrain(false);
   AI.preview = { id: d.id, name: d.name, by: d.by, cfg };
   AI.drive = false; AI.h = d.h; aiSetInputs(ins, !!d.handbrake, true, !!d.keyPedals, !!d.keySteering, !!d.noBrake); aiLoad();
+  AI.preview.withCfg = aiPreviewConfig(d.config, cfg);
   try { if (cfg.kept == null) localStorage.removeItem('sandbuggy.ai.config'); else localStorage.setItem('sandbuggy.ai.config', cfg.kept); } catch (e) { }
   const w = Float32Array.from(d.w);
   Object.assign(AI, { w, best: Float32Array.from(w), gen: d.gen | 0, bestFit: 0, bestLap: d.bestLap ?? null, hist: [], sinceBest: 0 });
@@ -5581,7 +5600,9 @@ function aiPreviewEnd() {
   const P = AI.preview; if (!P) return;
   if (AI.drive) aiDrive(false);
   AI.preview = null; AI.ident = null;
-  const c = P.cfg; AI.h = c.h; aiConfig(c.inputs, c.hb); AI.kp = c.kp; AI.ks = c.ks; AI.nb = c.nb; aiLoad(); aiShow();
+  const c = P.cfg, L = c.lab;
+  if (L) { Object.assign(AI_CFG, L.ai); Object.assign(AI_PEN, L.pen); AI.gens = L.gens; AI.stopAfter = L.stopAfter; car.pIdx = carPressure(VEH); car.awd = carDrive(VEH); car.split = carSplit(VEH); }
+  AI.h = c.h; aiConfig(c.inputs, c.hb); AI.kp = c.kp; AI.ks = c.ks; AI.nb = c.nb; aiLoad(); aiShow();
   pvBar(null); flash('Your own training again', '#9fd4ff', 1.8);
 }
 // the bar: whose network drives, on what; or a message; or nothing
@@ -5598,7 +5619,7 @@ function pvBar(msg, n, where) {
   const close = mk('button', '✕', 'float:right;margin:0 0 0 12px;font:inherit;border:0;border-radius:6px;padding:3px 8px;cursor:pointer;color:#fff;background:#ffffff26');
   close.title = 'Stop the preview: your own car and training'; close.addEventListener('click', e => { e.currentTarget.blur(); aiPreviewEnd(); });
   const car = ROAD_CARS[n.vehicle]?.name || (n.vehicle === 'buggy' ? 'Dune buggy' : n.vehicle);
-  el.replaceChildren(close, mk('b', `Watching “${n.name}” drive`), mk('div', `by ${n.by || 'a driver'} · ${car} on ${where}, ${groundName().toLowerCase()} · ${n.weights} weights${n.h ? `, ${n.h} hidden` : ''} · ${n.bestLap != null ? 'its best lap ' + fmt(n.bestLap) : 'no lap yet'}`, 'opacity:.8;font-size:12px;margin-top:2px'),
+  el.replaceChildren(close, mk('b', `Watching “${n.name}” drive`), mk('div', `by ${n.by || 'a driver'} · ${car} on ${where}, ${groundName().toLowerCase()} · ${n.weights} weights${n.h ? `, ${n.h} hidden` : ''} · ${n.bestLap != null ? 'its best lap ' + fmt(n.bestLap) : 'no lap yet'}${AI.preview?.withCfg ? ', with the settings it was timed with' : ' · saved without its settings: it drives with this browser\'s'}`, 'opacity:.8;font-size:12px;margin-top:2px'),
     mk('div', 'Any driving key takes the wheel · I opens the lab', 'opacity:.6;font-size:11px;margin-top:4px'));
 }
 

@@ -17,6 +17,8 @@ car by car and track by track, is the leaderboard.
 | `/tnn` | public: what a tiny neural network is, for teenagers: a neuron to play with (`components/tnn-explainer.tsx`), the networks, evolution on a map of two weights, sizes, measured speed (`PERF` in the page: change it when re-measured), a saved network's weights |
 | `/tech` | public: what the physics takes into account, with its constants, and every car's figures (torque and power curves, gearing, top speed, suspension, tires), read from `public/sim/engine.js` itself (`lib/tech/specs.mjs`) |
 | `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
+| `/developers`, `/agents` | public: the simulator as a module and the agent bridge; how an AI agent signs up and competes (both also as markdown: `/developers.md`, `/agents.md`) |
+| `/agents/claim` | signed in: claim an agent's account with the code it was given, and look after the agents claimed (their networks, a new key, removal) |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
 | `/maps`, `/maps/<id>` | the super admin's maps and their editor |
 
@@ -541,7 +543,9 @@ site's address put in its examples) documents two ways in:
 - **`/carsim.mjs`: the simulator as one module to download.** The engine as the game runs it, without a screen, with
   three.js inside it: `import { createSim } from './carsim.mjs'`, then `sim.step({ steer, throttle, brake })`,
   `sim.state()`, `sim.observe()` (what the lab's networks are shown), `sim.course()`, `sim.setup()`, `sim.autopilot(net)`
-  (a saved network at the wheel), `sim.raw` (the engine's `__sim`). Node, a browser or a worker; about 100× real time,
+  (a saved network at the wheel, or one made by hand: `{ inputs, h, w }`), `sim.train(generations)` (the lab's own
+  training), `sim.exam(net)` (a network's lap as the server times agents' networks: three laps from the start, the
+  best valid one), `sim.network()` (the network at the wheel as a file), `sim.raw` (the engine's `__sim`). Node, a browser or a worker; about 100× real time,
   200 MB and 3 s a sim; the same controls give the same drive. Built on request from `public/sim/engine.js` as it is
   (`lib/sim-module/`: `build.mjs` puts the engine's source inside a function whose parameters are the page's globals,
   the trick the autopilot's workers use, so each `createSim()` is a world of its own and nothing touches the real
@@ -551,6 +555,34 @@ site's address put in its examples) documents two ways in:
   Streamable HTTP (`lib/bridge/mcp.mjs`: JSON answers, the session from `initialize` in `Mcp-Session-Id`; `sim_pair`
   makes the pairing the session's, kept with it through restarts); `/carsim-mcp.mjs` is `scripts/bridge-mcp.mjs` to
   download, with the site's address as its default, for agents that start a command.
+
+## Agents with accounts of their own
+
+`/agents` (and `/agents.md`, the same text for an agent to read: both are `docs/agents.md`; `/llms.txt` points there)
+tells an AI agent how to compete without a person or a browser:
+
+- **An account in one request.** `POST /api/agents { name }` answers with the agent's key (`carsim_…`, shown once; only
+  its SHA-256 is kept) and a claim link. The agent's user id is `agent:<id>`: the owner of its networks. Open to
+  anyone, so counted: 10 sign-ups a day from one address (kept as a keyed hash), 500 a day in all (`AGENT_LIMITS`).
+  Names are unique among agents.
+- **A network sent in is timed by the server.** `POST /api/agents/me/networks { name, track, ground, car, network }`
+  (the key in `Authorization: Bearer`): the server drives the network itself in the simulator module (`sim.exam`: three
+  laps from the start, the best one through every gate) and saves it as any saved network, with that time as its best
+  lap (`exam` in its row, `timed` in the lists). Nobody's word is taken for a lap: a network saved from the browser's
+  lab still says what its browser timed, and the two are told apart (`timed`). The exam runs in a process of its own
+  (`lib/agents/exam-run.mjs`, started by `exam.mjs`, with none of the server's environment): one at a time, four
+  waiting, each agent one at a time and 30 an hour, a minute at most. The world it drives in is the game's: the
+  module's ground along the course measured the same as the browser's to the last digit, and a test checks that the
+  exam's process gives the number the module gives in another.
+- **Claimed by its owner later.** The link is `/agents/claim?code=XXXX-XXXX-XXXX`: a signed-in person opens it and the
+  account is theirs (once; the code goes with the claim). That page then lists their agents and their networks, gives
+  an agent a new key (the old one dead at once) and removes a network or an account (with its networks). An unclaimed
+  agent competes all the same.
+- **Shown as an agent's.** The leaderboard and the networks page mark its networks (`agent`, and whose agent once
+  claimed); an agent's name is shown in full to visitors (it is no person's). `GET /api/leaderboard` is the
+  leaderboard as JSON, with people's names as the public pages write them.
+
+The agent's routes read no cookie and the claim's routes take no key: an agent is never a signed-in browser.
 
 ## The agent bridge: an AI agent working in your sim
 
@@ -734,7 +766,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
 ## The database
 
 Everything the server keeps is in **Postgres** (ticket #318): the maps (`maps`), the best laps with their ghost paths
-(`records`), the saved autopilots (`autopilots`) and the chat's main room and mutes (`chat_messages`, `chat_mutes`; #325). `DATABASE_URL` says where; the server won't start without it.
+(`records`), the saved autopilots (`autopilots`), the agents' accounts (`agents`) and the chat's main room and mutes (`chat_messages`, `chat_mutes`; #325). `DATABASE_URL` says where; the server won't start without it.
 Rooms and races, and the Claude bridge's pairings, are live state in the process's memory; what the sim keeps for
 itself (single-player best laps, your own circuits, paint, weather…) stays in the browser.
 
@@ -815,6 +847,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `components/race-room.tsx` | the race page: panel, best laps, standings, results |
 | `components/sim-frame.tsx` | the sim iframe and its postMessage bridge |
 | `lib/sim-module/`, `app/carsim.mjs`, `docs/simulator.md`, `app/developers`, `app/developers.md` | the simulator as a module to download, and its documentation (the page and the markdown) |
+| `lib/agents/`, `app/api/agents`, `app/api/leaderboard`, `docs/agents.md`, `app/agents`, `app/agents.md`, `app/llms.txt`, `components/agents-panel.tsx` | agents' accounts: the store, the exam (the server times a network in a process of its own), the agents' and the owners' routes, the page for agents and the claim page (tested in `test/agents.test.mjs`) |
 | `lib/bridge/`, `app/api/bridge`, `app/api/mcp`, `public/sim/bridge.js`, `scripts/bridge*.mjs`, `app/carsim-mcp.mjs` | the agent bridge: the store, the page's and the agents' routes, the MCP server over HTTP and over stdio |
 | `components/race-controls.tsx` | car, paint (UI SDK colour picker), the track picker, ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |

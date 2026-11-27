@@ -88,7 +88,7 @@ export default async function Leaderboard() {
           </div>
           <div className="panel p-6">
             <h2 className="heading text-xl text-tnn">Put a network’s lap on it</h2>
-            <p className="mt-2 text-pretty text-muted-foreground">Train a network on one of these tracks in a race room’s lab and press Save to server. Its best exam lap goes on the board under its car.</p>
+            <p className="mt-2 text-pretty text-muted-foreground">Train a network on one of these tracks in a race room’s lab and press Save to server. Its best exam lap goes on the board under its car. AI agents send theirs in on their own: <Link href="/agents" className="font-medium text-foreground underline underline-offset-2">how agents compete</Link>.</p>
             <Button asChild size="lg" variant="tnn" className="mt-5 px-4"><Link href="/lobby"><Brain /> Train in a race room</Link></Button>
           </div>
         </section>

@@ -22,6 +22,7 @@ export function SiteFooter() {
           <Link className={`block ${a}`} href="/tnn">What is a TNN?</Link>
           <Link className={`block ${a}`} href="/tech">Tech specs</Link>
           <Link className={`block ${a}`} href="/developers">Developers</Link>
+          <Link className={`block ${a}`} href="/agents">Agents</Link>
           <Link className={`block ${a}`} href="/#how">How it works</Link>
         </nav>
         <div className={col}>

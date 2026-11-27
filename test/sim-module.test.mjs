@@ -116,3 +116,36 @@ test('carsim.mjs: another car, its setup, a course of the site\'s, a network at 
   } finally { b.dispose(); }
   assert.throws(() => b.state(), /disposed/);
 });
+
+test('carsim.mjs: training, a network of one\'s own making, its exam and its file', async () => {
+  const a = await M.createSim({ car: 'rs6', ground: 'road' });
+  try {
+    // a network made by hand (towards the line, no faster than 50 km/h or so): this car's and this course's unless it says otherwise
+    const net = { inputs: ['speed', 'line6', 'line15', 'line30', 'offset', 'yaw', 'pace'], h: 0, w: [0, -0.8, -2.2, 0, 0, 0, 0, -40, 0, 0, 0, 0, 0, 4, 0, 28] };
+    const info = a.autopilot(net);
+    assert.deepEqual([info.sameCar, info.sameCourse, info.weights, info.hidden], [true, true, 16, 0]);
+    const e = a.exam(net);
+    assert.equal(e.why, 'laps'); assert.equal(e.laps.length, 3); assert.ok(e.laps.every(l => l.valid));
+    assert.equal(e.time, Math.min(...e.laps.map(l => l.time))); assert.ok(e.time > 35 && e.time < 60 && e.seconds > 3 * e.time);
+    assert.deepEqual(a.exam(net).laps, e.laps, 'again, in the same sim: the same laps');
+    assert.equal(a.exam(net, { laps: 1 }).laps.length, 1);
+    // its file: what the lab would save, with the settings and the setup it drove with; examined from the file, the same
+    const file = a.network();
+    assert.deepEqual([file.kind, file.vehicle, file.course, file.ground, file.h, file.past.length], ['carsim-autopilot', 'rs6', a.course().key, 'Road', 0, 0]);
+    assert.equal(file.config.setup.vehicle, 'rs6'); assert.equal(typeof file.config.cfg.pop, 'number');
+    assert.deepEqual(a.exam(file).laps, e.laps);
+    assert.deepEqual(a.exam({ ...net, w: net.w.map(() => 0) }), { time: null, laps: [], why: 'stuck', seconds: 20.5, network: { ...info, bestLap: null } });
+    // one that isn't a network: what is wrong with it
+    assert.throws(() => a.autopilot({ ...net, inputs: ['speed', 'nope'] }), /no input "nope" \(speed, line6/); assert.throws(() => a.autopilot({ ...net, h: 3 }), /h, the hidden layer's units, is one of 0, 2, 4/);
+    assert.throws(() => a.autopilot({ ...net, w: [1, 2] }), /w is 16 numbers for these inputs and this size \(it has 2\)/); assert.throws(() => a.autopilot([net]), /an object: \{ inputs, h, w \}/);
+    a.autopilot(false); assert.throws(() => a.network(), /no network is driving/); assert.throws(() => a.exam(null), /not a carsim network|a network to examine/);
+    // the lab's training: generations counted on, the network's shape as asked, and the car back at the start after it
+    const r = a.train(2, { hidden: 4, inputs: ['speed', 'line15', 'offset', 'pace'] });
+    assert.equal(r.generation, 2); assert.deepEqual([r.network.h, r.network.inputs.length, r.network.w.length], [4, 4, 4 * 4 + 4 + 4 * 2 + 2]);
+    assert.ok(r.bestLap === null || r.bestLap > 20); assert.equal(a.state().time, 0); assert.equal(a.state().lap.number, 0);
+    assert.equal(a.train(1).generation, 3, 'carries on');
+    a.autopilot(net); assert.equal(a.train(1).network.h, 0, 'from the network last at the wheel');
+    assert.throws(() => a.train(1, { hidden: 5 }), /hidden is one of/); assert.throws(() => a.train(1, { inputs: ['nope'] }), /no input "nope"/);
+    assert.throws(() => a.train(1, { settings: { nope: 1 } }), /no setting "nope"/);
+  } finally { a.dispose(); }
+});

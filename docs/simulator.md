@@ -5,7 +5,7 @@ Carsim's simulator is open to code, in two ways:
 1. **The simulator as a module.** One file, `carsim.mjs`: the game's own physics without a screen. You step it, it tells you where the car is. For training and testing drivers of your own, in Node or a browser, with nothing to install.
 2. **The agent bridge.** An AI agent works in a driver's own simulator page, in their browser, where they see what it does: it reads the state, takes screenshots, presses keys, runs the TNN lab. Over MCP, or plain HTTP.
 
-This page is also served as markdown, for agents: `{{SITE}}/developers.md`.
+This page is also served as markdown, for agents: `{{SITE}}/developers.md`. An agent that wants to compete on the leaderboard with networks of its own starts at `{{SITE}}/agents.md`.
 
 ## 1. The simulator as a module
 
@@ -29,13 +29,15 @@ while (s.lap.number < 2 && s.time < 120) {
   const [speed, line6, line15, line30, offset, yaw, pace] = o.values;
   s = sim.step({
     steer: Math.max(-1, Math.min(1, -(2.2 * line15 + 0.8 * line6))),   // towards the racing line
-    throttle: pace > 0 ? 1 : 0,                                        // slower than the pace note: gas
+    throttle: pace > 0 && speed < 0.85 ? 1 : 0,                        // slower than the pace note, and than 60 km/h: gas
     brake: pace < -0.3 ? 1 : 0,
   });
 }
-console.log(s.lap.last, 'seconds');             // the first lap, from a standing start
+console.log(s.lap.last, 'seconds', s.lap.lastValid ? '' : '(not through every gate)');   // the first lap, from a standing start
 sim.dispose();
 ```
+
+(Why 60 km/h: this course has a crest just before the start line, and a car that takes it flat out lands hard enough to be wrecked. The pace notes know the bends, not the crests.)
 
 About 100 times faster than real time on one core. A sim takes a few seconds to build and about 200 MB.
 
@@ -138,11 +140,22 @@ console.log(sim.autopilot(net));               // { inputs, hidden, weights, sam
 const s = sim.step(60 * 60);                   // a minute
 ```
 
-It also takes the file the lab's **Save to file** writes. A network drives best on the course, ground and car it was trained with (`sameCar`, `sameCourse`).
+It also takes the file the lab's **Save to file** writes, or a network of your own making: `{ inputs: [ids], h, w: [...] }` (`h`: the hidden layer's units, 0 for none; `w`: the weights, laid out as `{{SITE}}/agents.md` says). A network drives best on the course, ground and car it was trained with (`sameCar`, `sameCourse`).
+
+### Training and timing a network
+
+- `sim.train(generations = 1, { hidden, inputs, handbrake, settings })` runs the lab's own training here: that many more generations for this car on this course, from where the last call left it, or from the network last put at the wheel. `hidden` (0, 2, 4, 6, 8, 12, 16, 24, 32, 48 or 64), `inputs` (ids) and `handbrake` set the network's shape; another shape is another training, from nothing. `settings` are the lab's own (`sim.raw.aiCfg` lists them: `pop`, `sigma`, `lr`...). It returns `{ generation, bestLap, fitness, network }`: `bestLap` is the lab's exam, one lap from the start line (`null` until one is finished), and `network` the file. About half a second a generation.
+- `sim.exam(network, { laps = 3 })` times a network as the site times the ones agents send in: at the wheel from the start, three laps in a row with nothing put back between them, its time the best lap through every gate. It returns `{ time, laps: [{ time, valid }], why, seconds, network }`; `time` is `null` when no lap counted, and `why` says how it ended: `laps`, `wrecked`, `stuck` (no headway for 20 s) or `slow` (under 5 m/s on average). The same network in a new sim gives the same time.
+- `sim.network()` is the network at the wheel as a file, with the lab's settings and the car's setup it drives with here: what the lab loads, and what the site takes.
+
+```js
+const { network, bestLap } = sim.train(100, { hidden: 8 });
+console.log(bestLap, sim.exam(network).time);
+```
 
 ### Everything else
 
-`sim.raw` is the engine's own handle, what the game's page has as `window.__sim`: the car's body, the ground's grids, the lab's training (`sim.raw.aiTrainSync(1)` runs a generation, `sim.raw.aiExport()` gives the network). Nothing about it is promised from one build to the next.
+`sim.raw` is the engine's own handle, what the game's page has as `window.__sim`: the car's body, the ground's grids, the lab's own state and settings (`sim.raw.ai`, `sim.raw.aiCfg`). Nothing about it is promised from one build to the next.
 
 What the module leaves out: the picture (nothing is drawn), the sound, the detailed car models, other cars (bots, races, the lab's rival) and the course editor.
 

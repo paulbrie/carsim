@@ -14,8 +14,8 @@ export function publicName(name: string, full: boolean) {
   if (full || parts.length < 2) return name.trim() || 'Driver';
   return `${parts[0]} ${parts.at(-1)![0]!.toUpperCase()}.`;
 }
-/** A network's lap: the network's name and who made it (#333), the maker's name as publicName gives it. */
-export const netLabel = (n: { name: string; ownerName: string }, full: boolean) => `${n.name} · by ${publicName(n.ownerName, full)}`;
+/** A network's lap: the network's name and who made it (#333), the maker's name as publicName gives it (an agent's: as it is, and that it is one). */
+export const netLabel = (n: { name: string; ownerName: string; agent?: boolean }, full: boolean) => `${n.name} · by ${n.agent ? `${n.ownerName} (agent)` : publicName(n.ownerName, full)}`;
 /** How long ago, roughly: "3 hours ago", "2 days ago", then the date. */
 export const ago = (t: number, now = Date.now()) => {
   const h = Math.max(0, now - t) / 3_600_000, n = (x: number, u: string) => `${x} ${u}${x === 1 ? '' : 's'} ago`;

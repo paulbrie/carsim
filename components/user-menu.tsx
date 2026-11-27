@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { LogOut, Map as MapIcon } from 'lucide-react';
+import { Bot, LogOut, Map as MapIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -23,7 +23,7 @@ export function UserMenu({ user }: { user: { name: string; image: string | null;
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-9 gap-2 px-2">
           <DriverAvatar name={user.name} image={user.image} className="size-7" />
-          <span className="hidden max-w-40 truncate sm:inline">{user.name}</span>
+          <span className="hidden max-w-40 truncate sm:inline lg:hidden xl:inline">{user.name}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
@@ -35,6 +35,8 @@ export function UserMenu({ user }: { user: { name: string; image: string | null;
             <DropdownMenuSeparator />
           </>
         )}
+        <DropdownMenuItem asChild><Link href="/agents/claim"><Bot /> Your agents</Link></DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => signOutAction()}>
           <LogOut /> Sign out
         </DropdownMenuItem>

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Brain } from 'lucide-react';
+import { Bot, Brain } from 'lucide-react';
 import { auth } from '@/auth';
 import { Button } from '@/components/ui/button';
 import { SiteNav } from '@/components/site-nav';
@@ -45,9 +45,12 @@ export default async function Networks() {
               const shape = netShape(n), h = rival(n), gap = h && n.bestLap != null ? n.bestLap - h.time : null, track = trackName(n.track);
               return (
                 <li key={n.id} className="panel flex flex-col p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="eyebrow text-tnn">{shape.weights} weights{n.h ? ` · ${n.h} hidden` : ''}</p>
-                    {fastest.has(n.id) && <span className="eyebrow shrink-0 rounded-full border border-tnn/30 bg-tnn/10 px-2 py-1 text-[0.62rem] text-tnn">fastest for its car</span>}
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                    <p className="eyebrow whitespace-nowrap text-tnn">{shape.weights} weights{n.h ? ` · ${n.h} hidden` : ''}</p>
+                    <span className="flex items-center gap-1.5">
+                      {n.agent && <span className="eyebrow inline-flex items-center gap-1 rounded-full border border-white/12 px-2 py-1 text-[0.62rem] text-muted-foreground"><Bot className="size-3" aria-hidden /> agent</span>}
+                      {fastest.has(n.id) && <span className="eyebrow rounded-full border border-tnn/30 bg-tnn/10 px-2 py-1 text-[0.62rem] text-tnn">fastest for its car</span>}
+                    </span>
                   </div>
                   <h2 className="mt-2 line-clamp-2 font-semibold text-pretty" title={n.name}>{n.name}</h2>
                   <p className="mt-1 truncate text-sm text-muted-foreground">{carName(n.vehicle)} · {track ? `${track}, ${groundLabel(n.ground)}` : 'a course of its maker’s own'}</p>
@@ -62,10 +65,11 @@ export default async function Networks() {
                   <dl className="mt-auto grid grid-cols-3 gap-2 text-sm">
                     <div><dt className="eyebrow text-[0.6rem] text-muted-foreground/70">Best lap</dt><dd className="num mt-1 font-medium">{n.bestLap != null ? fmtLap(n.bestLap) : 'no lap yet'}</dd></div>
                     <div><dt className="eyebrow text-[0.6rem] text-muted-foreground/70">vs human</dt><dd className={`num mt-1 font-medium ${gap == null ? 'text-muted-foreground/60' : gap < 0 ? 'text-tnn' : 'text-human'}`}>{gap == null ? '—' : fmtGap(gap)}</dd></div>
-                    <div><dt className="eyebrow text-[0.6rem] text-muted-foreground/70">Generations</dt><dd className="num mt-1 font-medium">{n.gen.toLocaleString('en-US')}</dd></div>
+                    <div><dt className="eyebrow text-[0.6rem] text-muted-foreground/70">Generations</dt><dd className="num mt-1 font-medium">{n.agent && !n.gen ? '—' : n.gen.toLocaleString('en-US')}</dd></div>
                   </dl>
                   <p className="mt-4 border-t border-white/6 pt-3 text-xs text-muted-foreground">
-                    Saved by {publicName(n.ownerName, !!user)}, {ago(n.savedAt)}
+                    {n.agent ? <>Sent in by the agent {n.ownerName}{n.agentOwner && <> ({publicName(n.agentOwner, !!user)}’s)</>}</> : <>Saved by {publicName(n.ownerName, !!user)}</>}, {ago(n.savedAt)}
+                    {n.timed && <> · <span title="The server drove it and timed the lap itself">lap timed by the server</span></>}
                     {(n.handbrake || n.noBrake || n.keyPedals || n.keySteering) && <> · {[n.handbrake && 'handbrake', n.noBrake && 'no brake', n.keyPedals && 'on/off pedals', n.keySteering && 'on/off steering'].filter(Boolean).join(', ')}</>}
                   </p>
                 </li>

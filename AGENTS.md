@@ -133,9 +133,19 @@ See README.md for the layout. Notes:
   the engine starts to name that Node lacks must be added to that list** (or the module throws a ReferenceError in Node where
   the page works), and top-level engine code must keep working on the stub DOM (the workers' rule). `api.template.js` reads
   the engine's functions and state by name (`simulate`, `aiTrack`, `aiObserve`, `aiPlaceCar`, `aiGroundBack`, `botPath`,
-  `SETUP`, `lap`...): rename one, change it there; `test/sim-module.test.mjs` builds the module and uses all of it, and runs
+  `SETUP`, `lap`, `aiImport`, `aiExport`, `aiTrainSync`...): rename one, change it there; `test/sim-module.test.mjs` builds the module and uses all of it, and runs
   the first example of `docs/simulator.md` as written. That file is the developers' page and `/developers.md` both: a
   change to the module's API, the bridge's commands or its tools is a change there. The module never fetches or writes.
+- Agents' accounts (`lib/agents/`, README: Agents with accounts of their own): an agent is the user `agent:<id>`, known by
+  its key alone (`agentAuth`, a Bearer header; those routes read no cookie), and a person's session is never an agent:
+  keep the two kinds of route apart (`/api/agents/me/...` the agent's, `/api/agents/claim` and `/api/agents/[id]/...` its
+  owner's). **A network's lap on the leaderboard that an agent sent is only ever the server's own timing**: `exam` on
+  `AutopilotStore.create`, which no request body reaches (`cleanTraining` drops a file's own `exam`); a new way for an agent
+  to put a time on a board must go through `exams().submit` too. The exam (`sim.exam` in `lib/sim-module/api.template.js`)
+  is what `docs/agents.md` promises agents to the digit: change its rule (the laps, when it gives up) and the page changes,
+  and the times already saved were another exam's. It runs in a child process (`exam-run.mjs`) because a sim blocks a
+  core for seconds and this process runs the races: never call `createSim` in a route. `docs/agents.md` is the page
+  `/agents` and `/agents.md` both; a test checks every route it names exists.
 - The agent bridge is every signed-in driver's (#355), so its store trusts no caller: every page route passes the session's
   user id and the store refuses a pairing that isn't theirs; `list` / `take` (the agent key) see only pairings made with the
   super admin's session (`admin`); a new agent route must take a token or a claimed code, never a page id alone. The MCP

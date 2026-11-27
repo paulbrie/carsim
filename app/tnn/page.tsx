@@ -373,7 +373,7 @@ function RealDriver({ net, track, full }: { net: Network; track: string | null; 
       <div className="min-w-0">
         <p className="eyebrow text-tnn">A real driver, all of it</p>
         <h3 className="heading mt-1.5 text-xl">{shape.weights} numbers that lap {track ?? 'a track'} in <span className="num text-tnn">{fmtLap(net.bestLap)}</span></h3>
-        <p className="mt-1 text-sm text-muted-foreground">{carName(net.vehicle)}{track ? ` · ${track}, ${groundLabel(net.ground)}` : ''} · {net.gen.toLocaleString('en-US')} generations · trained by {publicName(net.ownerName, full)}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{carName(net.vehicle)}{track ? ` · ${track}, ${groundLabel(net.ground)}` : ''} · {net.gen.toLocaleString('en-US')} generations · {net.agent ? `sent in by the agent ${net.ownerName}` : `trained by ${publicName(net.ownerName, full)}`}</p>
         <NetDiagram net={net} className="mt-4" />
         <p className="num mt-2 text-xs text-muted-foreground"><span style={{ color: '#ff8a3d' }}>━</span> positive: pulls left / gas <span className="ml-2" style={{ color: '#4aa8ff' }}>━</span> negative: pulls right / brake</p>
       </div>

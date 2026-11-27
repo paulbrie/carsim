@@ -4,13 +4,15 @@ export interface Network {
   id: string; name: string; ownerName: string; savedAt: number; vehicle: string; course: string; ground: string; track: string | null;
   h: number; inputs: string[]; handbrake: boolean; noBrake: boolean; keyPedals: boolean; keySteering: boolean;
   weights: number; gen: number; bestLap: number | null; w: number[] | null;
+  /** an agent sent it in (ownerName: the agent's name; agentOwner: whoever claimed the agent, null: nobody yet); timed: its best lap is the server's timing */
+  agent: boolean; agentOwner: string | null; timed: boolean;
   /** the circuits it was trained on before (#351): track is a map's id when the course is one's as it is now (board()), trackName its name when saved */
   past: { course: string; track?: string | null; trackName: string | null; ground: string; vehicle: string; from: number; to: number; bestLap: number | null }[];
 }
 /** ghost: the lap's path is kept (it can be watched against, /duel). */
 export interface HumanLap { id: string; name: string; image: string | null; time: number; at: number; ghost: boolean }
 /** A network's best lap: its exam lap (room: false) or one it drove in a race room (#333). saved: id is a saved network's. */
-export interface NetworkLap { id: string; name: string; ownerName: string; time: number; weights: number; h: number; gen: number | null; saved: boolean; room: boolean }
+export interface NetworkLap { id: string; name: string; ownerName: string; time: number; weights: number; h: number; gen: number | null; saved: boolean; room: boolean; agent: boolean; timed: boolean }
 export interface BoardRow { vehicle: string; human: HumanLap | null; tnn: NetworkLap | null }
 export interface Duel { vehicle: string; human: HumanLap; tnn: NetworkLap; gap: number }
 export interface Board {
@@ -26,6 +28,7 @@ export class Showcase {
   tracks(): Promise<Track[]>;
   networks(opts?: { weights?: boolean }): Promise<Network[]>;
   board(): Promise<Scoreboard>;
+  forget(): void;
   trace(map: string, ground: string, vehicle: string, driverId: string, mv: number): Promise<string | null>;
 }
 export function showcase(): Showcase;

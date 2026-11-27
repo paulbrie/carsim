@@ -25,9 +25,11 @@ See README.md for the layout. Notes:
   a lap to follow (the driver's best lap kept, the lab's choice, the review against it, #340) `follow.py`,
   the sound's switch (M, the rail's Sound, #343) `sound.py`, watching a leaderboard duel (`?mp=1&watch=1`, the page `/duel/...` as the room) `watch.py`, a saved network's whole configuration and its history over circuits (#351) `net-save.py`,
   the read-out top left (the tires' slip and sinking, the car as set; the dial has the speed, the revs and the gear, #350) `hud.py`,
+  what the network sees drawn on the track while it drives a duel (#360: `seeFrame`, from `aiObserve`'s state: an input that is a place
+  or a direction in the world gets its mark there, `AI.look`, `AI.rayEnds`, `aiLine`, `aiPace`) `sees.py`,
   last in the chain
   (check: extract the original `index.html` to a scratch
-  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, watch, net-save, hud, diff engine.js: it
+  dir, run mp-hooks, track-shape, gates, cameras, maps, road-level, damage, freelook, glass, weather, cars, even, bridges, grade, skids, grounds, autopilot, pause, circuits, contacts, bridge, lab-stops, tires, ui, live, tracks, setup, net-laps, preview, keep, follow, sound, watch, net-save, hud, sees, diff engine.js: it
   must be identical; index.html differs only by the hand-added `body.mp` CSS).
 - New detailed cars: the download goes in `models/` (not in git), its recipe in
   `scripts/models/cars.mjs`, then `node scripts/models/build-car.mjs <key>` writes

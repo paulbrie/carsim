@@ -1,8 +1,8 @@
 export const ARM: { S: number; L1: number; L2: number; TL: number; speed: number[]; lag: number; hand: number; lim: Record<'q0' | 'a1' | 'e', [number, number]>; home: number[]; floor: number };
-export const HZ: number; export const DT: number; export const SUB: number;
+export const HZ: number; export const DT: number; export const SUB: number; export const ITERS: number;
 export const CUBE: number; export const LIFT: number;
 export const TRAY: { r: number; a: number; half: number };
-export const INPUTS: Record<string, { n: number; name: string; about: string }>;
+export const INPUTS: Record<string, { n: number; parts: string[]; name: string; about: string }>;
 export type TaskKey = 'grab' | 'tray';
 export const TASKS: Record<TaskKey, { name: string; about: string; limit: number; inputs: string[] }>;
 export const SIZES: number[];
@@ -26,6 +26,8 @@ export function shape(net: Pick<ArmNet, 'inputs' | 'h' | 'roll'>): { nin: number
 export function blank(task?: TaskKey, o?: { h?: number; control?: 'hand' | 'joints'; roll?: boolean; inputs?: string[] }): ArmNet;
 export function notNet(d: unknown): string | null;
 export function forward(net: ArmNet, x: number[], sh?: ReturnType<typeof shape>): number[];
+export function names(net: Pick<ArmNet, 'inputs' | 'control' | 'roll'>): { inputs: string[]; outputs: string[] };
+export function layers(net: ArmNet, x: number[], sh?: ReturnType<typeof shape>): { h: number[]; y: number[] };
 export function createArm(R: unknown, o?: { at?: Placement; task?: TaskKey; mass?: number; grip?: number }): ArmSim;
 export function orders(net: ArmNet, y: number[]): Orders;
 export function attempt(R: unknown, net: ArmNet, at: Placement, o?: { task?: TaskKey; limit?: number }): Go;

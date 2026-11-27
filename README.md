@@ -597,7 +597,8 @@ file):
   handed in as `R`. The arm: a base that turns, a shoulder, an elbow, a hand that hangs straight down (`ARM`: lengths,
   the joints' speeds and limits). Its joints are moved by us (motors that lag 60 ms, stop at their limits and at the
   table); the two fingers are bodies on sliding joints with a 12 N motor, and **a cube is held by friction alone**.
-  120 physics steps a second, 60 decisions. About 100× real time on one core.
+  120 physics steps a second (8 solver passes each, `ITERS`: with 4 a decision costs a third less, but on the same eight
+  trainings only 1 came to grab 19 of 20 or better against 4, so 8 it is), 60 decisions. About 130× real time on one core.
 - **A network** is `{ task, control, roll, inputs, h, w }` (`blank`, `notNet`, `forward`: the car's layout, W1, b1, W2,
   b2, all through tanh). Inputs (`INPUTS`) are in the arm's own frame (outwards, up, sideways): the cube from the grip,
   the fingers' gap, the height, "something between the fingers", "squeezing", for the tray where it is. Outputs: the
@@ -610,10 +611,19 @@ file):
   last digit: rounded to five decimals, one went from 19 of 20 to 17.
 - **The trainer** (`lib/arm/train.mjs`): the car lab's method written on its own (16 variations a generation, ranks,
   Adam), four placements a generation, then the exam; the best examined network is kept. The driving is done by whoever
-  calls it: workers on the page (`lib/arm/worker.mjs`, up to 8), worker threads from the command line
-  (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`).
+  calls it: workers on the page (`lib/arm/worker.mjs`, every core but one, 16 at most), worker threads from the command
+  line (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`). For speed: goes are handed out two at a time to
+  whichever worker is free (`shareOut`: a grab takes 1.5 s, a failure the whole 5, and equal slices left workers
+  waiting), and the exam waits until a variation has grabbed once (before that it is 20 goes of 5 s that all fail: a
+  quarter of a generation). Measured: 40 generations in 16.6 s on 8 workers, 24 s before; about 0.35 s a generation on
+  the page with 15 workers. About one training in two comes to grab 19 of 20 or better in 150 generations.
 - **The picture** (`lib/arm/scene.mjs`): three.js, handed in; draws what `pose()` says. The arm's ring is cyan when a
   network has the controls, orange when a person does.
+- **The network, live** (`components/arm-net.tsx`, under the picture): every number it is shown, every hidden unit,
+  every output and a line for every weight (orange pulls up, blue down; thicker, the bigger the weight). Ten times a
+  second a neuron fills with what it holds and a line brightens with what flows through it (`layers`, `names` in
+  core.mjs), and each output says what it means ("up, slowly", "shut"). While training it is the network as it stands;
+  by hand, what the network would do in the person's place.
 - `lib/arm/networks/grab.json` is the network the page starts with (100 weights, 20 of 20); a test takes its exam.
 
 Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms, a trained network
@@ -894,7 +904,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `components/sim-frame.tsx` | the sim iframe and its postMessage bridge |
 | `lib/sim-module/`, `app/carsim.mjs`, `docs/simulator.md`, `app/developers`, `app/developers.md` | the simulator as a module to download, and its documentation (the page and the markdown) |
 | `lib/agents/`, `app/api/agents`, `app/api/leaderboard`, `docs/agents.md`, `app/agents`, `app/agents.md`, `app/llms.txt`, `components/agents-panel.tsx` | agents' accounts: the store, the exam (the server times a network in a process of its own), the agents' and the owners' routes, the page for agents and the claim page (tested in `test/agents.test.mjs`) |
-| `lib/arm/`, `components/arm-sim.tsx`, `app/arm`, `scripts/arm/train.mjs` | the arm sim (a preview): the world and what a grab is (`core.mjs`), the trainer (`train.mjs`), a worker's driving (`worker.mjs`), the picture (`scene.mjs`), the network it comes with (`networks/`); the page; training from the command line (tested in `test/arm.test.mjs`) |
+| `lib/arm/`, `components/arm-sim.tsx`, `components/arm-net.tsx`, `app/arm`, `scripts/arm/train.mjs` | the arm sim (a preview): the world and what a grab is (`core.mjs`), the trainer (`train.mjs`), a worker's driving (`worker.mjs`), the picture (`scene.mjs`), the network it comes with (`networks/`); the page and its live drawing of the network; training from the command line (tested in `test/arm.test.mjs`) |
 | `lib/bridge/`, `app/api/bridge`, `app/api/mcp`, `public/sim/bridge.js`, `scripts/bridge*.mjs`, `app/carsim-mcp.mjs` | the agent bridge: the store, the page's and the agents' routes, the MCP server over HTTP and over stdio |
 | `components/race-controls.tsx` | car, paint (UI SDK colour picker), the track picker, ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |

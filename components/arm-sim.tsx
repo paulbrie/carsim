@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, Download, Hand, Pause, Play, RotateCcw, SkipForward, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ArmNetDiagram, type NetLive } from '@/components/arm-net';
 import { cn } from '@/lib/utils';
 import type { ArmNet, ArmSim, Go, Placement, TaskKey } from '@/lib/arm/core.mjs';
 import type { ArmScene } from '@/lib/arm/scene.mjs';
@@ -35,6 +36,8 @@ export function ArmSimView() {
   const [speed, setSpeed] = useState(1);
   const [netInfo, setNetInfo] = useState<{ name: string; weights: number; h: number; exam: ArmNet['exam'] } | null>(null);
   const [netGoes, setNetGoes] = useState<(number | null)[]>([]);
+  const [shown, setShown] = useState<ArmNet | null>(null);          // the network drawn under the picture, and what it holds now
+  const [live, setLive] = useState<NetLive | null>(null);
   const [mine, setMine] = useState<(number | null)[]>([]);
   const [cfg, setCfg] = useState({ h: 8, control: 'hand' as 'hand' | 'joints' });
   const [tr, setTr] = useState<{ on: boolean; gen: number; best: { done: number; of: number; time: number; gen: number } | null; hist: [number, number, number, number][]; cores: number; perGen: number | null }>({ on: false, gen: 0, best: null, hist: [], cores: 0, perGen: null });
@@ -49,7 +52,7 @@ export function ArmSimView() {
   }, []);
   const putNet = useCallback((net: ArmNet | null, name?: string) => {
     const e = eng.current; if (!e) return;
-    e.net = net;
+    e.net = net; setShown(net); setLive(null);
     setNetInfo(net ? { name: name ?? net.name ?? 'A network', weights: net.w.length, h: net.h, exam: net.exam ?? null } : null);
     setNetGoes([]);
     if (net) void evaluate(e)(header(net), e.places.map(at => ({ w: net.w, at }))).then(res => { if (eng.current?.net === net) setNetGoes(res.map(g => g.ok ? g.time : null)); });
@@ -64,7 +67,7 @@ export function ArmSimView() {
       const view = S.createScene(THREE, cv);
       const e: Engine = { R, C, T, view, sim: null, places: C.examPlacements('grab'), mode: 'watch', task: 'grab', net: null, idx: 0, speed: 1, paused: false, rest: 0, started: true, keys: new Set(), shut: false, acc: 0, last: performance.now(), raf: 0, pool: [], wait: new Map(), nextId: 0, training: null, run: 0 };
       eng.current = e;
-      const cores = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+      const cores = Math.max(1, Math.min(16, (navigator.hardwareConcurrency || 4) - 1));   // every core but one: the page's own
       try {
         for (let i = 0; i < cores; i++) {
           const w = new Worker(new URL('../lib/arm/worker.mjs', import.meta.url), { type: 'module' });
@@ -100,7 +103,12 @@ export function ArmSimView() {
         }
         const p = e.sim!.pose();                                     // not `sim`: a new placement has freed it
         view.draw(p, e.mode === 'hand' ? 'human' : e.net ? 'net' : 'none');
-        if (++n % 6 === 0) setHud({ idx: e.idx, t: p.t, done: p.done, shut: p.shut, started: e.started, paused: e.paused });
+        if (++n % 6 === 0) {
+          setHud({ idx: e.idx, t: p.t, done: p.done, shut: p.shut, started: e.started, paused: e.paused });
+          // what the network holds now (by hand: what it would do in your place)
+          const net = e.net;
+          if (net) { const x = e.sim!.observe(net.inputs), l = C.layers(net, x); setLive({ x, h: l.h, y: l.y }); }
+        }
       };
       e.raf = requestAnimationFrame(frame);
       // turn the view: drag; nearer or further: the wheel
@@ -148,7 +156,11 @@ export function ArmSimView() {
       const t0 = performance.now(), before = t.best;
       await e.T.generation(t, ev);
       if (e.run !== run) break;
-      if (t.best && t.best !== before) { const net = e.T.trained(t, `Trained here, generation ${t.best.gen}`); e.net = net; setNetInfo({ name: net.name!, weights: net.w.length, h: net.h, exam: net.exam ?? null }); setNetGoes([]); }
+      // on the left: the best examined network, and until one has grabbed the network as it stands (to watch it learn)
+      if (t.best ? t.best !== before : true) {
+        const net = t.best ? e.T.trained(t, `Trained here, generation ${t.best.gen}`) : { ...t.net, w: [...t.net.w], name: `In training, generation ${t.gen}`, exam: null };
+        e.net = net; setShown(net); setNetInfo({ name: net.name!, weights: net.w.length, h: net.h, exam: net.exam ?? null }); setNetGoes([]);
+      }
       setTr(s => ({ ...s, gen: t.gen, hist: [...t.hist], best: t.best && { done: t.best.exam.done, of: t.best.exam.of, time: t.best.exam.time, gen: t.best.gen }, perGen: (performance.now() - t0) / 1000 }));
     }
   };
@@ -170,6 +182,7 @@ export function ArmSimView() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="flex min-w-0 flex-col gap-5">
       <div className="panel relative overflow-hidden p-0">
         <canvas ref={canvas} className="block aspect-[16/10] w-full cursor-grab touch-none active:cursor-grabbing" aria-label="The arm, the table and the cube in 3D. Drag to turn the view." />
         {ready !== 'ok' && <p className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">{ready === 'loading' ? 'Loading the simulator…' : `The simulator did not start: ${ready}`}</p>}
@@ -186,6 +199,22 @@ export function ArmSimView() {
             <p className="pointer-events-none absolute right-5 bottom-3 text-[0.7rem] text-muted-foreground/70">drag to turn · wheel to zoom</p>
           </>
         )}
+      </div>
+      <section aria-labelledby="arm-net-title" className="panel p-5">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 id="arm-net-title" className="heading text-lg">The network, live</h2>
+          <p className="num text-xs text-muted-foreground">{shown ? `${shown.w.length} weights${shown.h ? `, ${shown.h} hidden units` : ', no hidden layer'}` : ''}</p>
+          <p className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span aria-hidden className="inline-block h-0.5 w-5 rounded bg-[#ff8a3d]" /> pulls up (+)</span>
+            <span className="flex items-center gap-1.5"><span aria-hidden className="inline-block h-0.5 w-5 rounded bg-[#4aa8ff]" /> pulls down (−)</span>
+          </p>
+        </div>
+        {shown ? <ArmNetDiagram net={shown} live={live} className="mt-3 w-full" /> : <p className="mt-3 text-sm text-muted-foreground">No network for this task yet: train one, and it is drawn here as it learns.</p>}
+        <p className="mt-2 text-xs text-muted-foreground">
+          Every line is one weight: thicker, the more it pulls; brighter, the more is flowing through it now. A neuron fills with what it holds, from −1 to 1.
+          {mode === 'hand' && shown && ' With your hands on the keys, the right-hand column is what the network would do in your place.'}
+        </p>
+      </section>
       </div>
 
       <div className="flex flex-col gap-4">
@@ -251,11 +280,11 @@ export function ArmSimView() {
               </div>
               <p className="num mt-3 text-muted-foreground">
                 Generation <span className="font-medium text-foreground">{tr.gen}</span>
-                {tr.best && <> · best <span className="font-medium text-tnn">{tr.best.done} of {tr.best.of}</span>{tr.best.done > 0 && <> in {tr.best.time.toFixed(1)} s</>}</>}
+                {tr.best ? <> · best <span className="font-medium text-tnn">{tr.best.done} of {tr.best.of}</span>{tr.best.done > 0 && <> in {tr.best.time.toFixed(1)} s</>}</> : tr.gen > 0 && <> · no grab yet</>}
                 {tr.perGen != null && <> · {tr.perGen.toFixed(1)} s a generation on {tr.cores} {tr.cores === 1 ? 'core' : 'cores'}</>}
               </p>
               <Chart hist={tr.hist} />
-              <p className="mt-2 text-xs text-muted-foreground">Each generation tries 16 variations of the network on four placements, then takes the exam: the same 20 placements as everyone. The arm on the left is the best so far. About one training in two gets stuck squeezing the cube without lifting it: if nothing is grabbed by generation 100, start over.</p>
+              <p className="mt-2 text-xs text-muted-foreground">Each generation tries 16 variations of the network on four placements. Once one of them has grabbed the cube, each generation also takes the exam: the same 20 placements as everyone. The arm on the left is the network as it stands, then the best one examined. About one training in two gets stuck squeezing the cube without lifting it: if nothing is grabbed by generation 100, start over.</p>
             </div>
           )}
         </div>
@@ -265,25 +294,23 @@ export function ArmSimView() {
 }
 
 const header = (net: ArmNet) => ({ kind: net.kind, task: net.task, control: net.control, roll: net.roll, inputs: net.inputs, h: net.h });
-/** The goes shared out over the workers (here, on the page, when there are none). */
+/** The goes shared out over the workers a few at a time (lib/arm/train.mjs shareOut); here, on the page, when there are none. */
 function evaluate(e: Engine): Evaluate {
-  return async (head, goes) => {
-    if (!e.pool.length) return e.T.runGoes(e.R, head, goes);
-    const n = e.pool.length, size = Math.ceil(goes.length / n), parts: Promise<Go[]>[] = [];
-    for (let i = 0; i < n && i * size < goes.length; i++) parts.push(new Promise(yes => { const id = e.nextId++; e.wait.set(id, yes); e.pool[i].postMessage({ id, head, goes: goes.slice(i * size, (i + 1) * size) }); }));
-    return (await Promise.all(parts)).flat();
-  };
+  if (!e.pool.length) return async (head, goes) => e.T.runGoes(e.R, head, goes);
+  return e.T.shareOut(e.pool.length, (i, head, goes) => new Promise<Go[]>(yes => { const id = e.nextId++; e.wait.set(id, yes); e.pool[i].postMessage({ id, head, goes }); }));
 }
 
-/** How many of the exam's 20 the network of each generation managed. */
+/** How many of the exam's 20 the network of each generation managed (cyan), and, fainter, how its tries scored: that moves long before the first grab. */
 function Chart({ hist }: { hist: [number, number, number, number][] }) {
-  const W = 320, H = 70, n = Math.max(20, hist.length);
-  const pts = hist.map(([g, done]) => `${((g - 1) / (n - 1)) * W},${H - 4 - (done / 20) * (H - 8)}`).join(' ');
+  const W = 320, H = 70, n = Math.max(20, hist.length), top = Math.max(4, ...hist.map(h => h[3]));
+  const line = (v: (h: [number, number, number, number]) => number) => hist.map(h => `${((h[0] - 1) / (n - 1)) * W},${H - 4 - Math.max(0, Math.min(1, v(h))) * (H - 8)}`).join(' ');
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full rounded-lg bg-black/25" role="img" aria-label={hist.length ? `The exam after each generation: ${hist[hist.length - 1][1]} of 20 at generation ${hist.length}` : 'The exam after each generation: nothing yet'}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full rounded-lg bg-black/25" role="img" aria-label={hist.length ? `After generation ${hist.length}: ${hist[hist.length - 1][1]} of 20 in the exam, the tries scoring ${hist[hist.length - 1][3]} on average` : 'The exam after each generation: nothing yet'}>
       <line x1="0" x2={W} y1="4" y2="4" stroke="currentColor" strokeOpacity="0.12" strokeDasharray="3 4" />
       <text x="4" y="14" fontSize="9" fill="currentColor" fillOpacity="0.45">20 of 20</text>
-      {hist.length > 1 && <polyline points={pts} fill="none" stroke="var(--tnn)" strokeWidth="1.6" strokeLinejoin="round" />}
+      <text x={W - 4} y="14" fontSize="9" textAnchor="end" fill="currentColor" fillOpacity="0.45">faint: the tries’ score</text>
+      {hist.length > 1 && <polyline points={line(h => h[3] / top)} fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1.1" strokeLinejoin="round" />}
+      {hist.length > 1 && <polyline points={line(h => h[1] / 20)} fill="none" stroke="var(--tnn)" strokeWidth="1.6" strokeLinejoin="round" />}
     </svg>
   );
 }

@@ -3,8 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ARM, TASKS, TRAY, attempt, blank, createArm, exam, examPlacements, forward, notNet, orders, reach, shape } from '../lib/arm/core.mjs';
-import { generation, runGoes, startTraining, trained } from '../lib/arm/train.mjs';
+import { ARM, TASKS, TRAY, attempt, blank, createArm, exam, examPlacements, forward, layers, names, notNet, orders, reach, shape } from '../lib/arm/core.mjs';
+import { generation, runGoes, shareOut, startTraining, trained } from '../lib/arm/train.mjs';
 
 const { default: RAPIER } = await import('@dimforge/rapier3d-deterministic-compat');
 await RAPIER.init();
@@ -69,6 +69,9 @@ test('a network: its size, its layout, and why something is not one', () => {
   const x = [0.5, -1, 0.25, 1, 0, 1, 0], u = [0, 1].map(j => Math.tanh(x.reduce((s, v, i) => s + net.w[j * 7 + i] * v, 0) + net.w[14 + j]));
   const want = [0, 1, 2, 3].map(o => Math.tanh(u[0] * net.w[16 + o] + u[1] * net.w[20 + o] + net.w[24 + o]));
   assert.deepEqual(forward(net, x), want);
+  assert.deepEqual(layers(net, x), { h: u, y: want });                             // the drawing's values are the network's own
+  assert.deepEqual(names(net), { inputs: ['cube: out', 'cube: up', 'cube: side', 'fingers', 'height', 'between', 'squeezing'], outputs: ['out', 'up', 'side', 'grip'] });
+  assert.deepEqual(layers({ ...net, h: 0, w: blank('grab', { h: 0 }).w }, x), { h: [], y: [0, 0, 0, 0] });
   assert.deepEqual(orders({ ...net, control: 'hand' }, [0.1, 0.2, 0.3, 0.4]), { hand: [0.1, 0.2, 0.3], shut: true });
   assert.deepEqual(orders({ ...net, control: 'joints', roll: true }, [0.1, 0.2, 0.3, 0.4, -1]), { joints: [0.1, 0.2, 0.3], roll: 0.4, shut: false });
   assert.equal(notNet(net), null);
@@ -85,18 +88,34 @@ test('the exam is the same 20 placements for everyone, and a network that does n
   assert.equal(x.done, 0); assert.equal(x.of, 20); assert.equal(x.time, 20 * TASKS.grab.limit); assert.equal(x.mean, null);
 });
 
-test('a training: generations run, the best is kept with its exam, and its file passes that exam again', async () => {
+test('a training: generations run, the same seed gives the same training, and the exam waits for a first grab', async () => {
   const evaluate = async (head, goes) => runGoes(RAPIER, head, goes), tr = startTraining({ task: 'grab', h: 4, seed: 3 });
-  for (let i = 0; i < 3; i++) await generation(tr, evaluate);
+  let x;
+  for (let i = 0; i < 3; i++) x = await generation(tr, evaluate);
   assert.equal(tr.gen, 3); assert.equal(tr.hist.length, 3);
   assert.ok(tr.net.w.some(w => w !== 0), 'the weights moved');
-  const file = trained(tr, 'three generations'), again = exam(RAPIER, file);
-  assert.equal(notNet(file), null);
-  assert.deepEqual([again.done, again.time], [tr.best.exam.done, tr.best.exam.time]);
-  // the same seed, the same training
+  // nothing grabbed in three generations: no exam was taken, and nothing passes for the best
+  assert.equal(tr.grabbed, false); assert.equal(x.skipped, true); assert.equal(x.done, 0); assert.equal(tr.best, null);
+  assert.equal(notNet(trained(tr, 'three generations')), null);
   const tr2 = startTraining({ task: 'grab', h: 4, seed: 3 });
-  for (let i = 0; i < 3; i++) await generation(tr2, evaluate);
+  for (let i = 0; i < 3; i++) await generation(tr2, shareOut(3, async (i, head, goes) => runGoes(RAPIER, head, goes), 5));   // shared out in fives: the same
   assert.deepEqual(tr2.net.w, tr.net.w);
+});
+
+test('a training carried on from a network that grabs is examined at once, and its file passes that exam again', async () => {
+  const net = JSON.parse(readFileSync(new URL('../lib/arm/networks/grab.json', import.meta.url), 'utf8'));
+  const tr = startTraining({ from: net, seed: 5 }), x = await generation(tr, async (head, goes) => runGoes(RAPIER, head, goes));
+  assert.ok(!x.skipped && tr.best && tr.best.exam.done > 0, `examined, and still grabbing after a generation's step (${x.done} of 20)`);
+  const file = trained(tr, 'carried on'), again = exam(RAPIER, file);
+  assert.deepEqual([again.done, again.time], [tr.best.exam.done, tr.best.exam.time]);
+});
+
+test('goes shared out a few at a time come back in their order, whoever finishes first', async () => {
+  const seen = [], evaluate = shareOut(3, (i, head, goes) => new Promise(yes => setTimeout(() => { seen.push(i); yes(goes.map(g => ({ ok: true, time: g.at, fit: g.at }))); }, i === 0 ? 30 : 1)), 2);
+  const res = await evaluate({}, Array.from({ length: 11 }, (_, k) => ({ w: [], at: k })));
+  assert.deepEqual(res.map(r => r.time), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.ok(seen.filter(i => i !== 0).length >= 4, 'the quick drivers took more than the slow one');
+  assert.deepEqual(await evaluate({}, []), []);
 });
 
 test('the network that comes with the sim grabs the cube 20 times out of 20, as its file says', () => {

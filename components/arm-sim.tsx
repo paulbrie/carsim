@@ -12,6 +12,8 @@ import type { ArmKey, ArmNet, ArmSim, Go, Placement, TaskKey } from '@/lib/arm/c
 import type { ArmScene } from '@/lib/arm/scene.mjs';
 import type { Evaluate, Training } from '@/lib/arm/train.mjs';
 import grabNet from '@/lib/arm/networks/grab.json';
+import trayNet from '@/lib/arm/networks/tray.json';
+import stackNet from '@/lib/arm/networks/stack.json';
 import b601GrabNet from '@/lib/arm/networks/b601-grab.json';
 
 type Mode = 'watch' | 'hand' | 'train';
@@ -25,10 +27,12 @@ interface Engine {
   training: Training | null; run: number;
 }
 // the networks that come with the sim, per arm (#361: a network is for the arm it was trained on)
-const SHIPPED: Record<ArmKey, Partial<Record<TaskKey, ArmNet>>> = { desk: { grab: grabNet as unknown as ArmNet }, b601: { grab: b601GrabNet as unknown as ArmNet } };
-// what a training of a scenario starts from unless told otherwise: Pick up from nothing (to watch it learn), the others
-// from the network of the scenario before (carrying comes after picking up)
-const startFor = (a: ArmKey, t: TaskKey): 'none' | TaskKey => { const S = SHIPPED[a]; return t === 'stack' ? (S.tray ? 'tray' : S.grab ? 'grab' : 'none') : t === 'tray' && S.grab ? 'grab' : 'none'; };
+const SHIPPED: Record<ArmKey, Partial<Record<TaskKey, ArmNet>>> = { desk: { grab: grabNet as unknown as ArmNet, tray: trayNet as unknown as ArmNet, stack: stackNet as unknown as ArmNet }, b601: { grab: b601GrabNet as unknown as ArmNet } };
+// what a training of a scenario starts from unless told otherwise: Pick up from nothing; the tray and the stack (which are
+// shown the two notes) from the network written by hand for them (lib/arm/train.mjs handStart): from nothing they don't start
+const startFor = (_a: ArmKey, t: TaskKey): 'none' | 'hand' | TaskKey => TASKS[t].inputs.includes('go') ? 'hand' : 'none';
+// the hidden layer a training of a scenario starts with: the tray and the stack are shown the two notes, and need none
+const sizeFor = (t: TaskKey) => t === 'grab' ? 8 : 0;
 const KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'r', 'f', ' '];
 const KBD = 'rounded-md border border-white/15 bg-white/8 px-1.5 py-0.5 font-mono text-[0.7rem] text-foreground';
 const secs = (t: number | null | undefined) => t == null ? '—' : `${t.toFixed(2)} s`;
@@ -47,7 +51,7 @@ export function ArmSimView() {
   const [live, setLive] = useState<NetLive | null>(null);
   const [mine, setMine] = useState<(number | null)[]>([]);
   // base: what a training starts from: 'none', 'net' (the network on the left) or the scenario whose network comes with the sim
-  const [cfg, setCfg] = useState({ h: 8, control: 'hand' as 'hand' | 'joints', base: 'none' as 'none' | 'net' | TaskKey });
+  const [cfg, setCfg] = useState({ h: 8, control: 'hand' as 'hand' | 'joints', base: 'none' as 'none' | 'hand' | 'net' | TaskKey });
   const [tr, setTr] = useState<{ on: boolean; gen: number; best: { done: number; of: number; time: number; gen: number } | null; hist: [number, number, number, number][]; cores: number; perGen: number | null }>({ on: false, gen: 0, best: null, hist: [], cores: 0, perGen: null });
 
   // ---- the driving, all on refs: React only hears of it ten times a second
@@ -150,7 +154,7 @@ export function ArmSimView() {
     const e = eng.current; if (!e || e.task === t) return;
     stop();
     e.task = t; e.places = e.C.examPlacements(t); e.training = null; setTask(t); setMine([]);
-    setCfg(c => ({ ...c, base: startFor(e.arm, t) }));
+    setCfg(c => ({ ...c, base: startFor(e.arm, t), h: sizeFor(t) }));
     setTr(s => ({ ...s, gen: 0, best: null, hist: [], perGen: null }));
     putNet(SHIPPED[e.arm][t] ?? null, 'The network that comes with it'); place(0);
   };
@@ -168,8 +172,8 @@ export function ArmSimView() {
     const e = eng.current; if (!e) return;
     if (fresh || !e.training || e.training.net.task !== e.task || (e.training.net.arm ?? 'desk') !== e.arm) {
       // from a network (of this scenario or another: grown, what it is not shown yet starts at zero), or from nothing
-      const base = cfg.base === 'none' ? null : cfg.base === 'net' ? e.net : SHIPPED[e.arm][cfg.base] ?? null, usable = base && base.control === cfg.control && base.h > 0 && (base.arm ?? 'desk') === e.arm ? base : null;
-      e.training = e.T.startTraining({ task: e.task, arm: e.arm, h: cfg.h, control: cfg.control, seed: 1 + Math.floor(Math.random() * 1e6), from: usable && e.T.grow(usable, { task: e.task, h: cfg.h }), anew: !!usable && usable.task !== e.task });
+      const base = cfg.base === 'none' ? null : cfg.base === 'hand' ? (TASKS[e.task].inputs.includes('go') ? e.T.handStart(e.task, e.arm) : null) : cfg.base === 'net' ? e.net : SHIPPED[e.arm][cfg.base] ?? null, usable = base && base.control === cfg.control && (base.arm ?? 'desk') === e.arm ? base : null;
+      e.training = e.T.startTraining({ task: e.task, arm: e.arm, h: cfg.h, control: cfg.control, seed: 1 + Math.floor(Math.random() * 1e6), from: usable && e.T.grow(usable, { task: e.task, h: usable.h ? cfg.h : 0 }), anew: !!usable && usable.task !== e.task });   // a network without a hidden layer stays without
       setTr(t => ({ ...t, gen: 0, best: null, hist: [], perGen: null }));
     }
     const run = ++e.run, t = e.training, ev = evaluate(e);
@@ -299,6 +303,7 @@ export function ArmSimView() {
                 <label className="col-span-2 block"><span className="text-xs text-muted-foreground">It starts from</span>
                   <select className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5" value={cfg.base} disabled={tr.on} onChange={ev => setCfg(c => ({ ...c, base: ev.target.value as typeof cfg.base }))}>
                     <option value="none">nothing</option>
+                    {T[task].inputs.includes('go') && <option value="hand">a start written by hand (7 weights)</option>}
                     {KEYS_OF.filter(k => SHIPPED[arm][k]).map(k => <option key={k} value={k}>the network that comes with {T[k].name}</option>)}
                     {shown && <option value="net">the network on the left</option>}
                   </select>

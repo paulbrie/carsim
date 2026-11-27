@@ -50,16 +50,16 @@ export default async function Arm() {
         <section aria-labelledby="sees" className="mt-14 grid gap-8 lg:grid-cols-2">
           <div>
             <h2 id="sees" className="heading text-2xl">What a network is shown</h2>
-            <p className="mt-2 text-muted-foreground">Numbers, 60 times a second. No camera: it is told where the cube to move now is and where it goes, as a car’s network is told the line ahead.</p>
+            <p className="mt-2 text-muted-foreground">Numbers, 60 times a second. No camera: it is told where the cube to move now is. For the tray and the stack it is given two notes, as a car’s network is given the line and the pace: which way to go over the table, and what height to be at. It still sets the speeds and decides when to shut and open the fingers.</p>
             <div className="panel mt-4 overflow-x-auto p-0">
               <table className="w-full text-left text-sm">
                 <thead><tr className="eyebrow text-[0.62rem] text-muted-foreground/80"><th scope="col" className="px-4 py-2.5 font-medium">Input</th><th scope="col" className="px-4 py-2.5 font-medium">Numbers</th><th scope="col" className="px-4 py-2.5 font-medium">What it is</th></tr></thead>
                 <tbody>
-                  {TASKS.tray.inputs.map(id => (
+                  {[...new Set([...TASKS.grab.inputs, ...TASKS.tray.inputs])].map(id => (
                     <tr key={id} className="border-t border-white/6 align-top">
                       <th scope="row" className="px-4 py-2.5 font-medium whitespace-nowrap">{INPUTS[id].name}</th>
                       <td className="num px-4 py-2.5 text-muted-foreground">{INPUTS[id].n}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{INPUTS[id].about}{(id === 'goal' || id === 'there') && ' (not for Pick up)'}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{INPUTS[id].about}{!TASKS.tray.inputs.includes(id) ? ' (Pick up)' : !TASKS.grab.inputs.includes(id) ? ' (Into the tray, Stack four)' : ''}</td>
                     </tr>
                   ))}
                 </tbody>

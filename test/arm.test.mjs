@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import loadMujoco from '@mujoco/mujoco';
 import { ARM, ARMS, TASKS, attempt, blank, createArm, exam, examPlacements, forward, layers, names, notNet, orders, placement, dice, reach, joints, sceneXml, shape } from '../lib/arm/core.mjs';
-import { generation, runGoes, shareOut, startTraining, trained } from '../lib/arm/train.mjs';
+import { generation, handStart, runGoes, shareOut, startTraining, trained } from '../lib/arm/train.mjs';
 
 const M = await loadMujoco();
 
@@ -81,7 +81,7 @@ test('a later start has the first cubes already stacked, and a half-way start th
 test('a network: its size, its layout, and why something is not one', () => {
   const net = blank('grab', { h: 2 }), sh = shape(net);
   assert.deepEqual(net.inputs, TASKS.grab.inputs);
-  assert.deepEqual(names(blank('stack')).inputs.slice(-4), ['goal: out', 'goal: up', 'goal: side', 'in place']);
+  assert.deepEqual(names(blank('stack')).inputs, ['go: out', 'go: side', 'rise', 'fingers', 'between', 'squeezing', 'in place']);
   assert.equal(sh.nin, 7); assert.equal(sh.nout, 4); assert.equal(net.w.length, 7 * 2 + 2 + 2 * 4 + 4);
   // W1 (a row of inputs per unit), b1, W2 (a row of outputs per unit), b2
   net.w = net.w.map((_, i) => (i % 7 - 3) / 10);
@@ -146,6 +146,33 @@ test('the network that comes with the sim grabs the cube 20 times out of 20, as 
 });
 
 // ---- the reBot Arm B601-RS (#361)
+test('the notes: nothing to go by until the grip is up, then the way to the cube; with it in the fingers, the way to where it goes', () => {
+  const sim = createArm(M, { at: examPlacements('tray')[0], task: 'tray' });
+  let n = sim.note();
+  assert.ok(n.rise > 0.05 && n.free === 0, `at home the grip is below the travel height: up first (${n.rise})`);
+  assert.ok(sim.observe(['go']).every(v => v === 0), 'no way to go yet');
+  for (let i = 0; i < 40; i++) sim.act({ hand: [0, 1, 0] });
+  n = sim.note();
+  assert.ok(n.free === 1 && Math.hypot(...sim.observe(['go'])) > 0.2, 'up there, it is shown the way to the cube');
+  sim.free();
+  // the network written by hand follows them: the cube ends in the tray, and four cubes get stacked
+  const a = attempt(M, handStart('tray'), examPlacements('tray')[4]), b = attempt(M, handStart('stack'), examPlacements('stack')[1]);
+  assert.ok(a.ok && a.time < 6, `tray by the hand-written network (${a.time})`);
+  assert.ok(b.ok && b.stage === 3, `stack by the hand-written network (${b.time})`);
+  assert.equal(handStart('tray').w.filter(Boolean).length, 7);
+  assert.throws(() => handStart('grab'), /not shown/);
+});
+
+test('the networks that come with the tray and the stack pass their exams as their files say', () => {
+  for (const [file, least] of [['tray', 20], ['stack', 9]]) {
+    const net = JSON.parse(readFileSync(new URL(`../lib/arm/networks/${file}.json`, import.meta.url), 'utf8'));
+    assert.equal(notNet(net), null);
+    const x = exam(M, net);
+    assert.ok(x.done >= least, `${file}: ${x.done} of ${x.of}`);
+    assert.deepEqual({ done: x.done, of: x.of, time: x.time }, net.exam);
+  }
+});
+
 test('the B601: its makers’ figures, the hand straight down where the joints say, every scenario done by hand on it', () => {
   const B = ARMS.b601, xml = sceneXml(1, 'b601');
   // as published (Rebot_Arm_description/RS): the links' offsets and masses, the motors' peak torques

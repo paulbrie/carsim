@@ -8,7 +8,7 @@ export interface ArmSpec {
 export const ARMS: Record<ArmKey, ArmSpec>;
 export const ARM: ArmSpec;
 export const HZ: number; export const STEP: number; export const SUB: number; export const GRIP_N: number;
-export const CUBE: number; export const LIFT: number;
+export const CUBE: number; export const LIFT: number; export const OVER: number;
 export const TRAY: { r: number; a: number; half: number };
 export const INPUTS: Record<string, { n: number; parts: string[]; name: string; about: string }>;
 export type TaskKey = 'grab' | 'tray' | 'stack';
@@ -22,8 +22,9 @@ export interface Pose { arm: ArmKey; q: number[]; grip: number[]; yaw: number; w
 export interface Orders { joints?: number[]; hand?: number[]; world?: number[]; roll?: number; shut?: boolean }
 export interface ArmSim {
   task: TaskKey; arm: ArmKey; readonly q: number[]; qt: number[]; t: number; ticks: number; shut: boolean; at: Placement;
-  stage: number; still: number; done: number | null; lost: boolean;
-  jobs: { near: number; d0: number; squeezed: number; lift: number; carry: number; c0: number; z0: number; set: boolean; fresh: boolean }[];
+  stage: number; still: number; done: number | null; lost: boolean; offNote: number;
+  note(): { rise: number; x: number; y: number; free: number };
+  jobs: { near: number; d0: number; squeezed: number; lift: number; carry: number; c0: number; z0: number; set: boolean; held?: boolean; fresh: boolean }[];
   gap(): number; job(): Job; observe(inputs: string[]): number[]; act(o?: Orders): void; pose(): Pose; free(): void;
 }
 export interface Go { ok: boolean; time: number | null; fit: number; stage: number }

@@ -632,10 +632,15 @@ file):
   `{ cube, on }` jobs), its dice in `examPlacements`, and it is on the page.
 - **A network** is `{ task, control, roll, inputs, h, w }` (`blank`, `notNet`, `forward`: the car's layout, W1, b1, W2,
   b2, all through tanh). Inputs (`INPUTS`) are in the arm's own frame (outwards, up, sideways) and about **the cube to
-  move now**: the cube from the grip, the fingers' gap, the height, "something between the fingers", "squeezing", where
-  that cube goes from where it is (the tray, the top of the stack) and "it is in place". So one small network without memory can do a
-  scenario of several jobs: when a cube is placed, it is shown the next one. Outputs: the hand's speed in that frame
-  (`control: 'hand'`, the joints follow) or each motor's (`'joints'`), then the fingers.
+  move now**, so one small network without memory can do a scenario of several jobs: when a cube is placed, it is shown
+  the next one. Pick up is shown the cube from the grip, the fingers' gap, the height, "something between the fingers"
+  and "squeezing". **The tray and the stack are shown two notes** instead of where things are, as a car's network is
+  given the line and the pace (`sim.note()`): `go`, the way over the table (to the cube; with the cube in the fingers,
+  to where it goes; nothing while still too low to travel), and `rise`, how far below the height to be at now (`OVER`,
+  26 cm, on the way; down only in the last 7.5 cm over the cube or over where it goes); and "it is in place". With
+  them the whole of a pick-and-place is nearly a matter of gains: their networks have no hidden layer and 32 weights.
+  (Shown where the cube and the tray are instead, `goal`, carrying was not learned: see the trainer.) Outputs: the
+  hand's speed in that frame (`control: 'hand'`, the joints follow) or each motor's (`'joints'`), then the fingers.
 - **The exam** (`exam`): the scenario's placements, the same for everyone (`examPlacements`); the score is how many
   were done, then the seconds they took, a failed one counting its whole limit.
 - **Deterministic**: the same drive gives the same numbers to the last digit, in a world used again too (a test), and
@@ -645,13 +650,17 @@ file):
   Adam), four placements a generation, then the exam once a variation has managed the scenario; the best examined
   network is kept. Once it manages the scenario it refines (smaller nudges and steps), and after 8 generations
   without a new best it goes back to its best. For a scenario of several jobs half the placements start with some
-  jobs already done (`stacked`), so the later ones are practised from the first generation. **A scenario is learned
-  from the one before**: `grow(net, { task, h })` makes a network for another scenario (or a bigger one) that does what
-  `net` does (what it is not shown yet starts at zero), and the training starts from it (`startTraining({ from, anew })`;
-  the page's "It starts from"; the script's last argument). Where that stands (2026-11-27): Pick up
-  is learned (20 of 20). Into the tray is not yet: from nothing no cube reached the tray in 400 generations; from the
-  network that picks up, cubes got there within 10 generations, but thrown (6 of 20 at best), and since a cube has to be
-  held in place first, 1 of 20 at best after 250 generations (seven trainings). Stack four has not been trained. The driving is done by
+  jobs already done (`stacked`), so the later ones are practised from the first generation. Where a training starts:
+  from nothing (Pick up), from a network grown out of another (`grow(net, { task, h })`: what it is not shown yet starts
+  at zero), or, for the tray and the stack, from **the start written by hand** (`handStart`: 7 weights: go the way the
+  note says, be at the height it says, shut on a cube, let go once it is in place; as it stands 14 of 20 in the tray
+  and 7 stacks of 10). What was measured (2026-11-27): Pick up is learned from nothing about one time in four on the
+  MuJoCo arm, and was carried on from the first arm's network to 20 of 20. Into the tray shown where things are
+  (`goal`) was not learned: from nothing no cube reached the tray in 400 generations; from the network that picks up,
+  cubes were thrown in (6 of 20), and once a cube had to be held in place, 1 of 20 after 250 generations. With the
+  notes and the hand-written start, three trainings of three reached 20 of 20 within 90 generations, and the stack 9
+  of 10 within 30; with the notes from nothing, nothing was learned in 150 (going up first pays nothing by itself; a
+  go's score now gives 1 for keeping to the height note, which was not enough). The driving is done by
   whoever calls it: workers on the page (`lib/arm/worker.mjs`, every core but one, 16 at most; goes handed out two at a
   time, `shareOut`), worker threads from the command line (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`).
 - **The picture** (`lib/arm/scene.mjs`): three.js, handed in; draws what `pose()` says: the arm, the cubes (the one to
@@ -665,10 +674,11 @@ file):
 - **MuJoCo on the page** is not bundled: `scripts/vendor-three.mjs` (postinstall) copies its loader and its 11 MB of
   WebAssembly to `public/arm/vendor/mujoco` (not committed), and the page and each worker import it from there
   (`lib/arm/load.mjs`). Node imports the package.
-- `lib/arm/networks/grab.json` is the network the page starts Pick up with (`b601-grab.json` on the B601); a test takes their exams.
+- `lib/arm/networks/`: the networks the page starts with: `grab.json` (100 weights, 20 of 20), `tray.json` and
+  `stack.json` (32 weights each, no hidden layer) for the desk arm, `b601-grab.json` for the B601; a test takes their exams.
 
-Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms, trained networks for
-the tray and the stack. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's
+Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms; a training of the
+tray or the stack that starts from nothing; the B601's networks for them. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's
 lab).
 
 ## The agent bridge: an AI agent working in your sim

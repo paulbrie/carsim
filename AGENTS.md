@@ -157,8 +157,10 @@ See README.md for the layout. Notes:
   and are not to be "simplified" away: the fingers' equality (a cube drifts along their travel without it), the pads'
   stiff contact (`pad`) and 360 steps a second (a carried cube slides 16 mm at each start and stop without the first, 5 mm at
   240 steps), the tool turned against the base (fingers that turn with the arm close on a cube's corners and drop it), and
-  the motors' speed orders (the arm lags 5 cm behind without them). A network for a new scenario is trained from the one
-  before (`grow`), in small steps: from nothing, or in full-size steps, carrying a cube was not learned. A network's weights are kept to the last
+  the motors' speed orders (the arm lags 5 cm behind without them). The tray and the stack are shown two notes (`go`, `rise`: `sim.note()`, the
+  car's line and pace for an arm) and their trainings start from a network written by hand (`handStart`): shown where
+  things are instead, or from nothing, carrying a cube was not learned (README has what was tried). The notes are part of
+  what a drive is for those networks: change `note()` or `OVER`, and `tray.json` / `stack.json` are re-examined. A network's weights are kept to the last
   digit (rounding changes the exam). MuJoCo's memory is not garbage-collected: `free()` a world when done with it (its
   data is used again by the next one) and never use it after; the views into its memory (`qpos`...) die when that memory
   grows, so `act()` and `pose()` look first: a new method that reads them must too. Inside core the axes are MuJoCo's (z

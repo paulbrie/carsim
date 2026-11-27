@@ -14,7 +14,7 @@ export interface Orders { joints?: number[]; hand?: number[]; world?: number[]; 
 export interface ArmSim {
   task: TaskKey; readonly q: number[]; qt: number[]; t: number; ticks: number; shut: boolean; at: Placement;
   stage: number; still: number; done: number | null; lost: boolean;
-  jobs: { near: number; d0: number; squeezed: number; lift: number; carry: number; c0: number; z0: number; fresh: boolean }[];
+  jobs: { near: number; d0: number; squeezed: number; lift: number; carry: number; c0: number; z0: number; set: boolean; fresh: boolean }[];
   gap(): number; job(): Job; observe(inputs: string[]): number[]; act(o?: Orders): void; pose(): Pose; free(): void;
 }
 export interface Go { ok: boolean; time: number | null; fit: number; stage: number }

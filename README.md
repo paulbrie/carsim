@@ -607,9 +607,10 @@ file):
   steps a second rather than 240 (a carried cube slid 5 mm at each start and stop, now 1 mm).
 - **Scenarios** (`TASKS`): each says how many cubes, its jobs in order, its time limit and how many placements its exam
   has. `grab` (Pick up: lift the cube 15 cm and hold it half a second; 5 s, 20 placements), `tray` (Into the tray: pick
-  it up and put it down in the tray; pushed there along the table does not count; 8 s, 20) and `stack` (Stack four: the
+  it up and put it down in the tray; 8 s, 20) and `stack` (Stack four: the
   second cube on the first, the third on the second, the fourth on top, each within 2 cm of the one below; 30 s, 10).
-  A job is done when its cube is where it goes, at rest and let go of; the stage is counted afresh each decision, so a
+  A job is done when its cube was held in place by the fingers, is where it goes, at rest and let go of (pushed there
+  along the table, dropped or thrown does not count: the first tray networks learned to throw the cube in); the stage is counted afresh each decision, so a
   stack knocked over goes back. A new scenario is an entry there (`{ cube, lift }`, `{ cube, to: 'tray' }` or
   `{ cube, on }` jobs), its dice in `examPlacements`, and it is on the page.
 - **A network** is `{ task, control, roll, inputs, h, w }` (`blank`, `notNet`, `forward`: the car's layout, W1, b1, W2,
@@ -630,8 +631,10 @@ file):
   jobs already done (`stacked`), so the later ones are practised from the first generation. **A scenario is learned
   from the one before**: `grow(net, { task, h })` makes a network for another scenario (or a bigger one) that does what
   `net` does (what it is not shown yet starts at zero), and the training starts from it (`startTraining({ from, anew })`;
-  the page's "It starts from"; the script's last argument). Carrying a cube to the tray from nothing was not learned in
-  400 generations; from the network that picks up, the first cubes reach the tray within 10. The driving is done by
+  the page's "It starts from"; the script's last argument). Where that stands (2026-11-27): Pick up
+  is learned (20 of 20). Into the tray is not yet: from nothing no cube reached the tray in 400 generations; from the
+  network that picks up, cubes got there within 10 generations, but thrown (6 of 20 at best), and since a cube has to be
+  held in place first, 1 of 20 at best after 250 generations (seven trainings). Stack four has not been trained. The driving is done by
   whoever calls it: workers on the page (`lib/arm/worker.mjs`, every core but one, 16 at most; goes handed out two at a
   time, `shareOut`), worker threads from the command line (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`).
 - **The picture** (`lib/arm/scene.mjs`): three.js, handed in; draws what `pose()` says: the arm, the cubes (the one to

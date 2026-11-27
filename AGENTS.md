@@ -222,6 +222,9 @@ See README.md for the layout. Notes:
   any other way of writing a map must announce it too, `MAPS_CHANNEL`) and best laps from memory (`RecordStore`:
   `load()` at start, each new best written through). New server-side data goes in a table, not in a file. Tests
   that need it take a schema of their own from `test/db.mjs` (never the app's tables).
+- The super admin's dashboard (#357, `/admin`, `lib/dashboard/store.mjs`) has the people's emails (table `users`): nothing of it
+  goes to a public page or route. Its writes (`noteSignIn` / `noteSeen` in auth.ts, `noteExam`) never fail a sign-in or a
+  request: keep them fire-and-forget. A new place where the server runs an agent's network should `noteExam` it too.
 - Maps: only the super admin (`lib/admin.ts`) may write them; every write path (`app/api/maps`) checks
   `session.user.admin` on the server. To test as the admin locally, sign a session cookie with
   `AUTH_SECRET` (`@auth/core/jwt` `encode`, salt `authjs.session-token`, claims `provider: 'google'`,

@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { Bot, LogOut, Map as MapIcon } from 'lucide-react';
+import { Bot, LayoutDashboard, LogOut, Map as MapIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -31,6 +31,7 @@ export function UserMenu({ user }: { user: { name: string; image: string | null;
         <DropdownMenuSeparator />
         {user.admin && (
           <>
+            <DropdownMenuItem asChild><Link href="/admin"><LayoutDashboard /> Dashboard</Link></DropdownMenuItem>
             <DropdownMenuItem asChild><Link href="/maps"><MapIcon /> Maps</Link></DropdownMenuItem>
             <DropdownMenuSeparator />
           </>

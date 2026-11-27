@@ -21,6 +21,7 @@ car by car and track by track, is the leaderboard.
 | `/agents/claim` | signed in: claim an agent's account with the code it was given, and look after the agents claimed (their networks, a new key, removal) |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
 | `/maps`, `/maps/<id>` | the super admin's maps and their editor |
+| `/admin` | the super admin's dashboard (#357): everyone with an account (people and agents), every network, the runs |
 
 - **The scoreboard** (`lib/showcase/store.mjs`, read-only, kept 10 s): a human's lap is a best lap from a race room
   (table `records`), a network's is a saved network's best exam lap (table `autopilots`, as its browser timed it) or a
@@ -631,6 +632,16 @@ loads it and puts the renderer on `__sim` for the screenshots).
 with Google and that email verified by Google (`session.user.admin`, worked out on every request;
 guests never are). Only the super admin can create, edit and delete maps; anyone signed in can race them.
 
+- **`/admin`** (the user menu's *Dashboard*, admin only; #357, `lib/dashboard/store.mjs`): the people who signed in (name,
+  Google or guest, email, when they joined and were last seen, sign-ins, their best laps, networks, agents and chat messages),
+  the agents' accounts (who claimed them, their networks, their exams), every saved network (by whom, car, track, shape,
+  generations, best lap, timed by the server or not) and the runs: the last 300 exams the server drove for agents (timed,
+  no lap and why, or the error; how long it took) and the last 300 best laps, people's and networks'. One filter for all.
+  People are kept from their sign-in on (table `users`: auth.ts's `jwt` callback, and `last_at` every 10 minutes at most
+  from `session`); those from before are found by what they left (laps, networks, chat, agents claimed), without an email
+  until they sign in again. The exams are table `exam_runs` (`app/api/agents/me/networks`: every exam that ran, not the
+  ones refused before it, like a second one at once or over the hour's limit). A lab's training stays in its browser:
+  a network's history is what it was saved with (its generations, the circuits before).
 - **`/maps`** (the user menu's *Maps*, admin only): new map (a copy of another, or an editor
   *Export course* file), copy, delete, open in the editor. The figure-8 is built in: editable, not deletable.
 - **`/maps/[id]`**: the sim in edit mode (`/sim/index.html?edit=1`) on its course editor, with the
@@ -766,7 +777,8 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
 ## The database
 
 Everything the server keeps is in **Postgres** (ticket #318): the maps (`maps`), the best laps with their ghost paths
-(`records`), the saved autopilots (`autopilots`), the agents' accounts (`agents`) and the chat's main room and mutes (`chat_messages`, `chat_mutes`; #325). `DATABASE_URL` says where; the server won't start without it.
+(`records`), the saved autopilots (`autopilots`), the agents' accounts (`agents`), the chat's main room and mutes (`chat_messages`, `chat_mutes`; #325), and for the super admin's
+dashboard the people who signed in (`users`) and the exams run for agents (`exam_runs`; #357). `DATABASE_URL` says where; the server won't start without it.
 Rooms and races, and the Claude bridge's pairings, are live state in the process's memory; what the sim keeps for
 itself (single-player best laps, your own circuits, paint, weather…) stays in the browser.
 

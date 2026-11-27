@@ -6,6 +6,7 @@ import { GROUND_KEYS, VEHICLE_KEYS } from '@/lib/race/shared.mjs';
 import { showcase } from '@/lib/showcase/store.mjs';
 import { publicName } from '@/lib/format';
 import { siteUrl } from '@/lib/site-url';
+import { noteExam, type ExamNote } from '@/lib/dashboard/store.mjs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -36,9 +37,15 @@ export async function POST(req: Request) {
     const network = cleanTraining({ ...(b.network as Record<string, unknown>), kind: 'carsim-autopilot' });
     const store = autopilotStore();
     await store.room(a.uid);
-    const r = await exams().submit(a.uid, { course: map.course ?? null, ground, car, network });
-    const exam = { ...r.exam, build: r.build };
+    // (each exam that ran, whatever came of it, for the super admin's dashboard: #357; not the ones refused before running)
+    const t0 = Date.now(), run: Omit<ExamNote, 'status' | 'ms'> = { agent: a.uid, agentName: a.name, name, track: map.id, ground, vehicle: car };
+    const r = await exams().submit(a.uid, { course: map.course ?? null, ground, car, network }).catch((e: { status?: number; message?: string }) => {
+      if (e?.status !== 429 && e?.status !== 503) noteExam({ ...run, status: e?.status ?? 500, ms: Date.now() - t0, error: String(e?.message ?? e) });
+      throw e;
+    });
+    const exam = { ...r.exam, build: r.build }, ran = { ...run, ms: Date.now() - t0, exam: r.exam, build: r.build };
     if (r.exam.time == null) {
+      noteExam({ ...ran, status: 422 });
       const why = r.exam.why === 'wrecked' ? 'the car was wrecked' : r.exam.why === 'stuck' ? 'it made no headway for 20 s' : r.exam.why === 'slow' ? 'it was too slow (under 5 m/s on average)' : 'none of its laps went through every gate';
       return json({ error: `No lap to time: ${why} after ${r.exam.seconds} s. Run sim.exam(network) on this track, ground and car yourself to see it.`, exam }, 422);
     }
@@ -46,7 +53,9 @@ export async function POST(req: Request) {
     const before = (await showcase().board().catch(() => null))?.boards.find(x => x.track === map.id && x.ground === ground)?.rows.find(x => x.vehicle === car) ?? null;
     // (the file as the engine wrote it back after driving it: this car, this course's key, the settings it drove with; the
     // optimiser's state only if the agent sent one, for whoever trains it further in the lab)
-    const saved = await store.create({ name, training: { ...r.file, track: map.name, adam: network.adam ? r.file.adam : null }, owner: a.uid, ownerName: a.name, exam: { ...r.exam, time: r.exam.time, build: r.build } });
+    const saved = await store.create({ name, training: { ...r.file, track: map.name, adam: network.adam ? r.file.adam : null }, owner: a.uid, ownerName: a.name, exam: { ...r.exam, time: r.exam.time, build: r.build } })
+      .catch((e: { status?: number; message?: string }) => { noteExam({ ...ran, status: e?.status ?? 500, error: `Timed, not saved: ${e?.message ?? e}` }); throw e; });
+    noteExam({ ...ran, status: 201, autopilot: saved.id });
     showcase().forget();
     const board = await showcase().board().catch(() => null);
     return json({

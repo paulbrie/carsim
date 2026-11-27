@@ -21,7 +21,7 @@ export async function testDb() {
   return {
     db, schema,
     /** empty tables, for the next test */
-    reset: () => db.pool.query('truncate maps, records, autopilots, app_meta, chat_messages, chat_mutes, agents'),
+    reset: () => db.pool.query('truncate maps, records, autopilots, app_meta, chat_messages, chat_mutes, agents, users, exam_runs'),
     drop: async () => { await db.pool.end(); await admin(`drop schema "${schema}" cascade`); },
   };
 }

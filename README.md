@@ -654,7 +654,7 @@ file):
   from nothing (Pick up), from a network grown out of another (`grow(net, { task, h })`: what it is not shown yet starts
   at zero), or, for the tray and the stack, from **the start written by hand** (`handStart`: 7 weights: go the way the
   note says, be at the height it says, shut on a cube, let go once it is in place; as it stands 14 of 20 in the tray
-  and 7 stacks of 10). What was measured (2026-11-27): Pick up is learned from nothing about one time in four on the
+  and 7 stacks of 10 on the desk arm, 20 of 20 and 8 of 10 on the B601). What was measured (2026-11-27): Pick up is learned from nothing about one time in four on the
   MuJoCo arm, and was carried on from the first arm's network to 20 of 20. Into the tray shown where things are
   (`goal`) was not learned: from nothing no cube reached the tray in 400 generations; from the network that picks up,
   cubes were thrown in (6 of 20), and once a cube had to be held in place, 1 of 20 after 250 generations. With the
@@ -675,10 +675,11 @@ file):
   WebAssembly to `public/arm/vendor/mujoco` (not committed), and the page and each worker import it from there
   (`lib/arm/load.mjs`). Node imports the package.
 - `lib/arm/networks/`: the networks the page starts with: `grab.json` (100 weights, 20 of 20), `tray.json` and
-  `stack.json` (32 weights each, no hidden layer) for the desk arm, `b601-grab.json` for the B601; a test takes their exams.
+  `stack.json` (32 weights each, no hidden layer) for the desk arm, `b601-grab.json`, `b601-tray.json` and
+  `b601-stack.json` for the B601 (tray 20 of 20, stack 10 of 10); a test takes their exams.
 
 Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms; a training of the
-tray or the stack that starts from nothing; the B601's networks for them. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's
+tray or the stack that starts from nothing. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's
 lab).
 
 ## The agent bridge: an AI agent working in your sim

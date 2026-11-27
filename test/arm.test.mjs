@@ -163,8 +163,8 @@ test('the notes: nothing to go by until the grip is up, then the way to the cube
   assert.throws(() => handStart('grab'), /not shown/);
 });
 
-test('the networks that come with the tray and the stack pass their exams as their files say', () => {
-  for (const [file, least] of [['tray', 20], ['stack', 9]]) {
+test('the networks that come with the tray and the stack, on both arms, pass their exams as their files say', () => {
+  for (const [file, least] of [['tray', 20], ['stack', 9], ['b601-tray', 20], ['b601-stack', 10]]) {
     const net = JSON.parse(readFileSync(new URL(`../lib/arm/networks/${file}.json`, import.meta.url), 'utf8'));
     assert.equal(notNet(net), null);
     const x = exam(M, net);

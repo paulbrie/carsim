@@ -15,6 +15,8 @@ import grabNet from '@/lib/arm/networks/grab.json';
 import trayNet from '@/lib/arm/networks/tray.json';
 import stackNet from '@/lib/arm/networks/stack.json';
 import b601GrabNet from '@/lib/arm/networks/b601-grab.json';
+import b601TrayNet from '@/lib/arm/networks/b601-tray.json';
+import b601StackNet from '@/lib/arm/networks/b601-stack.json';
 
 type Mode = 'watch' | 'hand' | 'train';
 type Core = typeof import('@/lib/arm/core.mjs');
@@ -27,7 +29,7 @@ interface Engine {
   training: Training | null; run: number;
 }
 // the networks that come with the sim, per arm (#361: a network is for the arm it was trained on)
-const SHIPPED: Record<ArmKey, Partial<Record<TaskKey, ArmNet>>> = { desk: { grab: grabNet as unknown as ArmNet, tray: trayNet as unknown as ArmNet, stack: stackNet as unknown as ArmNet }, b601: { grab: b601GrabNet as unknown as ArmNet } };
+const SHIPPED: Record<ArmKey, Partial<Record<TaskKey, ArmNet>>> = { desk: { grab: grabNet as unknown as ArmNet, tray: trayNet as unknown as ArmNet, stack: stackNet as unknown as ArmNet }, b601: { grab: b601GrabNet as unknown as ArmNet, tray: b601TrayNet as unknown as ArmNet, stack: b601StackNet as unknown as ArmNet } };
 // what a training of a scenario starts from unless told otherwise: Pick up from nothing; the tray and the stack (which are
 // shown the two notes) from the network written by hand for them (lib/arm/train.mjs handStart): from nothing they don't start
 const startFor = (_a: ArmKey, t: TaskKey): 'none' | 'hand' | TaskKey => TASKS[t].inputs.includes('go') ? 'hand' : 'none';

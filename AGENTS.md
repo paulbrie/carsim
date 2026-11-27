@@ -149,18 +149,26 @@ See README.md for the layout. Notes:
   core for seconds and this process runs the races: never call `createSim` in a route. `docs/agents.md` is the page
   `/agents` and `/agents.md` both; a test checks every route it names exists.
 - The arm sim (#359, a preview at `/arm`; README: The arm sim): `lib/arm/core.mjs` has no page and no drawing in it and
-  takes the physics as an argument (Rapier's deterministic build), so it runs the same in a tab, a worker and Node: keep it
-  free of the DOM, of `Math.random` and of the clock. **Anything that changes what a drive does (the arm's sizes, speeds,
-  the fingers' force, the steps, the solver's passes (`ITERS`: 4 is a third faster and was tried: far fewer trainings learn),
-  the exam's placements or their dice) changes every network's exam**: the network that
-  comes with it (`lib/arm/networks/grab.json`) must be examined again and its `exam` rewritten (a test compares), and
-  once networks are saved, theirs were another exam's. A network's weights are kept to the last digit (rounding changes
-  the exam). `free()` a world when done with it (the physics' memory is not garbage-collected), and never use one after
-  (the page's frame loop reads `e.sim` again after a new placement). Headless checks: the page's engine is `window.__arm`
-  (`__arm.sim`, `__arm.training`, `__arm.pool`). `layers` is `forward` with the hidden values kept, for the page's drawing
-  (`components/arm-net.tsx`): change one, change the other (a test compares). A speed-up of the training must leave a seed's
-  training the same (a test trains twice, the second time shared out in fives). The trainer (`train.mjs`) is the car lab's method
-  (`aiNewGen` / `aiEndGen`) written apart: a change of method there is not one here, and the other way round.
+  takes the physics as an argument (MuJoCo, loaded: `M`), so it runs the same in a tab, a worker and Node: keep it free of
+  the DOM, of `Math.random` and of the clock. **Anything that changes what a drive does (the scene's XML: sizes, masses,
+  motors, contact settings; the step; the joints' speeds; the scenarios' rules, placements or their dice) changes every
+  network's exam**: the network that comes with it (`lib/arm/networks/grab.json`) must be examined again and its `exam`
+  rewritten (a test compares), and once networks are saved, theirs were another exam's. Settings there that were measured
+  and are not to be "simplified" away: the fingers' equality (a cube drifts along their travel without it), the pads'
+  stiff contact (`pad`) and 360 steps a second (a carried cube slides 16 mm at each start and stop without the first, 5 mm at
+  240 steps), the tool turned against the base (fingers that turn with the arm close on a cube's corners and drop it), and
+  the motors' speed orders (the arm lags 5 cm behind without them). A network for a new scenario is trained from the one
+  before (`grow`), in small steps: from nothing, or in full-size steps, carrying a cube was not learned. A network's weights are kept to the last
+  digit (rounding changes the exam). MuJoCo's memory is not garbage-collected: `free()` a world when done with it (its
+  data is used again by the next one) and never use it after; the views into its memory (`qpos`...) die when that memory
+  grows, so `act()` and `pose()` look first: a new method that reads them must too. Inside core the axes are MuJoCo's (z
+  up), outside the picture's (y up): `out3` / `in3`. A scenario is an entry in `TASKS`; the page lists them from there.
+  `layers` is `forward` with the hidden values kept, for the page's drawing (`components/arm-net.tsx`): change one, change
+  the other (a test compares). A speed-up of the training must leave a seed's training the same (a test trains twice,
+  the second time shared out in fives). The trainer (`train.mjs`) is the car lab's method (`aiNewGen` / `aiEndGen`)
+  written apart: a change of method there is not one here, and the other way round. MuJoCo reaches the page from
+  `public/arm/vendor` (copied on install by `scripts/vendor-three.mjs`, as three.js for the car's sim), not through the
+  bundler. Headless checks: the page's engine is `window.__arm` (`__arm.sim`, `__arm.training`, `__arm.pool`).
 - The agent bridge is every signed-in driver's (#355), so its store trusts no caller: every page route passes the session's
   user id and the store refuses a pairing that isn't theirs; `list` / `take` (the agent key) see only pairings made with the
   super admin's session (`admin`); a new agent route must take a token or a claimed code, never a page id alone. The MCP

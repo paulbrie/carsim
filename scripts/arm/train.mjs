@@ -1,20 +1,20 @@
 // Train an arm network from the command line (#359): node scripts/arm/train.mjs [task=grab] [h=8] [control=hand]
-// [seed=1] [generations=200] [out.json] [roll=0]. On every core but one, 16 at most (CORES=n; worker threads). The physics is Rapier's
-// deterministic build: RAPIER=<path to its rapier.mjs> when it is not installed in this project.
+// [seed=1] [generations=200] [out.json] [roll=0] [from.json: a network to carry on from, of this scenario or another
+// (grown: what it is not shown yet starts at zero)]. On every core but one, 16 at most (CORES=n; worker threads).
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { availableParallelism } from 'node:os';
-import { writeFileSync } from 'node:fs';
-import { generation, runGoes, shareOut, startTraining, trained } from '../../lib/arm/train.mjs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { generation, grow, runGoes, shareOut, startTraining, trained } from '../../lib/arm/train.mjs';
 
-const RAPIER = (await import(process.env.RAPIER || '@dimforge/rapier3d-deterministic-compat')).default;
-await RAPIER.init();
-if (!isMainThread) parentPort.on('message', ({ id, head, goes }) => parentPort.postMessage({ id, res: runGoes(RAPIER, head, goes) }));
+const M = await (await import('@mujoco/mujoco')).default();
+if (!isMainThread) parentPort.on('message', ({ id, head, goes }) => parentPort.postMessage({ id, res: runGoes(M, head, goes) }));
 else {
-  const [task = 'grab', h = '8', control = 'hand', seed = '1', gens = '200', out = '', roll = '0'] = process.argv.slice(2);
+  const [task = 'grab', h = '8', control = 'hand', seed = '1', gens = '200', out = '', roll = '0', from = ''] = process.argv.slice(2);
   const cores = Math.max(1, Math.min(+process.env.CORES || 16, availableParallelism() - 1)), wait = new Map(); let next = 0;
   const pool = Array.from({ length: cores }, () => { const w = new Worker(new URL(import.meta.url)); w.on('message', m => { wait.get(m.id)(m.res); wait.delete(m.id); }); return w; });
   const evaluate = shareOut(cores, (i, head, goes) => new Promise(yes => { const id = next++; wait.set(id, yes); pool[i].postMessage({ id, head, goes }); }));
-  const tr = startTraining({ task, h: +h, control, seed: +seed, roll: roll === '1' }), t0 = Date.now();
+  const base = from ? JSON.parse(readFileSync(from, 'utf8')) : null;
+  const tr = startTraining({ task, h: +h, control, seed: +seed, roll: roll === '1', from: base && grow(base, { task, h: +h }), anew: !!base && (base.task !== task || process.env.ANEW === '1') }), t0 = Date.now();
   console.log(`${task}, ${control}, h ${h}, ${tr.net.w.length} weights, seed ${seed}, ${cores} cores`);
   for (let g = 1; g <= +gens; g++) {
     const x = await generation(tr, evaluate);

@@ -7,6 +7,7 @@ import { Bot, Download, Hand, Pause, Play, RotateCcw, SkipForward, Sparkles } fr
 import { Button } from '@/components/ui/button';
 import { ArmNetDiagram, type NetLive } from '@/components/arm-net';
 import { cn } from '@/lib/utils';
+import { TASKS } from '@/lib/arm/core.mjs';
 import type { ArmNet, ArmSim, Go, Placement, TaskKey } from '@/lib/arm/core.mjs';
 import type { ArmScene } from '@/lib/arm/scene.mjs';
 import type { Evaluate, Training } from '@/lib/arm/train.mjs';
@@ -16,13 +17,16 @@ type Mode = 'watch' | 'hand' | 'train';
 type Core = typeof import('@/lib/arm/core.mjs');
 type Trainer = typeof import('@/lib/arm/train.mjs');
 interface Engine {
-  R: unknown; C: Core; T: Trainer; view: ArmScene; sim: ArmSim | null; places: Placement[];
+  M: unknown; C: Core; T: Trainer; view: ArmScene; sim: ArmSim | null; places: Placement[];
   mode: Mode; task: TaskKey; net: ArmNet | null; idx: number; speed: number; paused: boolean; rest: number; started: boolean;
   keys: Set<string>; shut: boolean; acc: number; last: number; raf: number;
   pool: Worker[]; wait: Map<number, (r: Go[]) => void>; nextId: number;
   training: Training | null; run: number;
 }
 const SHIPPED: Partial<Record<TaskKey, ArmNet>> = { grab: grabNet as unknown as ArmNet };
+// what a training of a scenario starts from unless told otherwise: Pick up from nothing (to watch it learn), the others
+// from the network of the scenario before (carrying comes after picking up)
+const startFor = (t: TaskKey): 'none' | TaskKey => t === 'stack' ? (SHIPPED.tray ? 'tray' : SHIPPED.grab ? 'grab' : 'none') : t === 'tray' && SHIPPED.grab ? 'grab' : 'none';
 const KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'r', 'f', ' '];
 const KBD = 'rounded-md border border-white/15 bg-white/8 px-1.5 py-0.5 font-mono text-[0.7rem] text-foreground';
 const secs = (t: number | null | undefined) => t == null ? '—' : `${t.toFixed(2)} s`;
@@ -32,14 +36,15 @@ export function ArmSimView() {
   const [ready, setReady] = useState<'loading' | 'ok' | string>('loading');
   const [mode, setMode] = useState<Mode>('watch');
   const [task, setTask] = useState<TaskKey>('grab');
-  const [hud, setHud] = useState({ idx: 0, t: 0, done: null as number | null, shut: false, started: false, paused: false });
+  const [hud, setHud] = useState({ idx: 0, t: 0, done: null as number | null, shut: false, started: false, paused: false, stage: 0, of: 1 });
   const [speed, setSpeed] = useState(1);
   const [netInfo, setNetInfo] = useState<{ name: string; weights: number; h: number; exam: ArmNet['exam'] } | null>(null);
   const [netGoes, setNetGoes] = useState<(number | null)[]>([]);
   const [shown, setShown] = useState<ArmNet | null>(null);          // the network drawn under the picture, and what it holds now
   const [live, setLive] = useState<NetLive | null>(null);
   const [mine, setMine] = useState<(number | null)[]>([]);
-  const [cfg, setCfg] = useState({ h: 8, control: 'hand' as 'hand' | 'joints' });
+  // base: what a training starts from: 'none', 'net' (the network on the left) or the scenario whose network comes with the sim
+  const [cfg, setCfg] = useState({ h: 8, control: 'hand' as 'hand' | 'joints', base: 'none' as 'none' | 'net' | TaskKey });
   const [tr, setTr] = useState<{ on: boolean; gen: number; best: { done: number; of: number; time: number; gen: number } | null; hist: [number, number, number, number][]; cores: number; perGen: number | null }>({ on: false, gen: 0, best: null, hist: [], cores: 0, perGen: null });
 
   // ---- the driving, all on refs: React only hears of it ten times a second
@@ -47,7 +52,7 @@ export function ArmSimView() {
     const e = eng.current; if (!e) return;
     e.sim?.free();
     e.idx = (i + e.places.length) % e.places.length;
-    e.sim = e.C.createArm(e.R, { at: e.places[e.idx], task: e.task });
+    e.sim = e.C.createArm(e.M, { at: e.places[e.idx], task: e.task });
     e.rest = 0; e.acc = 0; e.started = e.mode !== 'hand'; e.shut = false;
   }, []);
   const putNet = useCallback((net: ArmNet | null, name?: string) => {
@@ -61,11 +66,10 @@ export function ArmSimView() {
   useEffect(() => {
     let dead = false, cleanup = () => {}; const cv = canvas.current!;
     (async () => {
-      const [THREE, { default: R }, C, S, T] = await Promise.all([import('three'), import('@dimforge/rapier3d-deterministic-compat'), import('@/lib/arm/core.mjs'), import('@/lib/arm/scene.mjs'), import('@/lib/arm/train.mjs')]);
-      await R.init();
+      const [THREE, M, C, S, T] = await Promise.all([import('three'), import('@/lib/arm/load.mjs').then(l => l.loadMujoco()), import('@/lib/arm/core.mjs'), import('@/lib/arm/scene.mjs'), import('@/lib/arm/train.mjs')]);
       if (dead) return;
       const view = S.createScene(THREE, cv);
-      const e: Engine = { R, C, T, view, sim: null, places: C.examPlacements('grab'), mode: 'watch', task: 'grab', net: null, idx: 0, speed: 1, paused: false, rest: 0, started: true, keys: new Set(), shut: false, acc: 0, last: performance.now(), raf: 0, pool: [], wait: new Map(), nextId: 0, training: null, run: 0 };
+      const e: Engine = { M, C, T, view, sim: null, places: C.examPlacements('grab'), mode: 'watch', task: 'grab', net: null, idx: 0, speed: 1, paused: false, rest: 0, started: true, keys: new Set(), shut: false, acc: 0, last: performance.now(), raf: 0, pool: [], wait: new Map(), nextId: 0, training: null, run: 0 };
       eng.current = e;
       const cores = Math.max(1, Math.min(16, (navigator.hardwareConcurrency || 4) - 1));   // every core but one: the page's own
       try {
@@ -84,7 +88,7 @@ export function ArmSimView() {
         e.raf = requestAnimationFrame(frame);
         const dt = Math.min(0.1, (now - e.last) / 1000); e.last = now;
         const sim = e.sim; if (!sim) return;
-        const limit = e.mode === 'hand' ? 30 : C.TASKS[e.task].limit, over = sim.done != null || sim.lost || sim.t >= limit;
+        const limit = C.TASKS[e.task].limit * (e.mode === 'hand' ? 4 : 1), over = sim.done != null || sim.lost || sim.t >= limit;
         if (over) { e.rest += dt; if (e.rest > (e.mode === 'hand' ? 1.2 : 0.7)) { if (e.mode === 'hand') setMine(m => { const c = [...m]; c[e.idx] = sim.done; return c; }); place(e.idx + 1); } }
         else if (!e.paused) {
           e.acc += dt * C.HZ * (e.mode === 'hand' ? 1 : e.speed);
@@ -104,7 +108,7 @@ export function ArmSimView() {
         const p = e.sim!.pose();                                     // not `sim`: a new placement has freed it
         view.draw(p, e.mode === 'hand' ? 'human' : e.net ? 'net' : 'none');
         if (++n % 6 === 0) {
-          setHud({ idx: e.idx, t: p.t, done: p.done, shut: p.shut, started: e.started, paused: e.paused });
+          setHud({ idx: e.idx, t: p.t, done: p.done, shut: p.shut, started: e.started, paused: e.paused, stage: p.stage, of: p.of });
           // what the network holds now (by hand: what it would do in your place)
           const net = e.net;
           if (net) { const x = e.sim!.observe(net.inputs), l = C.layers(net, x); setLive({ x, h: l.h, y: l.y }); }
@@ -143,13 +147,19 @@ export function ArmSimView() {
     const e = eng.current; if (!e || e.task === t) return;
     stop();
     e.task = t; e.places = e.C.examPlacements(t); e.training = null; setTask(t); setMine([]);
+    setCfg(c => ({ ...c, base: startFor(t) }));
     setTr(s => ({ ...s, gen: 0, best: null, hist: [], perGen: null }));
     putNet(SHIPPED[t] ?? null, 'The network that comes with it'); place(0);
   };
   const stop = () => { const e = eng.current; if (e) e.run++; setTr(t => ({ ...t, on: false })); };
   const train = async (fresh: boolean) => {
     const e = eng.current; if (!e) return;
-    if (fresh || !e.training || e.training.net.task !== e.task) { e.training = e.T.startTraining({ task: e.task, h: cfg.h, control: cfg.control, seed: 1 + Math.floor(Math.random() * 1e6) }); setTr(t => ({ ...t, gen: 0, best: null, hist: [], perGen: null })); }
+    if (fresh || !e.training || e.training.net.task !== e.task) {
+      // from a network (of this scenario or another: grown, what it is not shown yet starts at zero), or from nothing
+      const base = cfg.base === 'none' ? null : cfg.base === 'net' ? e.net : SHIPPED[cfg.base] ?? null, usable = base && base.control === cfg.control && base.h > 0 ? base : null;
+      e.training = e.T.startTraining({ task: e.task, h: cfg.h, control: cfg.control, seed: 1 + Math.floor(Math.random() * 1e6), from: usable && e.T.grow(usable, { task: e.task, h: cfg.h }), anew: !!usable && usable.task !== e.task });
+      setTr(t => ({ ...t, gen: 0, best: null, hist: [], perGen: null }));
+    }
     const run = ++e.run, t = e.training, ev = evaluate(e);
     setTr(s => ({ ...s, on: true }));
     while (eng.current === e && e.run === run) {
@@ -171,7 +181,7 @@ export function ArmSimView() {
   const setSp = (s: number) => { if (eng.current) eng.current.speed = s; setSpeed(s); };
   const pause = () => { const e = eng.current; if (e) { e.paused = !e.paused; setHud(h => ({ ...h, paused: e.paused })); } };
 
-  const T = { grab: { name: 'Pick up', about: 'Lift the cube 15 cm off the table and hold it for half a second.' }, tray: { name: 'Into the tray', about: 'Pick the cube up and put it down in the tray.' } } as const;
+  const T = TASKS, KEYS_OF = Object.keys(TASKS) as TaskKey[];
   const their = netGoes[hud.idx], my = mine.filter(v => v != null) as number[];
   const tab = (m: Mode, label: string, Icon: typeof Bot) => (
     <button type="button" role="tab" aria-selected={mode === m} onClick={() => changeMode(m)}
@@ -189,7 +199,7 @@ export function ArmSimView() {
         {ready === 'ok' && (
           <>
             <div className="pointer-events-none absolute top-4 left-5">
-              <p className="eyebrow text-[0.65rem] text-muted-foreground">{T[task].name} · placement {hud.idx + 1} of 20</p>
+              <p className="eyebrow text-[0.65rem] text-muted-foreground">{T[task].name} · placement {hud.idx + 1} of {T[task].exam}{hud.of > 1 && ` · ${Math.min(hud.stage, hud.of)} of ${hud.of} placed`}</p>
               <p className={cn('num mt-1 text-4xl font-semibold', mode === 'hand' ? 'text-human' : 'text-tnn')}>{hud.t.toFixed(2)} <span className="text-xl">s</span></p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {hud.done != null ? 'Done.' : mode === 'hand' && !hud.started ? 'The clock starts at your first key.' : hud.paused ? 'Paused.' : mode !== 'hand' && !netInfo ? 'No network yet: train one.' : hud.shut ? 'Fingers shut.' : 'Fingers open.'}
@@ -209,7 +219,7 @@ export function ArmSimView() {
             <span className="flex items-center gap-1.5"><span aria-hidden className="inline-block h-0.5 w-5 rounded bg-[#4aa8ff]" /> pulls down (−)</span>
           </p>
         </div>
-        {shown ? <ArmNetDiagram net={shown} live={live} className="mt-3 w-full" /> : <p className="mt-3 text-sm text-muted-foreground">No network for this task yet: train one, and it is drawn here as it learns.</p>}
+        {shown ? <ArmNetDiagram net={shown} live={live} className="mt-3 w-full" /> : <p className="mt-3 text-sm text-muted-foreground">No network for this scenario yet: train one, and it is drawn here as it learns.</p>}
         <p className="mt-2 text-xs text-muted-foreground">
           Every line is one weight: thicker, the more it pulls; brighter, the more is flowing through it now. A neuron fills with what it holds, from −1 to 1.
           {mode === 'hand' && shown && ' With your hands on the keys, the right-hand column is what the network would do in your place.'}
@@ -219,9 +229,9 @@ export function ArmSimView() {
 
       <div className="flex flex-col gap-4">
         <div className="panel p-4">
-          <p className="eyebrow text-[0.62rem] text-muted-foreground">Task</p>
-          <div className="mt-2 flex gap-2">
-            {(['grab', 'tray'] as TaskKey[]).map(k => <Button key={k} size="sm" variant={task === k ? 'default' : 'glass'} disabled={ready !== 'ok'} onClick={() => changeTask(k)}>{T[k].name}</Button>)}
+          <p className="eyebrow text-[0.62rem] text-muted-foreground">Scenario</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {KEYS_OF.map(k => <Button key={k} size="sm" variant={task === k ? 'default' : 'glass'} disabled={ready !== 'ok'} onClick={() => changeTask(k)}>{T[k].name}</Button>)}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">{T[task].about}</p>
         </div>
@@ -233,7 +243,7 @@ export function ArmSimView() {
 
           {mode !== 'hand' && (
             <div className="mt-4">
-              <p className="text-sm font-medium">{netInfo ? netInfo.name : 'No network for this task yet'}</p>
+              <p className="text-sm font-medium">{netInfo ? netInfo.name : 'No network for this scenario yet'}</p>
               <p className="num mt-0.5 text-xs text-muted-foreground">
                 {netInfo ? <>{netInfo.weights} weights{netInfo.h ? `, ${netInfo.h} hidden units` : ', no hidden layer'}{netInfo.exam && <span className="block">exam: <span className="text-tnn">{netInfo.exam.done} of {netInfo.exam.of}</span>{netInfo.exam.done > 0 && <> in {netInfo.exam.time.toFixed(1)} s</>}</span>}</> : 'Train one here: it takes a few minutes.'}
               </p>
@@ -269,13 +279,20 @@ export function ArmSimView() {
                 <label className="block"><span className="text-xs text-muted-foreground">Hidden units</span>
                   <select className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5" value={cfg.h} disabled={tr.on} onChange={ev => setCfg(c => ({ ...c, h: +ev.target.value }))}>{[0, 4, 8, 16].map(h => <option key={h} value={h}>{h || 'none'}</option>)}</select>
                 </label>
+                <label className="col-span-2 block"><span className="text-xs text-muted-foreground">It starts from</span>
+                  <select className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5" value={cfg.base} disabled={tr.on} onChange={ev => setCfg(c => ({ ...c, base: ev.target.value as typeof cfg.base }))}>
+                    <option value="none">nothing</option>
+                    {KEYS_OF.filter(k => SHIPPED[k]).map(k => <option key={k} value={k}>the network that comes with {T[k].name}</option>)}
+                    {shown && <option value="net">the network on the left</option>}
+                  </select>
+                </label>
                 <label className="block"><span className="text-xs text-muted-foreground">It drives</span>
                   <select className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5" value={cfg.control} disabled={tr.on} onChange={ev => setCfg(c => ({ ...c, control: ev.target.value as 'hand' | 'joints' }))}><option value="hand">the hand</option><option value="joints">each motor</option></select>
                 </label>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {tr.on ? <Button size="sm" variant="tnn" onClick={stop}><Pause /> Pause</Button> : <Button size="sm" variant="tnn" disabled={ready !== 'ok'} onClick={() => train(false)}><Sparkles /> {tr.gen ? 'Train on' : 'Train'}</Button>}
-                {tr.gen > 0 && !tr.on && <Button size="sm" variant="glass" onClick={() => train(true)}><RotateCcw /> Start over</Button>}
+                {(tr.gen > 0 || cfg.base !== 'none') && !tr.on && <Button size="sm" variant="glass" onClick={() => train(true)}><RotateCcw /> Start over</Button>}
                 <Button size="sm" variant="ghost" disabled={!netInfo} onClick={download}><Download /> File</Button>
               </div>
               <p className="num mt-3 text-muted-foreground">
@@ -283,8 +300,8 @@ export function ArmSimView() {
                 {tr.best ? <> · best <span className="font-medium text-tnn">{tr.best.done} of {tr.best.of}</span>{tr.best.done > 0 && <> in {tr.best.time.toFixed(1)} s</>}</> : tr.gen > 0 && <> · no grab yet</>}
                 {tr.perGen != null && <> · {tr.perGen.toFixed(1)} s a generation on {tr.cores} {tr.cores === 1 ? 'core' : 'cores'}</>}
               </p>
-              <Chart hist={tr.hist} />
-              <p className="mt-2 text-xs text-muted-foreground">Each generation tries 16 variations of the network on four placements. Once one of them has grabbed the cube, each generation also takes the exam: the same 20 placements as everyone. The arm on the left is the network as it stands, then the best one examined. About one training in two gets stuck squeezing the cube without lifting it: if nothing is grabbed by generation 100, start over.</p>
+              <Chart hist={tr.hist} of={T[task].exam} />
+              <p className="mt-2 text-xs text-muted-foreground">Each generation tries 16 variations of the network on four placements. Once one of them has managed the scenario, each generation also takes the exam: the same placements as everyone. The arm on the left is the network as it stands, then the best one examined. Not every training gets there: if nothing has come of it by generation 150, start over.</p>
             </div>
           )}
         </div>
@@ -296,21 +313,21 @@ export function ArmSimView() {
 const header = (net: ArmNet) => ({ kind: net.kind, task: net.task, control: net.control, roll: net.roll, inputs: net.inputs, h: net.h });
 /** The goes shared out over the workers a few at a time (lib/arm/train.mjs shareOut); here, on the page, when there are none. */
 function evaluate(e: Engine): Evaluate {
-  if (!e.pool.length) return async (head, goes) => e.T.runGoes(e.R, head, goes);
+  if (!e.pool.length) return async (head, goes) => e.T.runGoes(e.M, head, goes);
   return e.T.shareOut(e.pool.length, (i, head, goes) => new Promise<Go[]>(yes => { const id = e.nextId++; e.wait.set(id, yes); e.pool[i].postMessage({ id, head, goes }); }));
 }
 
-/** How many of the exam's 20 the network of each generation managed (cyan), and, fainter, how its tries scored: that moves long before the first grab. */
-function Chart({ hist }: { hist: [number, number, number, number][] }) {
+/** How many of the exam's placements the network of each generation managed (cyan), and, fainter, how its tries scored: that moves long before the first grab. */
+function Chart({ hist, of }: { hist: [number, number, number, number][]; of: number }) {
   const W = 320, H = 70, n = Math.max(20, hist.length), top = Math.max(4, ...hist.map(h => h[3]));
   const line = (v: (h: [number, number, number, number]) => number) => hist.map(h => `${((h[0] - 1) / (n - 1)) * W},${H - 4 - Math.max(0, Math.min(1, v(h))) * (H - 8)}`).join(' ');
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full rounded-lg bg-black/25" role="img" aria-label={hist.length ? `After generation ${hist.length}: ${hist[hist.length - 1][1]} of 20 in the exam, the tries scoring ${hist[hist.length - 1][3]} on average` : 'The exam after each generation: nothing yet'}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full rounded-lg bg-black/25" role="img" aria-label={hist.length ? `After generation ${hist.length}: ${hist[hist.length - 1][1]} of ${of} in the exam, the tries scoring ${hist[hist.length - 1][3]} on average` : 'The exam after each generation: nothing yet'}>
       <line x1="0" x2={W} y1="4" y2="4" stroke="currentColor" strokeOpacity="0.12" strokeDasharray="3 4" />
-      <text x="4" y="14" fontSize="9" fill="currentColor" fillOpacity="0.45">20 of 20</text>
+      <text x="4" y="14" fontSize="9" fill="currentColor" fillOpacity="0.45">{of} of {of}</text>
       <text x={W - 4} y="14" fontSize="9" textAnchor="end" fill="currentColor" fillOpacity="0.45">faint: the tries’ score</text>
       {hist.length > 1 && <polyline points={line(h => h[3] / top)} fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1.1" strokeLinejoin="round" />}
-      {hist.length > 1 && <polyline points={line(h => h[1] / 20)} fill="none" stroke="var(--tnn)" strokeWidth="1.6" strokeLinejoin="round" />}
+      {hist.length > 1 && <polyline points={line(h => h[1] / of)} fill="none" stroke="var(--tnn)" strokeWidth="1.6" strokeLinejoin="round" />}
     </svg>
   );
 }

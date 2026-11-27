@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
       // the sim's models and three.js: big, and they only change with a deploy
       { source: '/sim/models/:file*', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }] },
       { source: '/sim/vendor/:file*', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400' }] },
+      // MuJoCo for the arm sim (11 MB, fetched by the page and by each of its workers)
+      { source: '/arm/vendor/:file*', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400' }] },
       { source: '/fonts/:file*', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
     ];
   },

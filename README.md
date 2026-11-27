@@ -588,46 +588,68 @@ The agent's routes read no cookie and the claim's routes take no key: an agent i
 
 ## The arm sim (a preview, #359)
 
-The platform's second simulator, so far one page (`/arm`) and no table: a desk arm that picks a cube up, driven by a
+The platform's second simulator, so far one page (`/arm`) and no table: a desk arm that picks cubes up, driven by a
 tiny network, by a person's keys, or trained in the browser. Written fresh as modules (the car's sim is one engine
 file):
 
 - **The world** (`lib/arm/core.mjs`): no page in it and no drawing; it runs the same in a tab, a worker and Node. The
-  physics is [Rapier](https://rapier.rs) (the deterministic build, WebAssembly: `@dimforge/rapier3d-deterministic-compat`),
-  handed in as `R`. The arm: a base that turns, a shoulder, an elbow, a hand that hangs straight down (`ARM`: lengths,
-  the joints' speeds and limits). Its joints are moved by us (motors that lag 60 ms, stop at their limits and at the
-  table); the two fingers are bodies on sliding joints with a 12 N motor, and **a cube is held by friction alone**.
-  120 physics steps a second (8 solver passes each, `ITERS`: with 4 a decision costs a third less, but on the same eight
-  trainings only 1 came to grab 19 of 20 or better against 4, so 8 it is), 60 decisions. About 130× real time on one core.
+  physics is [MuJoCo](https://mujoco.org) (the official WebAssembly build, `@mujoco/mujoco`), handed in as `M`. (It
+  was Rapier for a day: MuJoCo holds a cube more firmly for half the cost, simulates the arm's own joints, and is what
+  robot learning uses.) The arm (`sceneXml`, `ARM`): a base that turns, a shoulder, an elbow, a wrist that keeps the
+  hand hanging straight down, the hand's own turn (kept against the base's, so the fingers keep their direction on the
+  table and close square on a cube), and two fingers geared together (20 N each at most). **Every joint is a real one
+  with a motor** (a servo of limited force, told where to be and how fast it should be moving): what is ordered is
+  where the joints should be (`qt`, moved at their top speeds, within their limits and above the table), and the arm
+  follows as its motors and weight let it (within 3 mm when nothing is in its way). **A cube is held by friction
+  alone.** 360 physics steps a second, 60 decisions; a decision costs about 90 µs with one cube and 230 µs with four
+  (180× and 70× real time on one core). What it took to make the grip hold (each measured, see the comments in
+  `sceneXml`): the fingers geared together, their pads and the cubes touching as stiffly as the step allows, and 360
+  steps a second rather than 240 (a carried cube slid 5 mm at each start and stop, now 1 mm).
+- **Scenarios** (`TASKS`): each says how many cubes, its jobs in order, its time limit and how many placements its exam
+  has. `grab` (Pick up: lift the cube 15 cm and hold it half a second; 5 s, 20 placements), `tray` (Into the tray: pick
+  it up and put it down in the tray; pushed there along the table does not count; 8 s, 20) and `stack` (Stack four: the
+  second cube on the first, the third on the second, the fourth on top, each within 2 cm of the one below; 30 s, 10).
+  A job is done when its cube is where it goes, at rest and let go of; the stage is counted afresh each decision, so a
+  stack knocked over goes back. A new scenario is an entry there (`{ cube, lift }`, `{ cube, to: 'tray' }` or
+  `{ cube, on }` jobs), its dice in `examPlacements`, and it is on the page.
 - **A network** is `{ task, control, roll, inputs, h, w }` (`blank`, `notNet`, `forward`: the car's layout, W1, b1, W2,
-  b2, all through tanh). Inputs (`INPUTS`) are in the arm's own frame (outwards, up, sideways): the cube from the grip,
-  the fingers' gap, the height, "something between the fingers", "squeezing", for the tray where it is. Outputs: the
-  hand's speed in that frame (`control: 'hand'`, the joints follow) or each motor's (`'joints'`), then the fingers.
-- **Tasks** (`TASKS`): `grab` (lift the cube 15 cm and hold it half a second, 5 s) and `tray` (put it in the tray, 8 s).
-  **The exam** (`exam`): the same 20 placements for everyone (`examPlacements`); the score is how many were done, then
-  the seconds they took, a failed one counting its whole limit.
-- **Deterministic**: the same network gives the same exam in Node and in Chrome, each go to the millisecond (checked
-  by hand in headless Chrome; `test/arm.test.mjs` checks Node against itself). A saved network keeps its weights to the
-  last digit: rounded to five decimals, one went from 19 of 20 to 17.
+  b2, all through tanh). Inputs (`INPUTS`) are in the arm's own frame (outwards, up, sideways) and about **the cube to
+  move now**: the cube from the grip, the fingers' gap, the height, "something between the fingers", "squeezing", where
+  that cube goes from where it is (the tray, the top of the stack) and "it is in place". So one small network without memory can do a
+  scenario of several jobs: when a cube is placed, it is shown the next one. Outputs: the hand's speed in that frame
+  (`control: 'hand'`, the joints follow) or each motor's (`'joints'`), then the fingers.
+- **The exam** (`exam`): the scenario's placements, the same for everyone (`examPlacements`); the score is how many
+  were done, then the seconds they took, a failed one counting its whole limit.
+- **Deterministic**: the same drive gives the same numbers to the last digit, in a world used again too (a test), and
+  in Node as in Chrome (checked by hand for MuJoCo's build with a scripted grab, before the port). A saved network
+  keeps its weights to the last digit: rounded to five decimals, one went from 19 of 20 to 17.
 - **The trainer** (`lib/arm/train.mjs`): the car lab's method written on its own (16 variations a generation, ranks,
-  Adam), four placements a generation, then the exam; the best examined network is kept. The driving is done by whoever
-  calls it: workers on the page (`lib/arm/worker.mjs`, every core but one, 16 at most), worker threads from the command
-  line (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`). For speed: goes are handed out two at a time to
-  whichever worker is free (`shareOut`: a grab takes 1.5 s, a failure the whole 5, and equal slices left workers
-  waiting), and the exam waits until a variation has grabbed once (before that it is 20 goes of 5 s that all fail: a
-  quarter of a generation). Measured: 40 generations in 16.6 s on 8 workers, 24 s before; about 0.35 s a generation on
-  the page with 15 workers. About one training in two comes to grab 19 of 20 or better in 150 generations.
-- **The picture** (`lib/arm/scene.mjs`): three.js, handed in; draws what `pose()` says. The arm's ring is cyan when a
+  Adam), four placements a generation, then the exam once a variation has managed the scenario; the best examined
+  network is kept. Once it manages the scenario it refines (smaller nudges and steps), and after 8 generations
+  without a new best it goes back to its best. For a scenario of several jobs half the placements start with some
+  jobs already done (`stacked`), so the later ones are practised from the first generation. **A scenario is learned
+  from the one before**: `grow(net, { task, h })` makes a network for another scenario (or a bigger one) that does what
+  `net` does (what it is not shown yet starts at zero), and the training starts from it (`startTraining({ from, anew })`;
+  the page's "It starts from"; the script's last argument). Carrying a cube to the tray from nothing was not learned in
+  400 generations; from the network that picks up, the first cubes reach the tray within 10. The driving is done by
+  whoever calls it: workers on the page (`lib/arm/worker.mjs`, every core but one, 16 at most; goes handed out two at a
+  time, `shareOut`), worker threads from the command line (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`).
+- **The picture** (`lib/arm/scene.mjs`): three.js, handed in; draws what `pose()` says: the arm, the cubes (the one to
+  move now with bright edges), the tray, and a green outline where the cube goes. The arm's ring is cyan when a
   network has the controls, orange when a person does.
 - **The network, live** (`components/arm-net.tsx`, under the picture): every number it is shown, every hidden unit,
   every output and a line for every weight (orange pulls up, blue down; thicker, the bigger the weight). Ten times a
   second a neuron fills with what it holds and a line brightens with what flows through it (`layers`, `names` in
   core.mjs), and each output says what it means ("up, slowly", "shut"). While training it is the network as it stands;
   by hand, what the network would do in the person's place.
-- `lib/arm/networks/grab.json` is the network the page starts with (100 weights, 20 of 20); a test takes its exam.
+- **MuJoCo on the page** is not bundled: `scripts/vendor-three.mjs` (postinstall) copies its loader and its 11 MB of
+  WebAssembly to `public/arm/vendor/mujoco` (not committed), and the page and each worker import it from there
+  (`lib/arm/load.mjs`). Node imports the package.
+- `lib/arm/networks/grab.json` is the network the page starts Pick up with; a test takes its exam.
 
-Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms, a trained network
-for the tray. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's lab).
+Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms, trained networks for
+the tray and the stack. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's
+lab).
 
 ## The agent bridge: an AI agent working in your sim
 

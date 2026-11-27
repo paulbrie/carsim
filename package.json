@@ -18,7 +18,7 @@
     "db:import": "node scripts/db/import-files.mjs"
   },
   "dependencies": {
-    "@dimforge/rapier3d-deterministic-compat": "^0.21.0",
+    "@mujoco/mujoco": "^4.0.1",
     "@ui-sdk/core": "^0.1.0-beta.13",
     "@ui-sdk/react": "^0.1.0-beta.13",
     "class-variance-authority": "^0.7.1",

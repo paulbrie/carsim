@@ -6,6 +6,7 @@ next-env.d.ts
 !.env.example
 # copied from node_modules on install (scripts/vendor-three.mjs)
 public/sim/vendor/
+public/arm/vendor/
 # the original single-file sim this app was built from (28 MB, models inline); see scripts/extract-engine.mjs
 /index.html
 .dev.log

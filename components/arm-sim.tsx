@@ -297,7 +297,7 @@ export function ArmSimView() {
               </div>
               <p className="num mt-3 text-muted-foreground">
                 Generation <span className="font-medium text-foreground">{tr.gen}</span>
-                {tr.best ? <> · best <span className="font-medium text-tnn">{tr.best.done} of {tr.best.of}</span>{tr.best.done > 0 && <> in {tr.best.time.toFixed(1)} s</>}</> : tr.gen > 0 && <> · no grab yet</>}
+                {tr.best ? <> · best <span className="font-medium text-tnn">{tr.best.done} of {tr.best.of}</span>{tr.best.done > 0 && <> in {tr.best.time.toFixed(1)} s</>}</> : tr.gen > 0 && <> · not managed yet</>}
                 {tr.perGen != null && <> · {tr.perGen.toFixed(1)} s a generation on {tr.cores} {tr.cores === 1 ? 'core' : 'cores'}</>}
               </p>
               <Chart hist={tr.hist} of={T[task].exam} />

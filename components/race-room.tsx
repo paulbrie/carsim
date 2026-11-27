@@ -35,6 +35,16 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
   const [tab, setTab] = useState<'race' | 'car' | 'laps' | 'chat'>('race');
   const [simReady, setSimReady] = useState(false);
   const sim = useRef<SimHandle>(null);
+  // the room's panel, or its buttons and chat in the bottom corner: the sim keeps the autopilot's pedals right of them (#358)
+  const [coverEl, setCoverEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const tell = () => sim.current?.cover(coverEl ? coverEl.getBoundingClientRect().right : 0);
+    tell();
+    if (!coverEl) return;
+    const ro = new ResizeObserver(tell); ro.observe(coverEl);
+    addEventListener('resize', tell);
+    return () => { ro.disconnect(); removeEventListener('resize', tell); };
+  }, [coverEl, simReady]);
   // the chat (#325): a tab of the panel; over the track when the panel is away (Enter in the sim opens its line)
   const [chatOpen, setChatOpen] = useState(false);
   const chatBox = useRef<ChatBoxHandle>(null);
@@ -125,7 +135,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
       {(phase === 'racing' || phase === 'countdown') && <StandingsPanel room={room} meId={me.id} />}
 
       {panel ? (
-        <aside aria-label="Race room" className="absolute top-3 bottom-3 left-3 flex w-[min(392px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-white/10 bg-background/88 shadow-2xl backdrop-blur-xl">
+        <aside ref={setCoverEl} aria-label="Race room" className="absolute top-3 bottom-3 left-3 flex w-[min(392px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-white/10 bg-background/88 shadow-2xl backdrop-blur-xl">
           <div className="flex items-start gap-3 border-b border-white/8 p-4">
             <Link href="/lobby" aria-label="Back to the race rooms" title="Back to the race rooms" className="mt-0.5 rounded-lg p-1 outline-none hover:bg-white/8 focus-visible:ring-2 focus-visible:ring-ring"><BrandMark className="size-6" /></Link>
             <div className="min-w-0 flex-1">
@@ -209,7 +219,7 @@ export function RaceRoom({ roomId }: { roomId: string; user: { name: string; ima
           </div>
         </aside>
       ) : (
-        <div className="absolute bottom-3 left-3 flex flex-col-reverse items-start gap-2">
+        <div ref={setCoverEl} className="absolute bottom-3 left-3 flex flex-col-reverse items-start gap-2">
           <div className="flex gap-2">
             <Button variant="glass" size="lg" className="bg-background/70 px-3 shadow-lg" onClick={() => { setChatOpen(false); setPanel(true); }}>
               <PanelLeftOpen /> <span className="num tracking-widest">{room.id}</span> Room

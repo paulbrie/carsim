@@ -11,7 +11,7 @@ import { paintOf } from '@/components/race-controls';
 import type { RoomView } from '@/lib/race/types';
 import type { SimCourse } from '@/lib/client/maps';
 
-export interface SimHandle { focus(): void; closeDrawers(): void; mute(): void }
+export interface SimHandle { focus(): void; closeDrawers(): void; mute(): void; cover(left: number): void }
 
 // onChatKey: Enter in the sim, to write in the chat (#325)
 // onDrawer: one of the sim's drawers (the car's setup, the lab) opened down its left side, or the last one closed (#332)
@@ -36,11 +36,14 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
   const post = useCallback((m: object) => {
     if (live.current) frame.current?.contentWindow?.postMessage(m, location.origin);
   }, []);
+  const cover = useRef(0);
 
   useImperativeHandle(handle, () => ({
     focus() { frame.current?.focus(); post({ t: 'focus' }); },
     closeDrawers() { post({ t: 'drawers', close: true }); },
     mute() { post({ t: 'mute' }); },                                   // the sim's sound on or off (its M, #343)
+    // how far the page's own things reach in from the left at the bottom (#358: the autopilot's pedals go right of them)
+    cover(left: number) { if (Math.round(left) !== cover.current) { cover.current = Math.round(left); post({ t: 'cover', left: cover.current }); } },
   }), [post]);
 
   // from the sim
@@ -74,6 +77,7 @@ export const SimFrame = forwardRef<SimHandle, { room: RoomView; meId: string; co
   useEffect(() => {
     if (!ready) return;
     post({ t: 'init', me: meId });
+    post({ t: 'cover', left: cover.current });
     post({ t: 'roster', players: room.players.map(p => ({ id: p.id, name: p.name, vehicle: p.vehicle, paint: p.paint, col: paintOf(p.vehicle, p.paint), spectator: p.spectator })) });
     post({ t: 'ground', ground: room.ground });
     post({ t: 'weather', weather: room.weather ?? 'clear' });

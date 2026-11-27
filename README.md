@@ -435,8 +435,8 @@ The server keeps 2000 generations of the current chart (and a training up to 512
   slower); **Full speed** goes back. The panel shows the decisions a second: the network runs on the main thread,
   in the sim's input step, as it needs the car's physics state, which lives there (31 ns a decision for the 16
   weights; a training step is ~67 µs, nearly all physics: ~15,000 decisions/s flat out, ~250× real time).
-- **Its hands and feet:** while it drives or trains, a steering wheel and the brake and gas pedals, top right
-  (between the timer and the minimap), show exactly what it applies: the wheel turned as far as it steers (full
+- **Its hands and feet:** while it drives or trains, a steering wheel and the brake and gas pedals, bottom left
+  (#358: right of a drawer or a race room's panel and buttons, the room telling the sim how far they reach: `cover`), show exactly what it applies: the wheel turned as far as it steers (full
   lock: three quarters of a turn), the pedals in 3D (a renderer of their own, drawn into that overlay: the brake hung
   from under the dash, the gas hinged at the floor) each pressed and lit as far as it is pressed, with a see-through
   foot moving between them, and the handbrake if it has one. Without WebGL for it, a flat drawing.

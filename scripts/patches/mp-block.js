@@ -224,6 +224,7 @@ function mpMessage(m) {
     case 'records': MP.records = m; mpApplyBest(); break;
     case 'ghost': mpGhostMsg(m); break;
     case 'focus': try { window.focus(); } catch (e) { } break;
+    case 'cover': MP.coverL = Math.max(0, Math.min(innerWidth / 2, +m.left || 0)); break;   // (#358: how far the room's panel or buttons reach in from the left, at the bottom)
   }
 }
 

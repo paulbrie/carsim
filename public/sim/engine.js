@@ -6093,6 +6093,7 @@ function mpMessage(m) {
     case 'ghost': mpGhostMsg(m); break;
     case 'watch': mpWatch(m.network); break;
     case 'focus': try { window.focus(); } catch (e) { } break;
+    case 'cover': MP.coverL = Math.max(0, Math.min(innerWidth / 2, +m.left || 0)); break;   // (#358: how far the room's panel or buttons reach in from the left, at the bottom)
   }
 }
 
@@ -7571,9 +7572,9 @@ const aiRayLines = new THREE.LineSegments(new THREE.BufferGeometry().setAttribut
   new THREE.LineBasicMaterial({ color: 0x5fe0ff, transparent: true, opacity: 0.8, depthTest: false }));
 aiRayLines.renderOrder = 20; aiRayLines.visible = false; aiRayLines.frustumCulled = false; scene.add(aiRayLines);
 let aiVizT = 0;
-// ---------- its hands and feet: the wheel and the pedals as it works them, top right, while it has the car ----------
+// ---------- its hands and feet: the wheel and the pedals as it works them, bottom left (#358), while it has the car ----------
 const aiCtlCv = document.createElement('canvas'); aiCtlCv.id = 'aiCtl'; aiCtlCv.className = 'panel'; aiCtlCv.width = 560; aiCtlCv.height = 250;
-aiCtlCv.style.cssText = 'display:none;position:fixed;top:12px;width:280px;height:125px;padding:0;pointer-events:none;z-index:2';
+aiCtlCv.style.cssText = 'display:none;position:fixed;left:12px;bottom:12px;width:280px;height:125px;padding:0;pointer-events:none;z-index:2';
 document.body.appendChild(aiCtlCv);
 let aiCtlT = 0, aiCtlPlaceT = 0, aiCtlFoot = 0;
 // the pedals in 3D (a little renderer of their own, drawn into the 2D overlay): the brake hung from above, the gas hinged
@@ -7641,14 +7642,18 @@ function aiCtlDraw(dt, live) {
   if ((aiCtlCv.style.display !== 'none') !== show) aiCtlCv.style.display = show ? 'block' : 'none';
   if (AI.ctlBox && AI.ctlBox.classList.contains('live') !== show) AI.ctlBox.classList.toggle('live', show);   // (and in the panel's full-screen view)
   if (!show) return;
-  if ((aiCtlPlaceT -= dt) <= 0) {                                      // left of the minimap; under the best laps if they are there
+  if ((aiCtlPlaceT -= dt) <= 0) {                                      // bottom left (#358), clear of what else is there
     aiCtlPlaceT = 0.5;
-    // between the timer and the minimap, as wide as fits (180 to 280 px); under the best laps if they are there; else under the minimap
-    const m = document.getElementById('mapWrap').getBoundingClientRect(), t = timerEl.getBoundingClientRect(), bl = document.getElementById('bestLaps'), b = bl && bl.offsetWidth ? bl.getBoundingClientRect() : null;
-    const right = innerWidth - m.left + 10, gap = m.left - 10 - (t.right + 10), w = Math.min(280, gap);
-    const over = b && b.right > m.left - 10 - w && b.left < m.left - 10;
-    if (w >= 180) { aiCtlCv.style.width = w + 'px'; aiCtlCv.style.height = w * 125 / 280 + 'px'; aiCtlCv.style.right = right + 'px'; aiCtlCv.style.top = (over ? b.bottom + 10 : 12) + 'px'; }
-    else { aiCtlCv.style.width = '220px'; aiCtlCv.style.height = 220 * 125 / 280 + 'px'; aiCtlCv.style.right = right + 'px'; aiCtlCv.style.top = (m.bottom + 10) + 'px'; }
+    // right of a drawer down the left side (the lab, the car's setup) and of a race room's own panel or buttons (MP.coverL,
+    // the page's 'cover'); above the read-out when the setup's drawer has put it in that corner; as wide as fits before
+    // the rev counter (180 to 280 px), or above it when even 180 px don't
+    const vis = id => { const e = document.getElementById(id); return e && e.offsetWidth && getComputedStyle(e).display !== 'none' ? e.getBoundingClientRect() : null; };
+    let left = Math.max(12, (MP.coverL || 0) + 12), bottom = 12;
+    for (const id of ['aiPanel', 'uiSetup']) { const r = vis(id); if (r && r.left < 40 && r.width < innerWidth / 2) left = Math.max(left, r.right + 12); }
+    const g = vis('gauge'), w = Math.max(180, Math.min(280, (g ? g.left : innerWidth) - 12 - left)), h = w * 125 / 280, hud = vis('hud');
+    if (hud && hud.bottom > innerHeight - h - 24 && hud.left < left + w && hud.right > left) bottom = innerHeight - hud.top + 10;
+    if (g && left + w > g.left - 6 && left < g.right) bottom = Math.max(bottom, innerHeight - g.top + 10);
+    aiCtlCv.style.width = w + 'px'; aiCtlCv.style.height = h + 'px'; aiCtlCv.style.left = left + 'px'; aiCtlCv.style.bottom = bottom + 'px';
   }
   if ((aiCtlT += dt) < 1 / 30) return; aiCtlT = 0;
   const g = aiCtlCv.getContext('2d'), W = aiCtlCv.width, Hc = aiCtlCv.height, c = AI.lastCtl, steer = c.steer, gas = c.throttle, brk = c.brake;
@@ -8316,7 +8321,7 @@ AI.el.innerHTML = `<div class="aiHd"><div><div class="lt">TNN LAB</div><div clas
     <div class="card"><div class="h3">This computer: cores and drawing</div>
       <label style="justify-content:space-between" title="Train on more of this computer's cores at once: this tab drives some of each generation's tries (the ones you see), and copies of the sim in the background (Web Workers, one a core) drive the others and the exams, at full speed each. The same physics and the same world (checked as each starts), so the same training, only faster. Each copy takes some memory (about 70 MB). Watch at 1× watches this tab's tries; the others go on at full speed">cores to train on <select id="aiCores">${Array.from({ length: aiCoresMax() }, (_, k) => `<option value="${k + 1}">${k + 1}${k ? '' : ' (this tab only)'}${k + 1 === aiCoresMax() ? ' (all)' : ''}</option>`).join('')}</select></label>
       <label title="Unticked: while it trains, the 3D world isn't drawn (the picture stops; the panel goes on), and the training gets that time: more tries a second in this tab. Watch at 1× always draws it"><input type="checkbox" id="aiDraw"> draw the 3D world while it trains</label>
-      <label title="The pedals and the foot on them (top right, while it drives or trains) in 3D, with a renderer of their own; unticked, a flat drawing"><input type="checkbox" id="aiPed3d"> pedals and foot in 3D</label></div>
+      <label title="The pedals and the foot on them (bottom left, while it drives or trains) in 3D, with a renderer of their own; unticked, a flat drawing"><input type="checkbox" id="aiPed3d"> pedals and foot in 3D</label></div>
     <small>Each set of inputs and outputs is a network, and a training, of its own (the others are kept). Penalties apply from the next try.</small>
   </details>
   <small class="aiHelp">Watch runs the training at real speed, or 2× or 4× (speed), with sound, to follow each try; Drive it and Race it go at that speed too. The diagram: what it sees (left) and does (right), live while it trains or drives; each line is an input's pull on

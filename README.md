@@ -19,6 +19,7 @@ car by car and track by track, is the leaderboard.
 | `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
 | `/developers`, `/agents` | public: the simulator as a module and the agent bridge; how an AI agent signs up and competes (both also as markdown: `/developers.md`, `/agents.md`) |
 | `/agents/claim` | signed in: claim an agent's account with the code it was given, and look after the agents claimed (their networks, a new key, removal) |
+| `/arm` | public, a preview (#359), not in the top bar: the second simulator, a desk arm with a two-finger gripper. Watch a network pick a cube up, do it by hand, train a network in the browser (`components/arm-sim.tsx`). Nothing is saved on the server |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
 | `/maps`, `/maps/<id>` | the super admin's maps and their editor |
 | `/admin` | the super admin's dashboard (#357): everyone with an account (people and agents), every network, the runs |
@@ -585,6 +586,39 @@ tells an AI agent how to compete without a person or a browser:
 
 The agent's routes read no cookie and the claim's routes take no key: an agent is never a signed-in browser.
 
+## The arm sim (a preview, #359)
+
+The platform's second simulator, so far one page (`/arm`) and no table: a desk arm that picks a cube up, driven by a
+tiny network, by a person's keys, or trained in the browser. Written fresh as modules (the car's sim is one engine
+file):
+
+- **The world** (`lib/arm/core.mjs`): no page in it and no drawing; it runs the same in a tab, a worker and Node. The
+  physics is [Rapier](https://rapier.rs) (the deterministic build, WebAssembly: `@dimforge/rapier3d-deterministic-compat`),
+  handed in as `R`. The arm: a base that turns, a shoulder, an elbow, a hand that hangs straight down (`ARM`: lengths,
+  the joints' speeds and limits). Its joints are moved by us (motors that lag 60 ms, stop at their limits and at the
+  table); the two fingers are bodies on sliding joints with a 12 N motor, and **a cube is held by friction alone**.
+  120 physics steps a second, 60 decisions. About 100× real time on one core.
+- **A network** is `{ task, control, roll, inputs, h, w }` (`blank`, `notNet`, `forward`: the car's layout, W1, b1, W2,
+  b2, all through tanh). Inputs (`INPUTS`) are in the arm's own frame (outwards, up, sideways): the cube from the grip,
+  the fingers' gap, the height, "something between the fingers", "squeezing", for the tray where it is. Outputs: the
+  hand's speed in that frame (`control: 'hand'`, the joints follow) or each motor's (`'joints'`), then the fingers.
+- **Tasks** (`TASKS`): `grab` (lift the cube 15 cm and hold it half a second, 5 s) and `tray` (put it in the tray, 8 s).
+  **The exam** (`exam`): the same 20 placements for everyone (`examPlacements`); the score is how many were done, then
+  the seconds they took, a failed one counting its whole limit.
+- **Deterministic**: the same network gives the same exam in Node and in Chrome, each go to the millisecond (checked
+  by hand in headless Chrome; `test/arm.test.mjs` checks Node against itself). A saved network keeps its weights to the
+  last digit: rounded to five decimals, one went from 19 of 20 to 17.
+- **The trainer** (`lib/arm/train.mjs`): the car lab's method written on its own (16 variations a generation, ranks,
+  Adam), four placements a generation, then the exam; the best examined network is kept. The driving is done by whoever
+  calls it: workers on the page (`lib/arm/worker.mjs`, up to 8), worker threads from the command line
+  (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`).
+- **The picture** (`lib/arm/scene.mjs`): three.js, handed in; draws what `pose()` says. The arm's ring is cyan when a
+  network has the controls, orange when a person does.
+- `lib/arm/networks/grab.json` is the network the page starts with (100 weights, 20 of 20); a test takes its exam.
+
+Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms, a trained network
+for the tray. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's lab).
+
 ## The agent bridge: an AI agent working in your sim
 
 For every signed-in driver (#355; it was the super admin's alone), each for their own pages (as trafficsim's bridge,
@@ -860,6 +894,7 @@ A redeploy restarts the process: races in progress end, and the browsers reconne
 | `components/sim-frame.tsx` | the sim iframe and its postMessage bridge |
 | `lib/sim-module/`, `app/carsim.mjs`, `docs/simulator.md`, `app/developers`, `app/developers.md` | the simulator as a module to download, and its documentation (the page and the markdown) |
 | `lib/agents/`, `app/api/agents`, `app/api/leaderboard`, `docs/agents.md`, `app/agents`, `app/agents.md`, `app/llms.txt`, `components/agents-panel.tsx` | agents' accounts: the store, the exam (the server times a network in a process of its own), the agents' and the owners' routes, the page for agents and the claim page (tested in `test/agents.test.mjs`) |
+| `lib/arm/`, `components/arm-sim.tsx`, `app/arm`, `scripts/arm/train.mjs` | the arm sim (a preview): the world and what a grab is (`core.mjs`), the trainer (`train.mjs`), a worker's driving (`worker.mjs`), the picture (`scene.mjs`), the network it comes with (`networks/`); the page; training from the command line (tested in `test/arm.test.mjs`) |
 | `lib/bridge/`, `app/api/bridge`, `app/api/mcp`, `public/sim/bridge.js`, `scripts/bridge*.mjs`, `app/carsim-mcp.mjs` | the agent bridge: the store, the page's and the agents' routes, the MCP server over HTTP and over stdio |
 | `components/race-controls.tsx` | car, paint (UI SDK colour picker), the track picker, ground and laps (UI SDK segmented controls) |
 | `auth.ts` | Auth.js: Google, guest |

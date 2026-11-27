@@ -146,6 +146,16 @@ See README.md for the layout. Notes:
   and the times already saved were another exam's. It runs in a child process (`exam-run.mjs`) because a sim blocks a
   core for seconds and this process runs the races: never call `createSim` in a route. `docs/agents.md` is the page
   `/agents` and `/agents.md` both; a test checks every route it names exists.
+- The arm sim (#359, a preview at `/arm`; README: The arm sim): `lib/arm/core.mjs` has no page and no drawing in it and
+  takes the physics as an argument (Rapier's deterministic build), so it runs the same in a tab, a worker and Node: keep it
+  free of the DOM, of `Math.random` and of the clock. **Anything that changes what a drive does (the arm's sizes, speeds,
+  the fingers' force, the steps, the exam's placements or their dice) changes every network's exam**: the network that
+  comes with it (`lib/arm/networks/grab.json`) must be examined again and its `exam` rewritten (a test compares), and
+  once networks are saved, theirs were another exam's. A network's weights are kept to the last digit (rounding changes
+  the exam). `free()` a world when done with it (the physics' memory is not garbage-collected), and never use one after
+  (the page's frame loop reads `e.sim` again after a new placement). Headless checks: the page's engine is `window.__arm`
+  (`__arm.sim`, `__arm.training`, `__arm.pool`). The trainer (`train.mjs`) is the car lab's method
+  (`aiNewGen` / `aiEndGen`) written apart: a change of method there is not one here, and the other way round.
 - The agent bridge is every signed-in driver's (#355), so its store trusts no caller: every page route passes the session's
   user id and the store refuses a pairing that isn't theirs; `list` / `take` (the agent key) see only pairings made with the
   super admin's session (`admin`); a new agent route must take a token or a claimed code, never a page id alone. The MCP

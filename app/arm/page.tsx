@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { SiteNav } from '@/components/site-nav';
 import { SiteFooter } from '@/components/site-footer';
 import { ArmSimView } from '@/components/arm-sim';
+import { withBase } from '@/lib/base-path';
 import { ARM, ARMS, GRIP_N, INPUTS, TASKS, type TaskKey } from '@/lib/arm/core.mjs';
 
 export const metadata = {
@@ -31,6 +32,8 @@ export default async function Arm() {
         </p>
 
         <div className="mt-8"><ArmSimView /></div>
+        {/* the agent bridge (#363): an agent paired from the button in the right column trains here (public/sim/bridge.js) */}
+        <script type="module" async src={withBase('/sim/bridge.js')} />
 
         <section aria-labelledby="ways" className="mt-14 grid gap-5 md:grid-cols-3">
           <h2 id="ways" className="sr-only">Three ways to use it</h2>

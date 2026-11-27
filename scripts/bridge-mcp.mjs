@@ -54,7 +54,7 @@ const TOOLS = {
     run: async ({ maxWidth = 900 }) => { const d = await command('screenshot', { maxWidth }); const [, mime, b64] = d.dataUrl.match(/^data:(image\/\w+);base64,(.*)$/); return { content: [{ type: 'image', data: b64, mimeType: mime }] }; },
   },
   sim_command: {
-    description: 'Any of the page\'s commands: text {selector?}, click {selector | text, nth?}, set {selector, value}, key {code, ms?}, get {path, slice?, pick?} (window.__sim, read only), sim {fn, args} (a few of window.__sim\'s functions: restartRun, switchVehicle, setSurface, aiTrainSync, aiTry, aiDrive, aiDemo, …), reload. See public/sim/bridge.js.',
+    description: 'Any of the page\'s commands: text {selector?}, click {selector | text, nth?}, set {selector, value}, key {code, ms?}, get {path, slice?, pick?} (window.__sim, read only), sim {fn, args} (a few of window.__sim\'s functions: restartRun, switchVehicle, setSurface, aiTrainSync, aiTry, aiDrive, aiDemo, …), reload; on the arm sim\'s page (/arm) arm {fn, args} (arm, task, mode, config, train, stop, history, exam, net, load, place, speed, pause). See public/sim/bridge.js.',
     inputSchema: { type: 'object', properties: { type: { type: 'string' }, args: { type: 'object' } }, required: ['type'] },
     run: async ({ type, args }) => text(await command(type, args || {})),
   },

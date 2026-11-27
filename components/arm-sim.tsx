@@ -7,7 +7,7 @@ import { Bot, Download, Hand, Pause, Play, RotateCcw, SkipForward, Sparkles } fr
 import { Button } from '@/components/ui/button';
 import { ArmNetDiagram, type NetLive } from '@/components/arm-net';
 import { cn } from '@/lib/utils';
-import { ARMS, TASKS } from '@/lib/arm/core.mjs';
+import { ARMS, SIZES, TASKS } from '@/lib/arm/core.mjs';
 import type { ArmKey, ArmNet, ArmSim, Go, Placement, TaskKey } from '@/lib/arm/core.mjs';
 import type { ArmScene } from '@/lib/arm/scene.mjs';
 import type { Evaluate, Training } from '@/lib/arm/train.mjs';
@@ -54,6 +54,7 @@ export function ArmSimView() {
   const [mine, setMine] = useState<(number | null)[]>([]);
   // base: what a training starts from: 'none', 'net' (the network on the left) or the scenario whose network comes with the sim
   const [cfg, setCfg] = useState({ h: 8, control: 'hand' as 'hand' | 'joints', base: 'none' as 'none' | 'hand' | 'net' | TaskKey });
+  const cfgNow = useRef(cfg); cfgNow.current = cfg;
   const [tr, setTr] = useState<{ on: boolean; gen: number; best: { done: number; of: number; time: number; gen: number } | null; hist: [number, number, number, number][]; cores: number; perGen: number | null }>({ on: false, gen: 0, best: null, hist: [], cores: 0, perGen: null });
 
   // ---- the driving, all on refs: React only hears of it ten times a second
@@ -170,8 +171,11 @@ export function ArmSimView() {
     putNet(SHIPPED[a][e.task] ?? null, 'The network that comes with it'); place(0);
   };
   const stop = () => { const e = eng.current; if (e) e.run++; setTr(t => ({ ...t, on: false })); };
-  const train = async (fresh: boolean) => {
+  // over: settings for this training other than the panel's (the agent bridge's train, #363; kept in the panel too)
+  const train = async (fresh: boolean, over: Partial<typeof cfg> = {}) => {
     const e = eng.current; if (!e) return;
+    const cfg = { ...cfgNow.current, ...over };
+    if (Object.keys(over).length) setCfg(cfg);
     if (fresh || !e.training || e.training.net.task !== e.task || (e.training.net.arm ?? 'desk') !== e.arm) {
       // from a network (of this scenario or another: grown, what it is not shown yet starts at zero), or from nothing
       const base = cfg.base === 'none' ? null : cfg.base === 'hand' ? (TASKS[e.task].inputs.includes('go') ? e.T.handStart(e.task, e.arm) : null) : cfg.base === 'net' ? e.net : SHIPPED[e.arm][cfg.base] ?? null, usable = base && base.control === cfg.control && (base.arm ?? 'desk') === e.arm ? base : null;
@@ -198,6 +202,17 @@ export function ArmSimView() {
   };
   const setSp = (s: number) => { if (eng.current) eng.current.speed = s; setSpeed(s); };
   const pause = () => { const e = eng.current; if (e) { e.paused = !e.paused; setHud(h => ({ ...h, paused: e.paused })); } };
+
+  // ---- the agent bridge (#363): what public/sim/bridge.js may do on this page (its `arm` command, its state and
+  // screenshot): the same things as the controls here, through them, so the person watching sees each one happen.
+  const now = useRef({ changeArm, changeTask, changeMode, train, stop, place, setSp, pause, putNet, cfg, tr, netInfo, netGoes, hud, speed, mode });
+  now.current = { changeArm, changeTask, changeMode, train, stop, place, setSp, pause, putNet, cfg, tr, netInfo, netGoes, hud, speed, mode };
+  useEffect(() => {
+    if (ready !== 'ok') return;
+    const w = window as unknown as { __armBridge?: ArmBridge };
+    w.__armBridge = armBridge(() => eng.current, () => now.current);
+    return () => { delete w.__armBridge; };
+  }, [ready]);
 
   const T = TASKS, KEYS_OF = Object.keys(TASKS) as TaskKey[];
   const their = netGoes[hud.idx], my = mine.filter(v => v != null) as number[];
@@ -247,7 +262,11 @@ export function ArmSimView() {
 
       <div className="flex flex-col gap-4">
         <div className="panel p-4">
-          <p className="eyebrow text-[0.62rem] text-muted-foreground">Arm</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="eyebrow text-[0.62rem] text-muted-foreground">Arm</p>
+            {/* the agent bridge's button goes here (public/sim/bridge.js, for whoever is signed in, #363) */}
+            <div id="armBridge" />
+          </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {(Object.keys(ARMS) as ArmKey[]).map(k => <Button key={k} size="sm" variant={arm === k ? 'default' : 'glass'} aria-pressed={arm === k} disabled={ready !== 'ok'} onClick={() => changeArm(k)}>{ARMS[k].name}</Button>)}
           </div>
@@ -354,4 +373,97 @@ function Chart({ hist, of }: { hist: [number, number, number, number][]; of: num
       {hist.length > 1 && <polyline points={line(h => h[1] / of)} fill="none" stroke="var(--tnn)" strokeWidth="1.6" strokeLinejoin="round" />}
     </svg>
   );
+}
+
+// ---- the agent bridge's view of this page (#363)
+type Now = { changeArm(a: ArmKey): void; changeTask(t: TaskKey): void; changeMode(m: Mode): void; train(fresh: boolean, over?: Record<string, unknown>): Promise<void>; stop(): void; place(i: number): void; setSp(s: number): void; pause(): void; putNet(net: ArmNet | null, name?: string): void;
+  cfg: { h: number; control: 'hand' | 'joints'; base: string }; tr: { on: boolean; gen: number; best: unknown; hist: [number, number, number, number][]; cores: number; perGen: number | null };
+  netInfo: { name: string } | null; netGoes: (number | null)[]; hud: { idx: number; t: number; done: number | null; stage: number; of: number; paused: boolean; shut: boolean }; speed: number; mode: Mode };
+export interface ArmBridge { state(): unknown; shot(o: { maxWidth?: number; quality?: number }): { dataUrl: string; width: number; height: number }; call(fn: string, args?: Record<string, unknown>): Promise<unknown> }
+const MODES: Mode[] = ['watch', 'hand', 'train'];
+const pick = <K extends string>(v: unknown, keys: readonly K[], what: string): K => { if (!keys.includes(v as K)) throw new Error(`${what}: one of ${keys.join(', ')}`); return v as K; };
+const netOf = (n: ArmNet | null) => n && { name: n.name ?? null, arm: n.arm ?? 'desk', task: n.task, control: n.control, h: n.h, inputs: n.inputs, weights: n.w.length, exam: n.exam ?? null };
+/**
+ * What the bridge's `arm { fn, args }` can do here:
+ *   arm { key }            the arm: desk or b601 (its networks come with it)
+ *   task { key }           the scenario: grab, tray or stack
+ *   mode { mode }          watch, hand or train (the tabs)
+ *   config { h?, control?, base? }  the training's settings, as the Train tab has them (base: none, hand, net or a scenario)
+ *   train { fresh?, h?, control?, base? }  start (or carry on) a training here, in the browser's workers; it runs until stop
+ *   stop {}                pause the training
+ *   history { from? }      the training's generations: [generation, done, time, the tries' average score]
+ *   exam {}                the network on the left takes the scenario's exam (its placements, the same for everyone)
+ *   net {}                 the network on the left, whole (its file: weights to the last digit)
+ *   load { net, name? }    a network (a file's JSON) put on the left: the arm and scenario switch to its own
+ *   place { i }            go to the exam's placement i (watching)
+ *   speed { x }            1, 2 or 4 (watching)
+ *   pause {}               pause or go on (watching)
+ */
+function armBridge(eng: () => Engine | null, now: () => Now): ArmBridge {
+  const E = () => { const e = eng(); if (!e) throw new Error('The arm sim is not ready'); return e; };
+  const state = () => {
+    const e = E(), n = now(), tr = n.tr;
+    return {
+      page: 'arm', arm: e.arm, arms: Object.keys(ARMS), task: e.task, tasks: Object.keys(TASKS), mode: e.mode,
+      placement: { i: e.idx, of: e.places.length, t: +n.hud.t.toFixed(2), done: n.hud.done, placed: n.hud.of > 1 ? `${Math.min(n.hud.stage, n.hud.of)} of ${n.hud.of}` : null, paused: e.paused, speed: e.speed },
+      net: e.net && { ...netOf(e.net), shownAs: n.netInfo?.name ?? null, here: n.netGoes.length ? { done: n.netGoes.filter(g => g != null).length, of: n.netGoes.length } : null },
+      training: { on: tr.on, gen: tr.gen, best: tr.best, perGen: tr.perGen && +tr.perGen.toFixed(2), cores: tr.cores, config: n.cfg, last: tr.hist.slice(-8) },
+    };
+  };
+  const fns: Record<string, (a: Record<string, unknown>) => unknown> = {
+    arm: a => { now().changeArm(pick(a.key, Object.keys(ARMS) as ArmKey[], 'key')); return { arm: E().arm }; },
+    task: a => { now().changeTask(pick(a.key, Object.keys(TASKS) as TaskKey[], 'key')); return { task: E().task }; },
+    mode: a => { now().changeMode(pick(a.mode, MODES, 'mode')); return { mode: E().mode }; },
+    config: a => ({ config: { ...now().cfg, ...settings(a) } }),
+    train: a => {
+      const n = now(), over = settings(a);
+      if (n.tr.on) throw new Error('Already training: stop first');
+      if (E().mode !== 'train') n.changeMode('train');
+      void n.train(!!a.fresh, over);
+      return { training: true, task: E().task, arm: E().arm, config: { ...n.cfg, ...over } };
+    },
+    stop: () => { now().stop(); return { training: false }; },
+    history: a => ({ hist: now().tr.hist.slice(Math.max(0, Number(a.from) | 0)) }),
+    exam: async () => {
+      const e = E(); if (!e.net) throw new Error('No network on the left');
+      const net = e.net, x = await e.T.examBy(evaluate(e), net);
+      return { net: net.name ?? null, arm: net.arm ?? 'desk', task: net.task, done: x.done, of: x.of, time: x.time, mean: x.mean };
+    },
+    net: () => { const e = E(); if (!e.net) throw new Error('No network on the left'); return JSON.parse(JSON.stringify(e.net)); },
+    load: a => {
+      const e = E(), net = a.net as ArmNet, why = e.C.notNet(net);
+      if (why) throw new Error(`Not a network: ${why}`);
+      if (!Object.hasOwn(TASKS, net.task)) throw new Error(`task: one of ${Object.keys(TASKS).join(', ')}`);
+      const n = now();
+      if (n.tr.on) n.stop();
+      n.changeArm(net.arm ?? 'desk'); n.changeTask(net.task);
+      const mine = { ...net, w: [...net.w] };
+      n.putNet(mine, typeof a.name === 'string' && a.name ? a.name.slice(0, 80) : 'From the agent');
+      return { loaded: netOf(mine) };
+    },
+    place: a => { now().place(Number(a.i) | 0); return { placement: E().idx }; },
+    speed: a => { const x = Number(a.x); if (![1, 2, 4].includes(x)) throw new Error('x: 1, 2 or 4'); now().setSp(x); return { speed: x }; },
+    pause: () => { now().pause(); return { paused: E().paused }; },
+  };
+  // the settings a training may be given, checked as the panel's selects would have them
+  const settings = (a: Record<string, unknown>) => {
+    const o: Record<string, unknown> = {};
+    if (a.h !== undefined) { const h = Number(a.h); if (!SIZES.includes(h)) throw new Error(`h: one of ${SIZES.join(', ')}`); o.h = h; }
+    if (a.control !== undefined) o.control = pick(a.control, ['hand', 'joints'] as const, 'control');
+    if (a.base !== undefined) o.base = pick(a.base, ['none', 'hand', 'net', ...Object.keys(TASKS)] as string[], 'base');
+    return o;
+  };
+  return {
+    state,
+    shot({ maxWidth = 960, quality = 0.8 }) {
+      const src = E().view.renderer.domElement as HTMLCanvasElement, k = Math.min(1, maxWidth / src.width), cv = document.createElement('canvas');
+      cv.width = Math.round(src.width * k); cv.height = Math.round(src.height * k);
+      cv.getContext('2d')!.drawImage(src, 0, 0, cv.width, cv.height);
+      return { dataUrl: cv.toDataURL('image/jpeg', quality), width: cv.width, height: cv.height };
+    },
+    async call(fn, args = {}) {
+      if (!Object.hasOwn(fns, fn)) throw new Error(`No ${fn}: one of ${Object.keys(fns).join(', ')}`);
+      return (await fns[fn](args && typeof args === 'object' ? args : {})) ?? {};
+    },
+  };
 }

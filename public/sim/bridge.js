@@ -25,6 +25,9 @@
 // without a sim (APP): no panel, a badge while an agent is connected, and only state, text, click, reload and goto (any
 // of the app's pages: from the lobby to /sim/index.html, say). A goto into a sim page hands the pairing to the sim's
 // bridge there (its sessionStorage key), so the agent carries on in it.
+// The arm sim's page (#363, /arm): its own button and panel, for whoever is signed in (the page loads this too), and
+// there: state and screenshot are the arm's, and `arm {fn, args}` drives it (components/arm-sim.tsx, window.__armBridge:
+// the arm, the scenario, train, stop, exam, the network as a file, a network loaded...), with text, click, set, reload, goto.
 // No arbitrary JavaScript; never the bridge's own panel, password fields, or the app's API.
 const BASE = new URL(import.meta.url).pathname.replace(/\/sim\/bridge\.js$/, ''), API = BASE + '/api/bridge/page';
 const APP = !location.pathname.startsWith(BASE + '/sim/');
@@ -38,6 +41,8 @@ const setUserOff = on => { try { on ? sessionStorage.setItem(OFF, '1') : session
 function standAgain() { if (st.standing && !st.pageId && !userOff()) setTimeout(() => { if (!st.pageId && !userOff()) connect(true); }, 3000); }
 const S = () => window.__sim;
 const APP_COMMANDS = ['state', 'text', 'click', 'reload', 'goto'];
+const ARM_COMMANDS = ['state', 'screenshot', 'text', 'click', 'set', 'arm', 'reload', 'goto'];
+const AB = () => window.__armBridge, onArm = () => APP && !!AB();          // the arm sim's page, its sim loaded
 
 // ---------------------------------------------------------------- talking to the server
 async function post(path, body = {}) {
@@ -76,7 +81,7 @@ async function run({ id, type, args = {}, agent }) {
   let res;
   try {
     if (!Object.hasOwn(COMMANDS, type)) throw new Error(`No such command: ${type} (${Object.keys(COMMANDS).join(', ')})`);
-    if (APP && !APP_COMMANDS.includes(type)) throw new Error(`Not on this page (no sim here): ${APP_COMMANDS.join(', ')}; goto a sim page first`);
+    if (onArm() ? !ARM_COMMANDS.includes(type) : APP && !APP_COMMANDS.includes(type)) throw new Error(onArm() ? `Not on the arm's page: ${ARM_COMMANDS.join(', ')}` : `Not on this page (no sim here): ${APP_COMMANDS.join(', ')}; goto a sim page first (or /arm)`);
     res = { ok: true, data: (await COMMANDS[type](args)) ?? {} };
   }
   catch (e) { res = { ok: false, error: e.message || String(e) }; note(`  ✕ ${res.error}`); }
@@ -119,6 +124,7 @@ function plain(v, d = 0) {
 const text = sel => document.querySelector(sel)?.innerText?.trim() || '';
 const COMMANDS = {
   state() {
+    if (onArm()) return { url: location.href, title: document.title, visible: document.visibilityState, ...AB().state() };
     if (APP) return { url: location.href, title: document.title, visible: document.visibilityState, app: true };
     const s = S(); if (!s) throw new Error('The sim is still loading');
     const c = s.car, A = s.ai, C = s.COURSE();
@@ -133,6 +139,7 @@ const COMMANDS = {
     };
   },
   screenshot({ maxWidth = 960, quality = 0.8 } = {}) {
+    if (onArm()) return AB().shot({ maxWidth: Math.max(160, Math.min(1600, +maxWidth || 960)), quality: Math.max(0.3, Math.min(0.95, +quality || 0.8)) });
     const s = S(), r = s?.renderer;
     if (!r) throw new Error('No renderer yet');
     if (document.hidden) throw new Error('The tab is in the background: it draws nothing until it is in front');
@@ -175,6 +182,12 @@ const COMMANDS = {
     if (Array.isArray(slice) && v && typeof v.length === 'number') v = Array.prototype.slice.call(v, slice[0] | 0, Math.min((slice[1] | 0) || v.length, (slice[0] | 0) + 2000));
     if (Array.isArray(pick) && Array.isArray(v)) v = v.map(x => Object.fromEntries(pick.filter(k => x && k in x).map(k => [k, typeof x[k] === 'number' ? Math.round(x[k] * 1000) / 1000 : x[k]])));
     return { value: Array.isArray(v) && Array.isArray(slice) ? v.map(x => plain(x, 1)) : plain(v) ?? null };
+  },
+  // the arm sim's own (components/arm-sim.tsx armBridge): arm, task, mode, config, train, stop, history, exam, net, load, place, speed, pause
+  async arm({ fn, args = {} } = {}) {
+    if (!onArm()) throw new Error('Only on the arm sim\'s page (/arm)');
+    if (typeof fn !== 'string') throw new Error('fn: arm, task, mode, config, train, stop, history, exam, net, load, place, speed or pause');
+    return { result: await AB().call(fn, args && typeof args === 'object' ? args : {}) };
   },
   reload() { return {}; },
   // another of the app's sim pages, in this frame (the same origin and app: /sim/...); the pairing goes with it (sessionStorage)
@@ -239,6 +252,7 @@ function ui() {
     #brHow{font-size:11.5px;line-height:1.4;opacity:.8;margin:2px 0 4px} #brHow a{color:inherit} #brHow code{font:11px ui-monospace,monospace;word-break:break-all;user-select:all}
     #brCodeRow{display:flex;align-items:center;gap:10px} #brPanel #brCopy{margin:0;padding:6px 12px} #brPanel #brCopy.ok{background:#2f9e55}
     #brLog{white-space:pre-wrap;font:11px/1.35 ui-monospace,monospace;opacity:.8;max-height:180px;overflow:auto;margin-top:6px}
+    #armBridge #brBtn{position:static;padding:5px 10px;font-size:12px;border:1px solid #ffffff24;background:#ffffff10} #armBridge #brBtn:hover{background:#ffffff24} #armBridge #brBtn.on{background:#7a3cff}
     #brMsg{width:100%;box-sizing:border-box;font:inherit;font-size:12px;background:#ffffff1f;color:#fff;border:1px solid #ffffff40;border-radius:4px;padding:4px;margin-top:6px}
   </style>`);
   const b = st.btn = document.createElement('button'); b.id = 'brBtn'; b.textContent = '🤝 Agent'; b.title = 'Let an AI agent work in this page (you see what it does)';
@@ -247,7 +261,9 @@ function ui() {
     <div id="brHow">Your agent connects over MCP at <code>${location.origin}${BASE}/api/mcp</code> and calls <code>sim_pair</code> with the code. <a href="${BASE}/developers" target="_blank" rel="noopener">How to set it up</a></div>
     <button id="brConnect">Connect</button><button id="brClose">Disconnect</button>
     <div id="brMsgRow"><input id="brMsg" placeholder="Write to your agent, Enter to send"></div><div id="brLog"></div>`;
-  document.body.append(b, p);
+  const slot = APP && document.getElementById('armBridge');           // the arm's page: the button in its right column (#363)
+  if (slot) { slot.append(b); document.body.append(p); p.style.padding = '14px'; p.style.background = '#11141a'; addEventListener('scroll', () => place(), { passive: true }); }
+  else document.body.append(b, p);
   b.addEventListener('click', e => { e.currentTarget.blur(); p.style.display = p.style.display === 'block' ? 'none' : 'block'; place(); show(); });
   p.querySelector('#brConnect').addEventListener('click', e => { e.currentTarget.blur(); connect(); });
   p.querySelector('#brClose').addEventListener('click', e => { e.currentTarget.blur(); disconnect(); });
@@ -269,6 +285,11 @@ function ui() {
   });
   // under the Autopilot button (single player), or left of it (a race room: the right column is the room's)
   const place = () => {
+    if (slot) {                                                        // below the button, its right edge on the button's
+      const r = b.getBoundingClientRect();
+      p.style.right = Math.max(12, innerWidth - r.right) + 'px'; p.style.top = Math.max(12, Math.min(r.bottom + 8, innerHeight - p.offsetHeight - 12)) + 'px';
+      return;
+    }
     const a = document.getElementById('aiBtn')?.getBoundingClientRect(), mp = document.body.classList.contains('mp');
     if (a?.width) { b.style.top = (mp ? a.top : a.bottom + 8) + 'px'; b.style.right = (mp ? innerWidth - a.left + 8 : 12) + 'px'; }
     // the panel: left of the Claude button on the screen, within the window. With the rail (ui.js) that is the rail's
@@ -287,10 +308,20 @@ function ui() {
 (async () => {
   try { const r = await fetch(API + '/can', { credentials: 'same-origin' }), c = await r.json(); if (!c.can) return; st.standing = !!c.standing; } catch (e) { return; }
   if (APP) {                                                           // an app page: a badge, no panel; and only when standing
-    if (!st.standing) return;
-    const b = st.badge = document.createElement('div'); b.title = 'An AI agent can work in this tab (bridge)';
-    b.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:2147483647;font:600 12px/1 system-ui,sans-serif;color:#fff;background:#7a3cff;border-radius:999px;padding:6px 10px;display:none;pointer-events:none';
-    document.body.append(b);
+    if (st.standing) {
+      const b = st.badge = document.createElement('div'); b.title = 'An AI agent can work in this tab (bridge)';
+      b.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:2147483647;font:600 12px/1 system-ui,sans-serif;color:#fff;background:#7a3cff;border-radius:999px;padding:6px 10px;display:none;pointer-events:none';
+      document.body.append(b);
+    }
+    // except the arm sim's page (#363): its button and panel, for anyone signed in, once its sim is there (also when the
+    // app moved to it without loading the page again), and hidden while the app shows another page
+    setInterval(() => {
+      const slot = document.getElementById('armBridge');
+      if (onArm() && slot && !st.el) ui();
+      else if (onArm() && slot && st.btn && !slot.contains(st.btn)) slot.append(st.btn);     // the page drawn again (the app came back to it)
+      if (st.el) { const there = onArm() && st.btn.isConnected; if (!there) st.el.style.display = 'none'; }
+    }, 500);
+    if (!st.standing && !onArm()) { try { if (!sessionStorage.getItem(KEEP)) return; } catch (e) { return; } }
   } else {
     while (!S()) await new Promise(r => setTimeout(r, 300));
     ui();

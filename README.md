@@ -722,6 +722,15 @@ tab.
 Server: `lib/bridge/store.mjs` (in memory, the pairings kept in the database), `app/api/bridge/page/*` (the driver's session and the pairing's
 token), `app/api/bridge/agent/*` (the agent's token), `app/api/mcp` (an MCP session); the page: `public/sim/bridge.js` (`scripts/patches/bridge.py`
 loads it and puts the renderer on `__sim` for the screenshots).
+**The arm sim too** (#363): `/arm` loads `public/sim/bridge.js` itself, and for whoever is signed in its **Agent** button
+sits in the right column (the Arm panel's header). Paired there, `state` and `screenshot` are the arm's (the arm, the
+scenario, the placement, the network on the left and how it did here, the training: generation, best, the last
+generations, its settings), and **`arm {fn, args}`** works its controls (`window.__armBridge`, `components/arm-sim.tsx`):
+`arm` / `task` / `mode` {key or mode}, `config` and `train` {fresh?, h?, control?, base?} (the Train tab's settings; the
+training runs in the browser's workers until `stop`), `history`, `exam` (the network on the left takes the scenario's
+exam), `net` (the network on the left as a file, its weights to the last digit: what to take away), `load {net, name?}`
+(a network's file put on the left, the arm and scenario switched to its own), `place`, `speed`, `pause`; with `text`,
+`click`, `set`, `reload` and `goto`. Through the page's own controls, so the person watching sees each step.
 
 ## Maps and the super admin
 

@@ -165,7 +165,7 @@ An agent paired with a page can do there what its driver could: look, click, pre
 
 ### Pair
 
-1. The driver opens a race room on the site, then **Agent** in the rail on the right, then **Connect**. The panel shows a code such as `K7QF-2M9X`, good for 10 minutes and for one agent.
+1. The driver opens a race room on the site, then **Agent** in the rail on the right, then **Connect** (or the arm sim, `/arm`: its **Agent** button in the right column). The panel shows a code such as `K7QF-2M9X`, good for 10 minutes and for one agent.
 2. The agent claims the code (`sim_pair`, or `POST /api/bridge/agent/claim`).
 
 ### Over MCP
@@ -212,6 +212,18 @@ curl -O {{SITE}}/carsim-mcp.mjs
 | `get` | `path`, `slice?`, `pick?` | a value of the sim's `window.__sim`, read only: `lap.best`, `VEH.key`, `ai.hist`... |
 | `sim` | `fn`, `args?` | one of: `restartRun`, `respawn`, `switchVehicle`, `setSurface`, `setCamMode`, `placeAtGate`, `step`, `toggleEditor`, `setBots`, `aiTrainSync`, `aiTry`, `aiDrive`, `aiDemo`, `aiSaveServer`, `aiForget`, `repairCar`, `startReplay`, `stopReplay` |
 | `reload`, `goto` | `path` | the page again, or another of the sim's pages; the pairing follows |
+
+On the arm sim's page (`/arm`), `state` and `screenshot` are the arm's (the arm, the scenario, the network shown and how it does, the training), `key`, `get` and `sim` are not there, and one more command works its controls:
+
+| `arm { fn, args }` | Arguments | Answer |
+| --- | --- | --- |
+| `arm`, `task`, `mode` | `key`: `desk` or `b601`; `grab`, `tray` or `stack`; `mode`: `watch`, `hand` or `train` | the arm or scenario switched (its own networks with it) |
+| `config` | `h?`, `control?` (`hand`, `joints`), `base?` (`none`, `hand`, `net` or a scenario) | the training's settings |
+| `train` | `fresh?` and the same as `config` | a training starts in the driver's browser (its cores), and runs until `stop` |
+| `stop`, `history` | `from?` | the training paused; its generations: `[generation, done, time, the tries' average score]` |
+| `exam` | | the network shown takes the scenario's exam: `{ done, of, time }` |
+| `net`, `load` | `net`, `name?` | the network shown, as a file (keep its weights as they are: rounded, it does another exam); a network's file shown instead |
+| `place`, `speed`, `pause` | `i`; `x` (1, 2, 4) | watching: a placement, the speed, pause |
 
 ### Over plain HTTP
 

@@ -186,6 +186,10 @@ See README.md for the layout. Notes:
   `node scripts/bridge.mjs claim <code>`, then `node scripts/bridge.mjs state | screenshot | click '{"text":"Train"}' …`
   (screenshots are saved to a file to look at); `events` reads what they write. Commands are in `public/sim/bridge.js`.
   Or the MCP tools (`.mcp.json` → `scripts/bridge-mcp.mjs`): `sim_pair { code }`, `sim_state`, `sim_screenshot`, `sim_command`.
+  The arm sim (#363): `/arm` loads `bridge.js` itself (an Agent button in its right column) and there the bridge's `arm {fn, args}`
+  is `window.__armBridge` (`components/arm-sim.tsx`, `armBridge`): it goes through the page's own controls (`changeArm`, `train`...),
+  so a new control the agent should have is a new `fn` there, and in the lists in `lib/bridge/mcp.mjs`, `scripts/bridge-mcp.mjs`
+  and `docs/simulator.md`.
 - Car against car (#322) is one contact, `ccSolve` (`contacts.py`): the bots' (`updateBots`), the other players'
   (`mpContacts`, mp-block.js) and the rival's (`aiCarContact`). Give it both cars as bodies (`ccBody`: a mass of 0 doesn't
   move) and put the velocities, yaw rates and moves it returns back on them; a new kind of car-to-car touch should

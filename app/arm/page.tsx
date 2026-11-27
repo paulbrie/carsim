@@ -12,7 +12,7 @@ export const metadata = {
 };
 export const dynamic = 'force-dynamic';
 
-// The arm sim (#359) is a preview: one page, nothing saved on the server, not in the top bar yet. What it simulates is
+// The arm sim (#359) is a preview: one page, not in the top bar yet; its networks are saved on the server (#362). What it simulates is
 // lib/arm/core.mjs, and the figures in the text below are read from it.
 export default async function Arm() {
   const session = await auth();
@@ -31,7 +31,7 @@ export default async function Arm() {
           Nothing is glued. The cube is held by friction, and it slips when it is squeezed badly or swung too hard. The physics is MuJoCo, the simulator robot learning is done with.
         </p>
 
-        <div className="mt-8"><ArmSimView /></div>
+        <div className="mt-8"><ArmSimView signedIn={!!user} /></div>
         {/* the agent bridge (#363): an agent paired from the button in the right column trains here (public/sim/bridge.js) */}
         <script type="module" async src={withBase('/sim/bridge.js')} />
 
@@ -85,7 +85,7 @@ export default async function Arm() {
               <li><span className="font-medium text-foreground">The same everywhere.</span> A network’s exam gives the same numbers in this browser and on a server, to the millisecond.</li>
             </ul>
             <p className="mt-5 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-sm text-muted-foreground">
-              This is a preview. Networks are not saved and there is no leaderboard for the arm yet: a trained network can be downloaded as a file. A network comes with Pick up, for each arm; the other scenarios wait for one to be trained.
+              This is a preview. Signed in, you can save the networks you train and load anyone’s; there is no leaderboard for the arm yet, and a trained network can also be downloaded as a file. A network comes with Pick up, for each arm; the other scenarios wait for one to be trained.
             </p>
           </div>
         </section>

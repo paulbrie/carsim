@@ -1,11 +1,13 @@
 'use client';
 // The arm sim's page (#359, a preview): the 3D view (lib/arm/scene.mjs draws what lib/arm/core.mjs simulates), and
 // three ways to use it: watch a network do the exam's placements, do them by hand, train a network here (the trainer
-// is lib/arm/train.mjs, the driving is done in workers: lib/arm/worker.mjs). Nothing is saved on the server yet.
+// is lib/arm/train.mjs, the driving is done in workers: lib/arm/worker.mjs). Networks are saved on the server, loaded
+// back and shared through ArmSaved (#362).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, Download, Hand, Pause, Play, RotateCcw, SkipForward, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ArmNetDiagram, type NetLive } from '@/components/arm-net';
+import { ArmSaved } from '@/components/arm-saved';
 import { cn } from '@/lib/utils';
 import { ARMS, SIZES, TASKS } from '@/lib/arm/core.mjs';
 import type { ArmKey, ArmNet, ArmSim, Go, Placement, TaskKey } from '@/lib/arm/core.mjs';
@@ -39,7 +41,7 @@ const KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowrig
 const KBD = 'rounded-md border border-white/15 bg-white/8 px-1.5 py-0.5 font-mono text-[0.7rem] text-foreground';
 const secs = (t: number | null | undefined) => t == null ? '—' : `${t.toFixed(2)} s`;
 
-export function ArmSimView() {
+export function ArmSimView({ signedIn = false }: { signedIn?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null), eng = useRef<Engine | null>(null);
   const [ready, setReady] = useState<'loading' | 'ok' | string>('loading');
   const [mode, setMode] = useState<Mode>('watch');
@@ -215,6 +217,9 @@ export function ArmSimView() {
   }, [ready]);
 
   const T = TASKS, KEYS_OF = Object.keys(TASKS) as TaskKey[];
+  // the exam of the network on show, as this page ran it (every placement's time, or null), else as it came
+  const ran = netGoes.length === T[task].exam && netGoes.every(g => g !== undefined) ? { done: netGoes.filter(g => g != null).length, of: netGoes.length, time: netGoes.reduce<number>((s, g) => s + (g ?? T[task].limit), 0) } : null;
+  const examNow = ran ?? (shown?.exam ? { done: shown.exam.done, of: shown.exam.of, time: shown.exam.time } : null);
   const their = netGoes[hud.idx], my = mine.filter(v => v != null) as number[];
   const tab = (m: Mode, label: string, Icon: typeof Bot) => (
     <button type="button" role="tab" aria-selected={mode === m} onClick={() => changeMode(m)}
@@ -348,6 +353,9 @@ export function ArmSimView() {
             </div>
           )}
         </div>
+
+        <ArmSaved arm={arm} task={task} signedIn={signedIn} net={shown} exam={examNow} defaultName={netInfo?.name ?? ''}
+          onLoad={(net, name) => { stop(); putNet(net, name); }} />
       </div>
     </div>
   );

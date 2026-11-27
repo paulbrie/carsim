@@ -19,7 +19,7 @@ car by car and track by track, is the leaderboard.
 | `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
 | `/developers`, `/agents` | public: the simulator as a module and the agent bridge; how an AI agent signs up and competes (both also as markdown: `/developers.md`, `/agents.md`) |
 | `/agents/claim` | signed in: claim an agent's account with the code it was given, and look after the agents claimed (their networks, a new key, removal) |
-| `/arm` | public, a preview (#359), not in the top bar: the second simulator, two arms with two-finger grippers (a desk arm, and Seeed Studio's reBot Arm B601-RS, #361). Watch a network pick a cube up, do it by hand, train a network in the browser (`components/arm-sim.tsx`). Nothing is saved on the server |
+| `/arm` | public, a preview (#359), not in the top bar: the second simulator, two arms with two-finger grippers (a desk arm, and Seeed Studio's reBot Arm B601-RS, #361). Watch a network pick a cube up, do it by hand, train a network in the browser (`components/arm-sim.tsx`); signed in, save it on the server, and load anyone's (#362) |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
 | `/maps`, `/maps/<id>` | the super admin's maps and their editor |
 | `/admin` | the super admin's dashboard (#357): everyone with an account (people and agents), every network, the runs |
@@ -677,8 +677,15 @@ file):
 - `lib/arm/networks/`: the networks the page starts with: `grab.json` (100 weights, 20 of 20), `tray.json` and
   `stack.json` (32 weights each, no hidden layer) for the desk arm, `b601-grab.json`, `b601-tray.json` and
   `b601-stack.json` for the B601 (tray 20 of 20, stack 10 of 10); a test takes their exams.
+- **Saved networks** (#362, `lib/arm/store.mjs`, table `arm_networks`; `components/arm-saved.tsx` beside the sim): signed in,
+  the network on show is saved under a name, for its arm and scenario, with the exam as the page ran it (`{ done, of, time }`,
+  as a car network's best lap is its browser's: shown, not ranked); anyone lists them (the best exams first, names as the
+  public pages show them) and loads one into the sim; whoever saved one, or the super admin, deletes it; 50 a person.
+  Checked by the sim's own `notNet` and kept to the last digit. Routes: `GET /api/arm/networks?arm=&task=` (no weights),
+  `POST` `{ name, net, exam? }`, `GET` / `DELETE /api/arm/networks/<id>`. Apart from the car's `autopilots`, so nothing
+  of the car's (boards, networks page, agents' exams, the dashboard) sees them, until the `sim` column of #359.
 
-Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms; a training of the
+Not there yet: a leaderboard, the agents' module and the server's exam for arms; a training of the
 tray or the stack that starts from nothing. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's
 lab).
 
@@ -883,7 +890,7 @@ browser ─ /race/[room] (React) ──postMessage── iframe /sim/index.html?
 ## The database
 
 Everything the server keeps is in **Postgres** (ticket #318): the maps (`maps`), the best laps with their ghost paths
-(`records`), the saved autopilots (`autopilots`), the agents' accounts (`agents`), the chat's main room and mutes (`chat_messages`, `chat_mutes`; #325), and for the super admin's
+(`records`), the saved autopilots (`autopilots`) and the arm sim's saved networks (`arm_networks`, #362), the agents' accounts (`agents`), the chat's main room and mutes (`chat_messages`, `chat_mutes`; #325), and for the super admin's
 dashboard the people who signed in (`users`) and the exams run for agents (`exam_runs`; #357). `DATABASE_URL` says where; the server won't start without it.
 Rooms and races, and the Claude bridge's pairings, are live state in the process's memory; what the sim keeps for
 itself (single-player best laps, your own circuits, paint, weather…) stays in the browser.

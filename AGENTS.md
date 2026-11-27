@@ -153,7 +153,7 @@ See README.md for the layout. Notes:
   the DOM, of `Math.random` and of the clock. **Anything that changes what a drive does (the scene's XML: sizes, masses,
   motors, contact settings; the step; the joints' speeds; the scenarios' rules, placements or their dice) changes every
   network's exam**: the network that comes with it (`lib/arm/networks/grab.json`) must be examined again and its `exam`
-  rewritten (a test compares), and once networks are saved, theirs were another exam's. Settings there that were measured
+  rewritten (a test compares), and the networks people saved (`arm_networks`, #362) keep the exam they had: it was another exam's. Settings there that were measured
   and are not to be "simplified" away: the fingers' equality (a cube drifts along their travel without it), the pads'
   stiff contact (`pad`) and 360 steps a second (a carried cube slides 16 mm at each start and stop without the first, 5 mm at
   240 steps), the tool turned against the base (fingers that turn with the arm close on a cube's corners and drop it), and

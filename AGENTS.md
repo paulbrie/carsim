@@ -165,7 +165,13 @@ See README.md for the layout. Notes:
   up), outside the picture's (y up): `out3` / `in3`. A scenario is an entry in `TASKS`; the page lists them from there.
   `layers` is `forward` with the hidden values kept, for the page's drawing (`components/arm-net.tsx`): change one, change
   the other (a test compares). A speed-up of the training must leave a seed's training the same (a test trains twice,
-  the second time shared out in fives). The trainer (`train.mjs`) is the car lab's method (`aiNewGen` / `aiEndGen`)
+  the second time shared out in fives).
+  Two arms (#361, `ARMS`): the desk arm and Seeed's reBot Arm B601-RS, from its makers' published model (link offsets,
+  masses, inertias, joint ranges, motor torques: keep them theirs; what is ours is listed above `B601` in core.mjs). Code
+  that reads the arm's joints goes through the arm (`A.q`, `A.yaw`, `A.width`, `A.aim`, `A.put`, `A.nq`: the cubes follow
+  its joints in qpos), never qpos[0..6] directly, and the desk arm's scene must stay as it was (a test compares; its
+  network's exam is in grab.json). A network is for one arm (`net.arm`), and a change to either arm's drive is a change
+  of that arm's exams (`b601-grab.json` too). The trainer (`train.mjs`) is the car lab's method (`aiNewGen` / `aiEndGen`)
   written apart: a change of method there is not one here, and the other way round. MuJoCo reaches the page from
   `public/arm/vendor` (copied on install by `scripts/vendor-three.mjs`, as three.js for the car's sim), not through the
   bundler. Headless checks: the page's engine is `window.__arm` (`__arm.sim`, `__arm.training`, `__arm.pool`).

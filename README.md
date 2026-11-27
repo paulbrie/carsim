@@ -19,7 +19,7 @@ car by car and track by track, is the leaderboard.
 | `/signin` | Google (and a guest name where allowed); `/?next=…` from before still lands there |
 | `/developers`, `/agents` | public: the simulator as a module and the agent bridge; how an AI agent signs up and competes (both also as markdown: `/developers.md`, `/agents.md`) |
 | `/agents/claim` | signed in: claim an agent's account with the code it was given, and look after the agents claimed (their networks, a new key, removal) |
-| `/arm` | public, a preview (#359), not in the top bar: the second simulator, a desk arm with a two-finger gripper. Watch a network pick a cube up, do it by hand, train a network in the browser (`components/arm-sim.tsx`). Nothing is saved on the server |
+| `/arm` | public, a preview (#359), not in the top bar: the second simulator, two arms with two-finger grippers (a desk arm, and Seeed Studio's reBot Arm B601-RS, #361). Watch a network pick a cube up, do it by hand, train a network in the browser (`components/arm-sim.tsx`). Nothing is saved on the server |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
 | `/maps`, `/maps/<id>` | the super admin's maps and their editor |
 | `/admin` | the super admin's dashboard (#357): everyone with an account (people and agents), every network, the runs |
@@ -605,13 +605,30 @@ file):
   (180× and 70× real time on one core). What it took to make the grip hold (each measured, see the comments in
   `sceneXml`): the fingers geared together, their pads and the cubes touching as stiffly as the step allows, and 360
   steps a second rather than 240 (a carried cube slid 5 mm at each start and stop, now 1 mm).
+- **Two arms** (`ARMS`, #361): `desk` (the one above, of round figures) and `b601`, **Seeed Studio's reBot Arm B601-RS**
+  as its makers publish it ([Seeed-Projects/reBot-DevArm](https://github.com/Seeed-Projects/reBot-DevArm),
+  `Rebot_Arm_description/RS`: `mjcf/rs_arm.xml` and the URDF, CERN-OHL-W-2.0): every link's offset on the one before,
+  its measured mass, centre of mass and inertia, the six joints' axes and ranges, the motors' peak torques (RS-06, 36 N·m,
+  at the waist, shoulder and elbow; RS-00, 14 N·m, at the wrist), the fingers' 0–50 mm travel; simple shapes for its
+  meshes (60 MB). Ours: the servos' stiffness, the top speeds (1.5 rad/s, the top of Seeed's web console; the hand at
+  30 cm/s), the fingers' 40 N (the real one's is a current limit set in software), the rotors' inertia, the motors
+  carrying the arm's weight within their torques (`actuatorgravcomp`), and a 12 cm riser: its wrist bends ±90°, so with
+  the hand straight down the forearm can't point more than 18° up, and on the table itself it could not stack four at
+  40 cm out. Both are driven alike: the same orders (`qt`: base, shoulder, elbow, the hand's turn), inputs, scenarios
+  and placements; each arm says how its joints stand for those four (`q`, `yaw`, `width`) and drives its own motors from
+  them (`aim`, `put`): j4 keeps the B601's hand hanging down and j5 stays at 0. A network is for one arm (`arm` in its
+  file; none: the desk's) and so is its exam; the desk's grab network on the B601, as it is, picks up 13 of 20, and the
+  B601's (`networks/b601-grab.json`, 17 of 20) was trained from it: the desk's file with `"arm": "b601"` added, carried on
+  (`node scripts/arm/train.mjs grab 8 hand 2 150 out.json 0 that.json`; from nothing, two trainings reached 3 and 6 of 20 in
+  200 generations, and it still fails three placements turned 35–50° to one side: its hand sweeps sideways at the table into them).
 - **Scenarios** (`TASKS`): each says how many cubes, its jobs in order, its time limit and how many placements its exam
   has. `grab` (Pick up: lift the cube 15 cm and hold it half a second; 5 s, 20 placements), `tray` (Into the tray: pick
   it up and put it down in the tray; 8 s, 20) and `stack` (Stack four: the
   second cube on the first, the third on the second, the fourth on top, each within 2 cm of the one below; 30 s, 10).
   A job is done when its cube was held in place by the fingers, is where it goes, at rest and let go of (pushed there
   along the table, dropped or thrown does not count: the first tray networks learned to throw the cube in); the stage is counted afresh each decision, so a
-  stack knocked over goes back. A new scenario is an entry there (`{ cube, lift }`, `{ cube, to: 'tray' }` or
+  stack knocked over goes back (a job already counted stays done while its cube is where it goes: a stack shaken as the
+  next cube is set on it is not knocked over, and "let go of" is "not between the fingers or they are open", #361). A new scenario is an entry there (`{ cube, lift }`, `{ cube, to: 'tray' }` or
   `{ cube, on }` jobs), its dice in `examPlacements`, and it is on the page.
 - **A network** is `{ task, control, roll, inputs, h, w }` (`blank`, `notNet`, `forward`: the car's layout, W1, b1, W2,
   b2, all through tanh). Inputs (`INPUTS`) are in the arm's own frame (outwards, up, sideways) and about **the cube to
@@ -648,7 +665,7 @@ file):
 - **MuJoCo on the page** is not bundled: `scripts/vendor-three.mjs` (postinstall) copies its loader and its 11 MB of
   WebAssembly to `public/arm/vendor/mujoco` (not committed), and the page and each worker import it from there
   (`lib/arm/load.mjs`). Node imports the package.
-- `lib/arm/networks/grab.json` is the network the page starts Pick up with; a test takes its exam.
+- `lib/arm/networks/grab.json` is the network the page starts Pick up with (`b601-grab.json` on the B601); a test takes their exams.
 
 Not there yet: saved networks, a leaderboard, the agents' module and the server's exam for arms, trained networks for
 the tray and the stack. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's

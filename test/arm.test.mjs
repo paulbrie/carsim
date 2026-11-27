@@ -5,31 +5,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import loadMujoco from '@mujoco/mujoco';
-import { ARM, TASKS, attempt, blank, createArm, exam, examPlacements, forward, layers, names, notNet, orders, placement, dice, reach, shape } from '../lib/arm/core.mjs';
+import { ARM, ARMS, TASKS, attempt, blank, createArm, exam, examPlacements, forward, layers, names, notNet, orders, placement, dice, reach, joints, sceneXml, shape } from '../lib/arm/core.mjs';
 import { generation, runGoes, shareOut, startTraining, trained } from '../lib/arm/train.mjs';
 
 const M = await loadMujoco();
 
 // by hand, as a person's keys would: over the cube, down, shut, up, over where it goes, down, open, away; job after job
-const go = (sim, to, shut, secs, speed = 1) => { for (let i = 0; i < secs * 60 && sim.done == null; i++) { const p = sim.pose().grip, d = [to[0] - p[0], to[1] - p[1], to[2] - p[2]], n = Math.hypot(...d) || 1, s = Math.min(speed, n * 8); sim.act({ world: d.map(v => v / n * s), shut }); } };
-function byHand(task, at) {
-  const sim = createArm(M, { at, task });
+// (a slower arm is given its moves' time in proportion: k)
+const go = (sim, to, shut, secs, speed = 1) => { for (let i = 0; i < secs * 60 && sim.done == null; i++) { const p = sim.pose().grip, d = [to[0] - p[0], to[1] - p[1], to[2] - p[2]], n = Math.hypot(...d) || 1, s = Math.min(speed, n * 8); sim.act({ world: d.map(v => v / n * s), shut }); if (sim.stage < (sim.peak = Math.max(sim.peak ?? 0, sim.stage))) sim.fell = true; } };
+function byHand(task, at, arm = 'desk') {
+  const sim = createArm(M, { at, task, arm }), k = ARM.hand / ARMS[arm].hand;
   for (let turn = 0; turn < 4 && sim.done == null; turn++) {
     const p = sim.pose(), c = p.cubes[p.now].p;
-    go(sim, [c[0], c[1] + 0.12, c[2]], false, 1.5); go(sim, c, false, 0.8); go(sim, c, true, 0.35);
-    if (task === 'grab') { go(sim, [c[0], 0.25, c[2]], true, 1.5); continue; }
+    go(sim, [c[0], c[1] + 0.12, c[2]], false, 1.5 * k); go(sim, c, false, 0.8 * k); go(sim, c, true, 0.35 * k);
+    if (task === 'grab') { go(sim, [c[0], 0.25, c[2]], true, 1.5 * k); continue; }
     const g = sim.pose().goal, top = Math.max(g[1], c[1]) + 0.13;
-    go(sim, [c[0], top, c[2]], true, 1); go(sim, [g[0], top, g[2]], true, 2.5, 0.8); go(sim, [g[0], g[1] + 0.003, g[2]], true, 1.2, 0.5); go(sim, [g[0], g[1] + 0.003, g[2]], false, 0.4); go(sim, [g[0], g[1] + 0.13, g[2]], false, 0.8);
+    go(sim, [c[0], top, c[2]], true, 1 * k); go(sim, [g[0], top, g[2]], true, 2.5 * k, 0.8); go(sim, [g[0], g[1] + 0.003, g[2]], true, 1.2 * k, 0.5); go(sim, [g[0], g[1] + 0.003, g[2]], false, 0.4 * k); go(sim, [g[0], g[1] + 0.13, g[2]], false, 0.8 * k);
   }
-  const out = { done: sim.done, stage: sim.stage, pose: sim.pose() };
+  const out = { done: sim.done, stage: sim.stage, fell: !!sim.fell, pose: sim.pose() };
   sim.free();
   return out;
 }
 
 test('every scenario can be done, the cubes held by friction alone: pick up, into the tray, and four cubes stacked', () => {
   for (const task of ['grab', 'tray']) for (const at of examPlacements(task).slice(0, 4)) assert.ok(byHand(task, at).done != null, `${task} ${JSON.stringify(at)}`);
-  const stacks = examPlacements('stack').slice(0, 4).map(at => byHand('stack', at));
-  assert.equal(stacks.filter(s => s.done != null).length, 4, `the script stacks four cubes every time (${stacks.map(s => s.stage).join(' ')} of 3 placed)`);
+  const stacks = examPlacements('stack').map(at => byHand('stack', at));
+  assert.equal(stacks.filter(s => s.done != null).length, 10, `the script stacks four cubes every time (${stacks.map(s => s.stage).join(' ')} of 3 placed)`);
+  // and the stack never counts as knocked down while the next cube is set on it (#361: the cube below is 5 cm under the grip)
+  assert.deepEqual(stacks.map(s => s.fell), stacks.map(() => false));
   const tower = stacks.find(s => s.done != null).pose.cubes;
   tower.forEach((c, i) => assert.ok(Math.abs(c.p[1] - (0.025 + 0.05 * i)) < 0.004 && Math.hypot(c.p[0] - tower[0].p[0], c.p[2] - tower[0].p[2]) < 0.04, `cube ${i} is on the stack`));
 });
@@ -140,4 +143,66 @@ test('the network that comes with the sim grabs the cube 20 times out of 20, as 
   assert.deepEqual({ done: x.done, of: x.of, time: x.time }, net.exam);
   const one = attempt(M, net, examPlacements('grab')[0]);
   assert.ok(one.ok && one.time < 3);
+});
+
+// ---- the reBot Arm B601-RS (#361)
+test('the B601: its makers’ figures, the hand straight down where the joints say, every scenario done by hand on it', () => {
+  const B = ARMS.b601, xml = sceneXml(1, 'b601');
+  // as published (Rebot_Arm_description/RS): the links' offsets and masses, the motors' peak torques
+  for (const s of ['pos="-0.236 0 0"', 'pos="0.228 -0.072746 0.0045"', 'mass="1.9641"', 'mass="1.0273"', 'actuatorfrcrange="-36 36"', 'actuatorfrcrange="-14 14"', 'range="0 0.05"']) assert.ok(xml.includes(s), s);
+  assert.equal(sceneXml(1), sceneXml(1, 'desk'), 'the desk arm as it was');
+  // the planar model (reach, joints) is where MuJoCo puts the grip, to 2 mm, with the hand hanging straight down
+  for (const [r, y, a] of [[0.25, 0.03, 0.4], [0.4, 0.2, -1], [0.3, 0.12, 2]]) {
+    const q = joints(r, y, a, B), sim = createArm(M, { arm: 'b601', at: { cubes: [{ r: 0.3, a: -2.5, yaw: 0 }] } });
+    for (let i = 0; i < 4; i++) sim.qt[i] = q[i];
+    for (let i = 0; i < 240; i++) sim.act({});
+    const p = sim.pose().grip, want = reach(q, B);
+    assert.ok(Math.hypot(p[0] - want.x, p[1] - want.y, p[2] - want.z) < 0.002, `${r} ${y} ${a}: ${p.map(v => v.toFixed(3))} against ${[want.x, want.y, want.z].map(v => v.toFixed(3))}`);
+    sim.free();
+  }
+  for (const task of ['grab', 'tray']) for (const at of examPlacements(task).slice(0, 4)) assert.ok(byHand(task, at, 'b601').done != null, `${task} ${JSON.stringify(at)}`);
+  const stacks = examPlacements('stack').map(at => byHand('stack', at, 'b601'));
+  assert.equal(stacks.filter(s => s.done != null).length, 10, `stacked on the B601 (${stacks.map(s => s.stage).join(' ')} of 3)`);
+  assert.deepEqual(stacks.map(s => s.fell), stacks.map(() => false));
+});
+
+test('the B601 stops at its own limits: the wrist’s bend keeps the hand from going higher, and the table', () => {
+  const sim = createArm(M, { arm: 'b601' });
+  for (let i = 0; i < 400; i++) sim.act({ hand: [1, 1, 0] });                       // out and up, as far as it goes
+  const L = ARMS.b601.lim, qt = sim.qt;
+  assert.ok(qt[1] - qt[2] <= L.a2[1] + 1e-9 && qt[1] <= L.a1[1] && qt[2] >= L.e[0], `within its limits (${qt.map(v => v.toFixed(3))})`);
+  for (let i = 0; i < 400; i++) sim.act({ hand: [0, -1, 0] });
+  assert.ok(sim.pose().grip[1] > ARMS.b601.floor - 0.004, `stops above the table (${sim.pose().grip[1]})`);
+  for (let i = 0; i < 300; i++) sim.act({ roll: 1 });
+  assert.ok(Math.abs(sim.qt[3] - sim.qt[0]) <= L.roll + 1e-9, 'the hand turns no further than its joint');
+  sim.free();
+});
+
+test('networks are for one arm: the file says which, the exam drives that one', () => {
+  const n = blank('grab', { arm: 'b601' });
+  assert.equal(n.arm, 'b601'); assert.equal(blank('grab').arm, undefined, 'the desk arm\'s say nothing (as before)');
+  assert.equal(notNet(n), null);
+  assert.match(notNet({ ...n, arm: 'ur5' }), /arm is one of desk, b601/);
+  const net = JSON.parse(readFileSync(new URL('../lib/arm/networks/b601-grab.json', import.meta.url), 'utf8'));
+  assert.equal(net.arm, 'b601'); assert.equal(notNet(net), null);
+  const x = exam(M, net);
+  assert.deepEqual({ done: x.done, of: x.of, time: x.time }, net.exam, 'the network that comes with the B601 passes its exam as its file says');
+  assert.ok(x.done >= 17);
+  assert.notDeepEqual(exam(M, { ...net, arm: undefined }).time, x.time, 'and on the desk arm it is another exam');
+  const desk = JSON.parse(readFileSync(new URL('../lib/arm/networks/grab.json', import.meta.url), 'utf8'));
+  assert.equal(exam(M, { ...desk, arm: 'b601' }).done, 13, 'the desk arm\'s network on the B601 as it is: 13 of 20 (the page says so)');
+});
+
+test('the B601 is drawn where its physics is: the drawing’s grip on core’s', async () => {
+  const THREE = await import('three'), { buildB601 } = await import('../lib/arm/scene.mjs');
+  const mat = () => new THREE.MeshBasicMaterial(), mesh = (geo, m, parent) => { const x = new THREE.Mesh(geo, m); parent.add(x); return x; };
+  const d = buildB601(THREE, mesh, mat, mat()), scene = new THREE.Scene(); scene.add(d.root);
+  const sim = createArm(M, { arm: 'b601', at: examPlacements('grab')[3] });
+  for (let i = 0; i < 90; i++) sim.act({ hand: [Math.sin(i / 9), -0.5, Math.cos(i / 7)], roll: 0.5 });
+  for (let i = 0; i < 60; i++) sim.act({});                                         // still: the grip's site is from the step before its joints'
+  const p = sim.pose();
+  d.pose(p.j, p.open); scene.updateMatrixWorld(true);
+  const g = d.grip.getWorldPosition(new THREE.Vector3());
+  assert.ok(Math.hypot(g.x - p.grip[0], g.y - p.grip[1], g.z - p.grip[2]) < 1e-4, `${g.toArray().map(v => v.toFixed(4))} against ${p.grip.map(v => v.toFixed(4))}`);
+  sim.free();
 });

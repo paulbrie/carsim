@@ -3,11 +3,11 @@ import { auth } from '@/auth';
 import { SiteNav } from '@/components/site-nav';
 import { SiteFooter } from '@/components/site-footer';
 import { ArmSimView } from '@/components/arm-sim';
-import { ARM, GRIP_N, INPUTS, TASKS, type TaskKey } from '@/lib/arm/core.mjs';
+import { ARM, ARMS, GRIP_N, INPUTS, TASKS, type TaskKey } from '@/lib/arm/core.mjs';
 
 export const metadata = {
   title: 'The arm (preview)',
-  description: 'A second simulator, in preview: a desk arm with a two-finger gripper, and tiny neural networks that learn to pick a cube up, put it in a tray, stack four. Watch one, try it by hand, train your own in the browser.',
+  description: 'A second simulator, in preview: two arms with two-finger grippers (a desk arm, and Seeed Studio’s reBot Arm B601-RS), and tiny neural networks that learn to pick a cube up, put it in a tray, stack four. Watch one, try it by hand, train your own in the browser.',
 };
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export default async function Arm() {
   const session = await auth();
   const user = session?.user ? { name: session.user.name ?? 'Driver', image: session.user.image ?? null, admin: session.user.admin } : null;
-  const reachCm = Math.round((ARM.L1 + ARM.L2) * 100);
+  const reachCm = Math.round((ARM.L1 + ARM.L2) * 100), B = ARMS.b601, bReachCm = Math.round((B.L1 + B.L2) * 100);
 
   return (
     <div className="relative overflow-x-clip">
@@ -26,7 +26,7 @@ export default async function Arm() {
         <p className="eyebrow text-tnn">Preview · a second simulator</p>
         <h1 className="display mt-3 max-w-4xl text-4xl text-balance sm:text-6xl">An arm that learns to grab.</h1>
         <p className="mt-4 max-w-3xl text-lg text-pretty text-muted-foreground">
-          The same idea as the cars, on a table: a network of about a hundred weights moves a desk arm, shuts its fingers on a cube and lifts it.
+          The same idea as the cars, on a table: a network of about a hundred weights moves an arm, shuts its fingers on a cube and lifts it. Two arms: a desk arm, and a real one you can buy, Seeed Studio’s reBot Arm B601-RS.
           Nothing is glued. The cube is held by friction, and it slips when it is squeezed badly or swung too hard. The physics is MuJoCo, the simulator robot learning is done with.
         </p>
 
@@ -70,13 +70,19 @@ export default async function Arm() {
             <h2 className="heading text-2xl">What it does, and how it is scored</h2>
             <ul className="mt-3 space-y-3 text-muted-foreground">
               <li><span className="font-medium text-foreground">Four outputs.</span> Move the hand outwards, upwards and sideways (up to {ARM.hand * 100} cm a second), and shut or open the fingers. The arm’s motors follow as fast as they can; a network can also be trained to drive each motor itself, which is harder.</li>
-              <li><span className="font-medium text-foreground">The arm.</span> A base that turns, a shoulder, an elbow and a hand that hangs straight down: {reachCm} cm from shoulder to wrist at full stretch. Every joint has a motor that follows its order as its strength and the arm’s weight let it. The two fingers are geared together and close with at most {GRIP_N} newtons each.</li>
+              <li><span className="font-medium text-foreground">The desk arm.</span> A base that turns, a shoulder, an elbow and a hand that hangs straight down: {reachCm} cm from shoulder to wrist at full stretch. Every joint has a motor that follows its order as its strength and the arm’s weight let it. The two fingers are geared together and close with at most {GRIP_N} newtons each.</li>
+              <li>
+                <span className="font-medium text-foreground">The reBot Arm B601-RS.</span> Built from the model its makers publish (<a className="underline underline-offset-2 hover:text-foreground" href="https://github.com/Seeed-Projects/reBot-DevArm" rel="noopener noreferrer" target="_blank">Seeed-Projects/reBot-DevArm</a>, CERN-OHL-W): every link’s length, measured mass and inertia, its joints’ ranges, its motors’ peak torques (36 N·m at the waist, shoulder and elbow, 14 at the wrist).
+                {' '}{bReachCm} cm from shoulder to wrist, the hand at up to {B.hand * 100} cm a second (its joints at {B.speed[0]} rad/s, the top of Seeed’s own web console), fingers of {B.gripN} N.
+                {' '}Its wrist bends at most 90°, so with the hand straight down the forearm can’t point up much: on a 12 cm riser, it reaches every cube and stacks four.
+                {' '}A network is trained for one arm; the desk arm’s, put on this one as it is, still picks up 13 of 20.
+              </li>
               <li><span className="font-medium text-foreground">The scenarios.</span> {(Object.keys(TASKS) as TaskKey[]).map((k, i) => <span key={k}>{i > 0 && ' '}<span className="text-foreground">{TASKS[k].name}</span>: {TASKS[k].about.replace(/\.$/, '')} ({TASKS[k].limit} s, {TASKS[k].exam} placements).</span>)}</li>
               <li><span className="font-medium text-foreground">The exam.</span> The score is how many placements it managed, then the time they took; a failed one counts its whole limit.</li>
               <li><span className="font-medium text-foreground">The same everywhere.</span> A network’s exam gives the same numbers in this browser and on a server, to the millisecond.</li>
             </ul>
             <p className="mt-5 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-sm text-muted-foreground">
-              This is a preview. Networks are not saved and there is no leaderboard for the arm yet: a trained network can be downloaded as a file. A network comes with Pick up; the other scenarios wait for one to be trained.
+              This is a preview. Networks are not saved and there is no leaderboard for the arm yet: a trained network can be downloaded as a file. A network comes with Pick up, for each arm; the other scenarios wait for one to be trained.
             </p>
           </div>
         </section>

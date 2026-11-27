@@ -1,6 +1,7 @@
 // Train an arm network from the command line (#359): node scripts/arm/train.mjs [task=grab] [h=8] [control=hand]
 // [seed=1] [generations=200] [out.json] [roll=0] [from.json: a network to carry on from, of this scenario or another
 // (grown: what it is not shown yet starts at zero)]. On every core but one, 16 at most (CORES=n; worker threads).
+// ARM=b601: for the reBot Arm B601-RS (#361; a network carried on from keeps its own arm).
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { availableParallelism } from 'node:os';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -14,8 +15,8 @@ else {
   const pool = Array.from({ length: cores }, () => { const w = new Worker(new URL(import.meta.url)); w.on('message', m => { wait.get(m.id)(m.res); wait.delete(m.id); }); return w; });
   const evaluate = shareOut(cores, (i, head, goes) => new Promise(yes => { const id = next++; wait.set(id, yes); pool[i].postMessage({ id, head, goes }); }));
   const base = from ? JSON.parse(readFileSync(from, 'utf8')) : null;
-  const tr = startTraining({ task, h: +h, control, seed: +seed, roll: roll === '1', from: base && grow(base, { task, h: +h }), anew: !!base && (base.task !== task || process.env.ANEW === '1') }), t0 = Date.now();
-  console.log(`${task}, ${control}, h ${h}, ${tr.net.w.length} weights, seed ${seed}, ${cores} cores`);
+  const tr = startTraining({ task, h: +h, control, seed: +seed, roll: roll === '1', arm: process.env.ARM || 'desk', from: base && grow(base, { task, h: +h }), anew: !!base && (base.task !== task || process.env.ANEW === '1') }), t0 = Date.now();
+  console.log(`${tr.net.arm ?? 'desk'}, ${task}, ${control}, h ${h}, ${tr.net.w.length} weights, seed ${seed}, ${cores} cores`);
   for (let g = 1; g <= +gens; g++) {
     const x = await generation(tr, evaluate);
     if (g % 10 === 0 || g === +gens) console.log(`gen ${g}: ${x.skipped ? 'no grab yet (tries ' + tr.hist.at(-1)[3] + ')' : `${x.done}/${x.of} in ${x.time} s`} | best ${tr.best ? `${tr.best.exam.done}/${tr.best.exam.of} in ${tr.best.exam.time} s at gen ${tr.best.gen}` : 'none'} | ${((Date.now() - t0) / 1000).toFixed(1)} s`);

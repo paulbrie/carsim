@@ -7,26 +7,28 @@ import { Bot, Download, Hand, Pause, Play, RotateCcw, SkipForward, Sparkles } fr
 import { Button } from '@/components/ui/button';
 import { ArmNetDiagram, type NetLive } from '@/components/arm-net';
 import { cn } from '@/lib/utils';
-import { TASKS } from '@/lib/arm/core.mjs';
-import type { ArmNet, ArmSim, Go, Placement, TaskKey } from '@/lib/arm/core.mjs';
+import { ARMS, TASKS } from '@/lib/arm/core.mjs';
+import type { ArmKey, ArmNet, ArmSim, Go, Placement, TaskKey } from '@/lib/arm/core.mjs';
 import type { ArmScene } from '@/lib/arm/scene.mjs';
 import type { Evaluate, Training } from '@/lib/arm/train.mjs';
 import grabNet from '@/lib/arm/networks/grab.json';
+import b601GrabNet from '@/lib/arm/networks/b601-grab.json';
 
 type Mode = 'watch' | 'hand' | 'train';
 type Core = typeof import('@/lib/arm/core.mjs');
 type Trainer = typeof import('@/lib/arm/train.mjs');
 interface Engine {
   M: unknown; C: Core; T: Trainer; view: ArmScene; sim: ArmSim | null; places: Placement[];
-  mode: Mode; task: TaskKey; net: ArmNet | null; idx: number; speed: number; paused: boolean; rest: number; started: boolean;
+  mode: Mode; arm: ArmKey; task: TaskKey; net: ArmNet | null; idx: number; speed: number; paused: boolean; rest: number; started: boolean;
   keys: Set<string>; shut: boolean; acc: number; last: number; raf: number;
   pool: Worker[]; wait: Map<number, (r: Go[]) => void>; nextId: number;
   training: Training | null; run: number;
 }
-const SHIPPED: Partial<Record<TaskKey, ArmNet>> = { grab: grabNet as unknown as ArmNet };
+// the networks that come with the sim, per arm (#361: a network is for the arm it was trained on)
+const SHIPPED: Record<ArmKey, Partial<Record<TaskKey, ArmNet>>> = { desk: { grab: grabNet as unknown as ArmNet }, b601: { grab: b601GrabNet as unknown as ArmNet } };
 // what a training of a scenario starts from unless told otherwise: Pick up from nothing (to watch it learn), the others
 // from the network of the scenario before (carrying comes after picking up)
-const startFor = (t: TaskKey): 'none' | TaskKey => t === 'stack' ? (SHIPPED.tray ? 'tray' : SHIPPED.grab ? 'grab' : 'none') : t === 'tray' && SHIPPED.grab ? 'grab' : 'none';
+const startFor = (a: ArmKey, t: TaskKey): 'none' | TaskKey => { const S = SHIPPED[a]; return t === 'stack' ? (S.tray ? 'tray' : S.grab ? 'grab' : 'none') : t === 'tray' && S.grab ? 'grab' : 'none'; };
 const KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'r', 'f', ' '];
 const KBD = 'rounded-md border border-white/15 bg-white/8 px-1.5 py-0.5 font-mono text-[0.7rem] text-foreground';
 const secs = (t: number | null | undefined) => t == null ? '—' : `${t.toFixed(2)} s`;
@@ -36,6 +38,7 @@ export function ArmSimView() {
   const [ready, setReady] = useState<'loading' | 'ok' | string>('loading');
   const [mode, setMode] = useState<Mode>('watch');
   const [task, setTask] = useState<TaskKey>('grab');
+  const [arm, setArm] = useState<ArmKey>('desk');
   const [hud, setHud] = useState({ idx: 0, t: 0, done: null as number | null, shut: false, started: false, paused: false, stage: 0, of: 1 });
   const [speed, setSpeed] = useState(1);
   const [netInfo, setNetInfo] = useState<{ name: string; weights: number; h: number; exam: ArmNet['exam'] } | null>(null);
@@ -52,7 +55,7 @@ export function ArmSimView() {
     const e = eng.current; if (!e) return;
     e.sim?.free();
     e.idx = (i + e.places.length) % e.places.length;
-    e.sim = e.C.createArm(e.M, { at: e.places[e.idx], task: e.task });
+    e.sim = e.C.createArm(e.M, { at: e.places[e.idx], task: e.task, arm: e.arm });
     e.rest = 0; e.acc = 0; e.started = e.mode !== 'hand'; e.shut = false;
   }, []);
   const putNet = useCallback((net: ArmNet | null, name?: string) => {
@@ -69,7 +72,7 @@ export function ArmSimView() {
       const [THREE, M, C, S, T] = await Promise.all([import('three'), import('@/lib/arm/load.mjs').then(l => l.loadMujoco()), import('@/lib/arm/core.mjs'), import('@/lib/arm/scene.mjs'), import('@/lib/arm/train.mjs')]);
       if (dead) return;
       const view = S.createScene(THREE, cv);
-      const e: Engine = { M, C, T, view, sim: null, places: C.examPlacements('grab'), mode: 'watch', task: 'grab', net: null, idx: 0, speed: 1, paused: false, rest: 0, started: true, keys: new Set(), shut: false, acc: 0, last: performance.now(), raf: 0, pool: [], wait: new Map(), nextId: 0, training: null, run: 0 };
+      const e: Engine = { M, C, T, view, sim: null, places: C.examPlacements('grab'), mode: 'watch', arm: 'desk', task: 'grab', net: null, idx: 0, speed: 1, paused: false, rest: 0, started: true, keys: new Set(), shut: false, acc: 0, last: performance.now(), raf: 0, pool: [], wait: new Map(), nextId: 0, training: null, run: 0 };
       eng.current = e;
       const cores = Math.max(1, Math.min(16, (navigator.hardwareConcurrency || 4) - 1));   // every core but one: the page's own
       try {
@@ -82,7 +85,7 @@ export function ArmSimView() {
       setTr(t => ({ ...t, cores: e.pool.length || 1 }));
       const fit = () => { const r = cv.getBoundingClientRect(); if (r.width > 0) view.size(Math.round(r.width), Math.round(r.height)); };
       const ro = new ResizeObserver(fit); ro.observe(cv); fit();
-      place(0); putNet(SHIPPED.grab ?? null, 'The network that comes with it');
+      place(0); putNet(SHIPPED.desk.grab ?? null, 'The network that comes with it');
       let n = 0;
       const frame = (now: number) => {
         e.raf = requestAnimationFrame(frame);
@@ -147,17 +150,26 @@ export function ArmSimView() {
     const e = eng.current; if (!e || e.task === t) return;
     stop();
     e.task = t; e.places = e.C.examPlacements(t); e.training = null; setTask(t); setMine([]);
-    setCfg(c => ({ ...c, base: startFor(t) }));
+    setCfg(c => ({ ...c, base: startFor(e.arm, t) }));
     setTr(s => ({ ...s, gen: 0, best: null, hist: [], perGen: null }));
-    putNet(SHIPPED[t] ?? null, 'The network that comes with it'); place(0);
+    putNet(SHIPPED[e.arm][t] ?? null, 'The network that comes with it'); place(0);
+  };
+  // another arm: the same scenario and placements, its own networks (one trained on the other arm does not drive this one)
+  const changeArm = (a: ArmKey) => {
+    const e = eng.current; if (!e || e.arm === a) return;
+    stop();
+    e.arm = a; e.training = null; setArm(a); setMine([]);
+    setCfg(c => ({ ...c, base: startFor(a, e.task) }));
+    setTr(s => ({ ...s, gen: 0, best: null, hist: [], perGen: null }));
+    putNet(SHIPPED[a][e.task] ?? null, 'The network that comes with it'); place(0);
   };
   const stop = () => { const e = eng.current; if (e) e.run++; setTr(t => ({ ...t, on: false })); };
   const train = async (fresh: boolean) => {
     const e = eng.current; if (!e) return;
-    if (fresh || !e.training || e.training.net.task !== e.task) {
+    if (fresh || !e.training || e.training.net.task !== e.task || (e.training.net.arm ?? 'desk') !== e.arm) {
       // from a network (of this scenario or another: grown, what it is not shown yet starts at zero), or from nothing
-      const base = cfg.base === 'none' ? null : cfg.base === 'net' ? e.net : SHIPPED[cfg.base] ?? null, usable = base && base.control === cfg.control && base.h > 0 ? base : null;
-      e.training = e.T.startTraining({ task: e.task, h: cfg.h, control: cfg.control, seed: 1 + Math.floor(Math.random() * 1e6), from: usable && e.T.grow(usable, { task: e.task, h: cfg.h }), anew: !!usable && usable.task !== e.task });
+      const base = cfg.base === 'none' ? null : cfg.base === 'net' ? e.net : SHIPPED[e.arm][cfg.base] ?? null, usable = base && base.control === cfg.control && base.h > 0 && (base.arm ?? 'desk') === e.arm ? base : null;
+      e.training = e.T.startTraining({ task: e.task, arm: e.arm, h: cfg.h, control: cfg.control, seed: 1 + Math.floor(Math.random() * 1e6), from: usable && e.T.grow(usable, { task: e.task, h: cfg.h }), anew: !!usable && usable.task !== e.task });
       setTr(t => ({ ...t, gen: 0, best: null, hist: [], perGen: null }));
     }
     const run = ++e.run, t = e.training, ev = evaluate(e);
@@ -176,7 +188,7 @@ export function ArmSimView() {
   };
   const download = () => {
     const e = eng.current; if (!e?.net) return;
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(e.net)], { type: 'application/json' })); a.download = `arm-${e.task}-${e.net.w.length}w.json`; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(e.net)], { type: 'application/json' })); a.download = `arm-${e.arm === 'desk' ? '' : `${e.arm}-`}${e.task}-${e.net.w.length}w.json`; a.click(); URL.revokeObjectURL(a.href);
   };
   const setSp = (s: number) => { if (eng.current) eng.current.speed = s; setSpeed(s); };
   const pause = () => { const e = eng.current; if (e) { e.paused = !e.paused; setHud(h => ({ ...h, paused: e.paused })); } };
@@ -229,7 +241,12 @@ export function ArmSimView() {
 
       <div className="flex flex-col gap-4">
         <div className="panel p-4">
-          <p className="eyebrow text-[0.62rem] text-muted-foreground">Scenario</p>
+          <p className="eyebrow text-[0.62rem] text-muted-foreground">Arm</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(Object.keys(ARMS) as ArmKey[]).map(k => <Button key={k} size="sm" variant={arm === k ? 'default' : 'glass'} aria-pressed={arm === k} disabled={ready !== 'ok'} onClick={() => changeArm(k)}>{ARMS[k].name}</Button>)}
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">{ARMS[arm].about}</p>
+          <p className="eyebrow mt-4 text-[0.62rem] text-muted-foreground">Scenario</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {KEYS_OF.map(k => <Button key={k} size="sm" variant={task === k ? 'default' : 'glass'} disabled={ready !== 'ok'} onClick={() => changeTask(k)}>{T[k].name}</Button>)}
           </div>
@@ -282,7 +299,7 @@ export function ArmSimView() {
                 <label className="col-span-2 block"><span className="text-xs text-muted-foreground">It starts from</span>
                   <select className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5" value={cfg.base} disabled={tr.on} onChange={ev => setCfg(c => ({ ...c, base: ev.target.value as typeof cfg.base }))}>
                     <option value="none">nothing</option>
-                    {KEYS_OF.filter(k => SHIPPED[k]).map(k => <option key={k} value={k}>the network that comes with {T[k].name}</option>)}
+                    {KEYS_OF.filter(k => SHIPPED[arm][k]).map(k => <option key={k} value={k}>the network that comes with {T[k].name}</option>)}
                     {shown && <option value="net">the network on the left</option>}
                   </select>
                 </label>
@@ -310,7 +327,7 @@ export function ArmSimView() {
   );
 }
 
-const header = (net: ArmNet) => ({ kind: net.kind, task: net.task, control: net.control, roll: net.roll, inputs: net.inputs, h: net.h });
+const header = (net: ArmNet) => ({ kind: net.kind, ...(net.arm && { arm: net.arm }), task: net.task, control: net.control, roll: net.roll, inputs: net.inputs, h: net.h });
 /** The goes shared out over the workers a few at a time (lib/arm/train.mjs shareOut); here, on the page, when there are none. */
 function evaluate(e: Engine): Evaluate {
   if (!e.pool.length) return async (head, goes) => e.T.runGoes(e.M, head, goes);

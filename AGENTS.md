@@ -150,7 +150,12 @@ See README.md for the layout. Notes:
   `/agents` and `/agents.md` both; a test checks every route it names exists.
 - The arm sim (#359, a preview at `/arm`; README: The arm sim): `lib/arm/core.mjs` has no page and no drawing in it and
   takes the physics as an argument (MuJoCo, loaded: `M`), so it runs the same in a tab, a worker and Node: keep it free of
-  the DOM, of `Math.random` and of the clock. **Anything that changes what a drive does (the scene's XML: sizes, masses,
+  the DOM, of `Math.random` and of the clock, **and of the engine's own `Math.sin`, `cos`, `tan`, `tanh`, `atan2`, `acos`, `log`,
+  `exp`, `pow` / `**`, `hypot`**: browsers and Node round those differently in the last digit (an exam came out 0.05 s
+  apart in Chrome and in Node), so core.mjs and train.mjs take them from `lib/arm/math.mjs` (fdlibm's, bit for bit Node 24's:
+  a function added there must be checked against Node's the same way, and an expression reordered there is a change of
+  every exam; a test pins their results and refuses any other `Math.` in those files; `abs`, `min`, `max`, `round`, `floor`,
+  `sqrt`, `imul` are exact and fine). **Anything that changes what a drive does (the scene's XML: sizes, masses,
   motors, contact settings; the step; the joints' speeds; the scenarios' rules, placements or their dice) changes every
   network's exam**: the network that comes with it (`lib/arm/networks/grab.json`) must be examined again and its `exam`
   rewritten (a test compares), and the networks people saved (`arm_networks`, #362) keep the exam they had: it was another exam's. Settings there that were measured

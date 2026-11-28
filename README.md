@@ -645,7 +645,15 @@ file):
 - **The exam** (`exam`): the scenario's placements, the same for everyone (`examPlacements`); the score is how many
   were done, then the seconds they took, a failed one counting its whole limit.
 - **Deterministic**: the same drive gives the same numbers to the last digit, in a world used again too (a test), and
-  in Node as in Chrome (checked by hand for MuJoCo's build with a scripted grab, before the port). A saved network
+  in Node as in any browser: MuJoCo is WebAssembly (the same arithmetic everywhere), and the arm's own code asks the
+  engine for nothing it may answer in its own way. JavaScript leaves `Math.sin`, `cos`, `tanh`, `atan2`, `acos`, `log`,
+  `hypot` and `**` to each engine, and they differ in the last digit (Chrome 143, Chrome 159 and Node 24 gave three
+  different sets): one stack network's exam was 78.017 s in Chrome and 78.067 s in Node. So the core and the trainer
+  use `lib/arm/math.mjs` (fdlibm's, from + − × ÷ and `sqrt` alone, which IEEE 754 rounds one way; bit for bit what
+  Node 24 gives, so the exams measured before stand). Checked: the seven networks' exams and a three-generation
+  training, every weight, the same in Node and in headless Chrome 143 and 159; a test pins the functions' results and
+  refuses any other `Math.` in those files. A network saved before this (#362) has the exam its saver's browser gave
+  it: it may be a few hundredths of a second off what every engine gives now. A saved network
   keeps its weights to the last digit: rounded to five decimals, one went from 19 of 20 to 17.
 - **The trainer** (`lib/arm/train.mjs`): the car lab's method written on its own (16 variations a generation, ranks,
   Adam), four placements a generation, then the exam once a variation has managed the scenario; the best examined

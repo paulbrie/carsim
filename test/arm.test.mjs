@@ -233,3 +233,43 @@ test('the B601 is drawn where its physics is: the drawing’s grip on core’s',
   assert.ok(Math.hypot(g.x - p.grip[0], g.y - p.grip[1], g.z - p.grip[2]) < 1e-4, `${g.toArray().map(v => v.toFixed(4))} against ${p.grip.map(v => v.toFixed(4))}`);
   sim.free();
 });
+
+// The same in every engine (#359): Math.sin and the like are each engine's own (Chrome 159 and Node 24 differ in the last
+// digit, and an exam came out 0.05 s apart), so what a drive is made of uses lib/arm/math.mjs, built from + − × ÷ and sqrt.
+test('the arm’s own sin, cos, tanh, atan2, acos, log and hypot: Node’s to the last digit, and the same numbers as when they were written', async () => {
+  const m = await import('../lib/arm/math.mjs');
+  let s = 2024; const rnd = () => { s = Math.imul(s ^ (s >>> 15), 2246822507) + 0x9e3779b9 | 0; const t = Math.imul(s ^ (s >>> 13), 3266489909); return ((t ^ (t >>> 16)) >>> 0) / 4294967296; };
+  const buf = new Float64Array(1), u = new Uint32Array(buf.buffer), scales = [1, 0.3, 1.6, 3.2, 6.3, 0.05, 40, 1e-6, 22, 700, 1e4, 3e6];
+  let h = 0; const add = v => { buf[0] = v; h = Math.imul(h ^ u[0], 16777619) ^ u[1]; h = Math.imul(h, 2654435761) | 0; };
+  const same = (a, b, what) => { if (!(Object.is(a, b) || (a !== a && b !== b))) assert.fail(`${what}: ${a} here, ${b} Node's`); };
+  for (let i = 0; i < 200000; i++) {
+    const a = (rnd() * 2 - 1) * scales[i % 12], b = (rnd() * 2 - 1) * scales[(i * 7 + 3) % 12], c = rnd() * 2 - 1;
+    // the hash: what any engine must give (headless Chrome 143 and 159 gave it too, where their own Math gave two others)
+    add(m.sin(a)); add(m.cos(a)); add(m.tanh(a)); add(m.acos(c)); add(m.log(Math.abs(a))); add(m.atan2(a, b)); add(m.hypot(a, b)); add(m.hypot(a, b, c)); add(m.ipow(0.999, i % 500));
+    // Node's own, which the shipped networks' exams were measured with (sin and cos up to 820 000 radians: math.mjs says why)
+    if (Math.abs(a) < 8e5) { same(m.sin(a), Math.sin(a), `sin(${a})`); same(m.cos(a), Math.cos(a), `cos(${a})`); }
+    same(m.tanh(a), Math.tanh(a), `tanh(${a})`); same(m.acos(c), Math.acos(c), `acos(${c})`); same(m.log(Math.abs(a)), Math.log(Math.abs(a)), `log(${Math.abs(a)})`);
+    same(m.atan2(a, b), Math.atan2(a, b), `atan2(${a}, ${b})`); same(m.hypot(a, b), Math.hypot(a, b), `hypot(${a}, ${b})`); same(m.hypot(a, b, c), Math.hypot(a, b, c), `hypot(${a}, ${b}, ${c})`);
+  }
+  assert.equal(h >>> 0, 798014060);
+  // the edges
+  const edge = [0, -0, 1, -1, 0.5, -0.5, Infinity, -Infinity, NaN, Math.PI, Math.PI / 2, Math.PI / 4, 3 * Math.PI / 4, 1e-310, 2 ** -27, 2 ** -28, 2 ** -29, 2 ** -54, 22, 0.4375, 0.6875, 1.1875, 2.4375, 2 ** 66, 0.3, 0.78125];
+  for (let k = 1; k <= 40; k++) edge.push(k * Math.PI / 2, k * (Math.PI / 2) * (1 + 1e-15), k * (Math.PI / 2) * (1 - 1e-15));
+  for (const p of edge) for (const x of [p, -p]) {
+    for (const f of ['sin', 'cos', 'tanh', 'acos', 'log']) if (f.length > 3 || !(Math.abs(x) > 8e5 && Math.abs(x) < Infinity)) same(m[f](x), Math[f](x), `${f}(${x})`);
+    for (const q of edge) { same(m.atan2(x, q), Math.atan2(x, q), `atan2(${x}, ${q})`); same(m.atan2(x, -q), Math.atan2(x, -q), `atan2(${x}, ${-q})`); same(m.hypot(x, q), Math.hypot(x, q), `hypot(${x}, ${q})`); same(m.hypot(x, q, 1), Math.hypot(x, q, 1), `hypot(${x}, ${q}, 1)`); }
+  }
+  // beyond 820 000 radians: still a sine, of nearly that angle (and the same one everywhere)
+  assert.ok(Math.abs(m.sin(1e7) - Math.sin(1e7)) < 1e-8 && Math.abs(m.cos(-3e9) - Math.cos(-3e9)) < 1e-6);
+});
+
+test('what a drive and a training are made of asks the engine for nothing it may answer in its own way', () => {
+  // Math's that every engine must give alike (exact, or correctly rounded): anything else goes through lib/arm/math.mjs
+  const exact = new Set(['abs', 'min', 'max', 'round', 'floor', 'ceil', 'trunc', 'sign', 'sqrt', 'imul', 'fround', 'PI']);
+  for (const file of ['core.mjs', 'train.mjs', 'math.mjs', 'worker.mjs']) {
+    const src = readFileSync(new URL(`../lib/arm/${file}`, import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+    const used = [...new Set([...src.matchAll(/\bMath\.(\w+)/g)].map(x => x[1]))].filter(n => !exact.has(n));
+    assert.deepEqual(used, [], `lib/arm/${file} uses Math.${used.join(', Math.')}`);
+    assert.ok(!/\*\*/.test(src), `lib/arm/${file} uses ** (the engine's pow)`);
+  }
+});

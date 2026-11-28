@@ -4,11 +4,12 @@
 // is lib/arm/train.mjs, the driving is done in workers: lib/arm/worker.mjs). Networks are saved on the server, loaded
 // back and shared through ArmSaved (#362).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, Download, Hand, Pause, Play, RotateCcw, SkipForward, Sparkles } from 'lucide-react';
+import { Bot, Download, Hand, Pause, Play, RotateCcw, Share2, SkipForward, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ArmNetDiagram, type NetLive } from '@/components/arm-net';
-import { ArmSaved } from '@/components/arm-saved';
+import { ArmSaved, shareNet } from '@/components/arm-saved';
 import { cn } from '@/lib/utils';
+import { withBase } from '@/lib/base-path';
 import { ARMS, SIZES, TASKS } from '@/lib/arm/core.mjs';
 import type { ArmKey, ArmNet, ArmSim, Go, Placement, TaskKey } from '@/lib/arm/core.mjs';
 import type { ArmScene } from '@/lib/arm/scene.mjs';
@@ -41,7 +42,10 @@ const KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowrig
 const KBD = 'rounded-md border border-white/15 bg-white/8 px-1.5 py-0.5 font-mono text-[0.7rem] text-foreground';
 const secs = (t: number | null | undefined) => t == null ? '—' : `${t.toFixed(2)} s`;
 
-export function ArmSimView({ signedIn = false }: { signedIn?: boolean }) {
+/** A saved network opened by its link (#364, /arm/<id>): its id, name, its maker's name as this visitor may see it, the network with its exam. */
+export interface SharedArmNet { id: string; name: string; by: string; net: ArmNet }
+
+export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boolean; shared?: SharedArmNet | null }) {
   const canvas = useRef<HTMLCanvasElement>(null), eng = useRef<Engine | null>(null);
   const [ready, setReady] = useState<'loading' | 'ok' | string>('loading');
   const [mode, setMode] = useState<Mode>('watch');
@@ -53,6 +57,9 @@ export function ArmSimView({ signedIn = false }: { signedIn?: boolean }) {
   const [netGoes, setNetGoes] = useState<(number | null)[]>([]);
   const [shown, setShown] = useState<ArmNet | null>(null);          // the network drawn under the picture, and what it holds now
   const [live, setLive] = useState<NetLive | null>(null);
+  // the saved network on show (#364: its link, the Share button): it is that one while the network on show is this very object
+  const [saved, setSaved] = useState<{ id: string; name: string; net: ArmNet } | null>(null);
+  const savedOn = saved && saved.net === shown ? saved : null;
   const [mine, setMine] = useState<(number | null)[]>([]);
   // base: what a training starts from: 'none', 'net' (the network on the left) or the scenario whose network comes with the sim
   const [cfg, setCfg] = useState({ h: 8, control: 'hand' as 'hand' | 'joints', base: 'none' as 'none' | 'hand' | 'net' | TaskKey });
@@ -94,7 +101,12 @@ export function ArmSimView({ signedIn = false }: { signedIn?: boolean }) {
       setTr(t => ({ ...t, cores: e.pool.length || 1 }));
       const fit = () => { const r = cv.getBoundingClientRect(); if (r.width > 0) view.size(Math.round(r.width), Math.round(r.height)); };
       const ro = new ResizeObserver(fit); ro.observe(cv); fit();
-      place(0); putNet(SHIPPED.desk.grab ?? null, 'The network that comes with it');
+      if (shared) {                                                 // opened by its link: its arm and scenario, watching it
+        const a = shared.net.arm ?? 'desk', t = shared.net.task;
+        e.arm = a; e.task = t; e.places = C.examPlacements(t); setArm(a); setTask(t);
+        setCfg(c => ({ ...c, base: startFor(a, t), h: sizeFor(t) }));
+        place(0); putNet(shared.net, `${shared.name} · by ${shared.by}`); setSaved({ id: shared.id, name: shared.name, net: shared.net });
+      } else { place(0); putNet(SHIPPED.desk.grab ?? null, 'The network that comes with it'); }
       let n = 0;
       const frame = (now: number) => {
         e.raf = requestAnimationFrame(frame);
@@ -146,7 +158,14 @@ export function ArmSimView({ signedIn = false }: { signedIn?: boolean }) {
       cleanup = () => { ro.disconnect(); removeEventListener('keydown', down); removeEventListener('keyup', upk); };
     })().catch(err => { if (!dead) setReady(String((err as Error)?.message || err)); });
     return () => { dead = true; cleanup(); const e = eng.current; if (e) { cancelAnimationFrame(e.raf); e.run++; e.pool.forEach(w => w.terminate()); e.sim?.free(); e.view.dispose(); eng.current = null; } };
-  }, [place, putNet]);
+  }, [place, putNet]);   // shared: the network the page opened with, read once
+
+  // the address is the saved network's on show (#364), so it can be copied from there too; /arm otherwise
+  useEffect(() => {
+    if (ready !== 'ok') return;
+    const want = withBase(savedOn ? `/arm/${savedOn.id}` : '/arm');
+    if (location.pathname !== want) history.replaceState(history.state, '', want + location.search);
+  }, [ready, savedOn]);
 
   // ---- the controls
   const changeMode = (m: Mode) => {
@@ -290,7 +309,10 @@ export function ArmSimView({ signedIn = false }: { signedIn?: boolean }) {
 
           {mode !== 'hand' && (
             <div className="mt-4">
-              <p className="text-sm font-medium">{netInfo ? netInfo.name : 'No network for this scenario yet'}</p>
+              <div className="flex items-start gap-2">
+                <p className="min-w-0 flex-1 text-sm font-medium">{netInfo ? netInfo.name : 'No network for this scenario yet'}</p>
+                {savedOn && <Button size="sm" variant="glass" className="-my-1 shrink-0" onClick={() => shareNet(savedOn.id, savedOn.name)}><Share2 /> Share</Button>}
+              </div>
               <p className="num mt-0.5 text-xs text-muted-foreground">
                 {netInfo ? <>{netInfo.weights} weights{netInfo.h ? `, ${netInfo.h} hidden units` : ', no hidden layer'}{netInfo.exam && <span className="block">exam: <span className="text-tnn">{netInfo.exam.done} of {netInfo.exam.of}</span>{netInfo.exam.done > 0 && <> in {netInfo.exam.time.toFixed(1)} s</>}</span>}</> : 'Train one here: it takes a few minutes.'}
               </p>
@@ -355,7 +377,8 @@ export function ArmSimView({ signedIn = false }: { signedIn?: boolean }) {
         </div>
 
         <ArmSaved arm={arm} task={task} signedIn={signedIn} net={shown} exam={examNow} defaultName={netInfo?.name ?? ''}
-          onLoad={(net, name) => { stop(); putNet(net, name); }} />
+          onLoad={(net, name, id, title) => { stop(); putNet(net, name); setSaved({ id, name: title, net }); }}
+          onSaved={(id, name, net) => setSaved({ id, name, net })} savedOn={savedOn?.id ?? null} />
       </div>
     </div>
   );

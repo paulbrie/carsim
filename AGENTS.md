@@ -177,6 +177,9 @@ See README.md for the layout. Notes:
   written apart: a change of method there is not one here, and the other way round. MuJoCo reaches the page from
   `public/arm/vendor` (copied on install by `scripts/vendor-three.mjs`, as three.js for the car's sim), not through the
   bundler. Headless checks: the page's engine is `window.__arm` (`__arm.sim`, `__arm.training`, `__arm.pool`).
+  A saved network's link is `/arm/<id>` (#364): the page is `components/arm-page.tsx` for both routes, and the sim knows
+  the saved network on show only while it is that very object (`saved.net === shown`): a new way of putting a network on
+  show goes through `putNet` (and a saved one sets `saved` too), or the Share button and the address bar go stale.
 - The agent bridge is every signed-in driver's (#355), so its store trusts no caller: every page route passes the session's
   user id and the store refuses a pairing that isn't theirs; `list` / `take` (the agent key) see only pairings made with the
   super admin's session (`admin`); a new agent route must take a token or a claimed code, never a page id alone. The MCP

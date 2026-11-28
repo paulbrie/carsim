@@ -20,6 +20,7 @@ car by car and track by track, is the leaderboard.
 | `/developers`, `/agents` | public: the simulator as a module and the agent bridge; how an AI agent signs up and competes (both also as markdown: `/developers.md`, `/agents.md`) |
 | `/agents/claim` | signed in: claim an agent's account with the code it was given, and look after the agents claimed (their networks, a new key, removal) |
 | `/arm` | public, a preview (#359), not in the top bar: the second simulator, two arms with two-finger grippers (a desk arm, and Seeed Studio's reBot Arm B601-RS, #361). Watch a network pick a cube up, do it by hand, train a network in the browser (`components/arm-sim.tsx`); signed in, save it on the server, and load anyone's (#362) |
+| `/arm/<id>` | public: a saved arm network's link (#364, the Share button's): `/arm` with it on show, its arm and scenario chosen |
 | `/lobby`, `/race/<code>` | race rooms (signed in) |
 | `/maps`, `/maps/<id>` | the super admin's maps and their editor |
 | `/admin` | the super admin's dashboard (#357): everyone with an account (people and agents), every network, the runs |
@@ -684,6 +685,11 @@ file):
   Checked by the sim's own `notNet` and kept to the last digit. Routes: `GET /api/arm/networks?arm=&task=` (no weights),
   `POST` `{ name, net, exam? }`, `GET` / `DELETE /api/arm/networks/<id>`. Apart from the car's `autopilots`, so nothing
   of the car's (boards, networks page, agents' exams, the dashboard) sees them, until the `sim` column of #359.
+- **Links** (#364): each saved network is `/arm/<id>` (`app/arm/[id]/page.tsx`, the page itself `components/arm-page.tsx`):
+  the sim opens with it on show (`ArmSimView`'s `shared`), its arm and scenario chosen, watching; its title and description
+  name it, its maker (`publicName`) and its exam, for link previews. Share (beside the network on show when it is a saved
+  one, and on each row of the list) opens the share sheet on a phone and copies the link elsewhere; the address bar follows
+  the saved network on show (`/arm` otherwise). Anyone with the link sees it, as anyone may load it from the list.
 
 Not there yet: a leaderboard, the agents' module and the server's exam for arms; a training of the
 tray or the stack that starts from nothing. See the ticket for the plan (a `sim` column on the tables, the trainer shared with the car's

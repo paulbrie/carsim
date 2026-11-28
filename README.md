@@ -670,8 +670,9 @@ file):
   notes and the hand-written start, three trainings of three reached 20 of 20 within 90 generations, and the stack 9
   of 10 within 30; with the notes from nothing, nothing was learned in 150 (going up first pays nothing by itself; a
   go's score now gives 1 for keeping to the height note, which was not enough). The driving is done by
-  whoever calls it: workers on the page (`lib/arm/worker.mjs`, every core but one, 16 at most; goes handed out two at a
-  time, `shareOut`), worker threads from the command line (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`).
+  whoever calls it: workers on the page (`lib/arm/worker.mjs`, one a core: the Train tab's Cores, kept in the browser
+  (`carsim.arm.cores`), at first every core but one, 16 at most; changed during a training, from its next generation, a
+  worker let go finishing its part, #366; goes handed out two at a time, `shareOut`), worker threads from the command line (`node scripts/arm/train.mjs grab 8 hand 1 200 out.json`).
 - **The picture** (`lib/arm/scene.mjs`): three.js, handed in; draws what `pose()` says: the arm, the cubes (the one to
   move now with bright edges), the tray, and a green outline where the cube goes. The arm's ring is cyan when a
   network has the controls, orange when a person does.

@@ -183,10 +183,10 @@ const COMMANDS = {
     if (Array.isArray(pick) && Array.isArray(v)) v = v.map(x => Object.fromEntries(pick.filter(k => x && k in x).map(k => [k, typeof x[k] === 'number' ? Math.round(x[k] * 1000) / 1000 : x[k]])));
     return { value: Array.isArray(v) && Array.isArray(slice) ? v.map(x => plain(x, 1)) : plain(v) ?? null };
   },
-  // the arm sim's own (components/arm-sim.tsx armBridge): arm, task, mode, config, train, stop, history, exam, net, load, place, speed, pause
+  // the arm sim's own (components/arm-sim.tsx armBridge): arm, task, mode, config, train, stop, cores, history, exam, net, load, place, speed, pause
   async arm({ fn, args = {} } = {}) {
     if (!onArm()) throw new Error('Only on the arm sim\'s page (/arm)');
-    if (typeof fn !== 'string') throw new Error('fn: arm, task, mode, config, train, stop, history, exam, net, load, place, speed or pause');
+    if (typeof fn !== 'string') throw new Error('fn: arm, task, mode, config, train, stop, cores, history, exam, net, load, place, speed or pause');
     return { result: await AB().call(fn, args && typeof args === 'object' ? args : {}) };
   },
   reload() { return {}; },

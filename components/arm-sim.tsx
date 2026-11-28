@@ -28,7 +28,7 @@ interface Engine {
   M: unknown; C: Core; T: Trainer; view: ArmScene; sim: ArmSim | null; places: Placement[];
   mode: Mode; arm: ArmKey; task: TaskKey; net: ArmNet | null; idx: number; speed: number; paused: boolean; rest: number; started: boolean;
   keys: Set<string>; shut: boolean; acc: number; last: number; raf: number;
-  pool: Worker[]; wait: Map<number, (r: Go[]) => void>; nextId: number;
+  pool: Worker[]; wait: Map<number, (r: Go[]) => void>; nextId: number; cores: number;
   training: Training | null; run: number;
 }
 // the networks that come with the sim, per arm (#361: a network is for the arm it was trained on)
@@ -40,6 +40,28 @@ const startFor = (_a: ArmKey, t: TaskKey): 'none' | 'hand' | TaskKey => TASKS[t]
 const sizeFor = (t: TaskKey) => t === 'grab' ? 8 : 0;
 const KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'r', 'f', ' '];
 const KBD = 'rounded-md border border-white/15 bg-white/8 px-1.5 py-0.5 font-mono text-[0.7rem] text-foreground';
+// the cores a training drives on (#366): a worker each; this computer's, at most 16; chosen in the Train tab and kept in
+// this browser; at first every core but one (the page's own: it draws)
+const coresMax = () => Math.max(1, Math.min(16, typeof navigator === 'undefined' ? 4 : navigator.hardwareConcurrency || 4));
+const CORES_KEY = 'carsim.arm.cores';
+const coresSaved = () => { let v = NaN; try { v = Number(localStorage.getItem(CORES_KEY)); } catch { } return Number.isInteger(v) && v >= 1 ? Math.min(v, coresMax()) : Math.max(1, coresMax() - 1); };
+type PoolWorker = Worker & { open?: number; retire?: boolean; dead?: boolean };
+/** the pool brought to e.cores workers: new ones started; those let go finish what they were given (a generation under way keeps its own) */
+function sizePool(e: Engine) {
+  try {
+    while (e.pool.length < e.cores) {
+      const w: PoolWorker = new Worker(new URL('../lib/arm/worker.mjs', import.meta.url), { type: 'module' });
+      w.open = 0;
+      w.onmessage = m => {
+        w.open = (w.open ?? 1) - 1; e.wait.get(m.data.id)?.(m.data.res); e.wait.delete(m.data.id);
+        // (after the generation's next part, which is sent from the answer's promise, had a chance to come)
+        if (w.retire) setTimeout(() => { if (!w.open && !w.dead) { w.dead = true; w.terminate(); } });
+      };
+      e.pool.push(w);
+    }
+  } catch { if (!e.pool.length) return; }
+  for (const w of e.pool.splice(e.cores) as PoolWorker[]) { w.retire = true; if (!w.open) { w.dead = true; w.terminate(); } }
+}
 const secs = (t: number | null | undefined) => t == null ? '—' : `${t.toFixed(2)} s`;
 
 /** A saved network opened by its link (#364, /arm/<id>): its id, name, its maker's name as this visitor may see it, the network with its exam. */
@@ -65,6 +87,7 @@ export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boo
   const [cfg, setCfg] = useState({ h: 8, control: 'hand' as 'hand' | 'joints', base: 'none' as 'none' | 'hand' | 'net' | TaskKey });
   const cfgNow = useRef(cfg); cfgNow.current = cfg;
   const [tr, setTr] = useState<{ on: boolean; gen: number; best: { done: number; of: number; time: number; gen: number } | null; hist: [number, number, number, number][]; cores: number; perGen: number | null }>({ on: false, gen: 0, best: null, hist: [], cores: 0, perGen: null });
+  const [cores, setCoresNow] = useState(0);                         // the cores chosen (#366; 0 until the page is up)
 
   // ---- the driving, all on refs: React only hears of it ten times a second
   const place = useCallback((i: number) => {
@@ -88,16 +111,9 @@ export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boo
       const [THREE, M, C, S, T] = await Promise.all([import('three'), import('@/lib/arm/load.mjs').then(l => l.loadMujoco()), import('@/lib/arm/core.mjs'), import('@/lib/arm/scene.mjs'), import('@/lib/arm/train.mjs')]);
       if (dead) return;
       const view = S.createScene(THREE, cv);
-      const e: Engine = { M, C, T, view, sim: null, places: C.examPlacements('grab'), mode: 'watch', arm: 'desk', task: 'grab', net: null, idx: 0, speed: 1, paused: false, rest: 0, started: true, keys: new Set(), shut: false, acc: 0, last: performance.now(), raf: 0, pool: [], wait: new Map(), nextId: 0, training: null, run: 0 };
+      const e: Engine = { M, C, T, view, sim: null, places: C.examPlacements('grab'), mode: 'watch', arm: 'desk', task: 'grab', net: null, idx: 0, speed: 1, paused: false, rest: 0, started: true, keys: new Set(), shut: false, acc: 0, last: performance.now(), raf: 0, pool: [], wait: new Map(), nextId: 0, cores: coresSaved(), training: null, run: 0 };
       eng.current = e;
-      const cores = Math.max(1, Math.min(16, (navigator.hardwareConcurrency || 4) - 1));   // every core but one: the page's own
-      try {
-        for (let i = 0; i < cores; i++) {
-          const w = new Worker(new URL('../lib/arm/worker.mjs', import.meta.url), { type: 'module' });
-          w.onmessage = m => { e.wait.get(m.data.id)?.(m.data.res); e.wait.delete(m.data.id); };
-          e.pool.push(w);
-        }
-      } catch { e.pool = []; }
+      sizePool(e); setCoresNow(e.cores);
       setTr(t => ({ ...t, cores: e.pool.length || 1 }));
       const fit = () => { const r = cv.getBoundingClientRect(); if (r.width > 0) view.size(Math.round(r.width), Math.round(r.height)); };
       const ro = new ResizeObserver(fit); ro.observe(cv); fit();
@@ -192,6 +208,13 @@ export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boo
     putNet(SHIPPED[a][e.task] ?? null, 'The network that comes with it'); place(0);
   };
   const stop = () => { const e = eng.current; if (e) e.run++; setTr(t => ({ ...t, on: false })); };
+  // the cores to train on (#366): kept; during a training, from its next generation
+  const setCores = (n: number) => {
+    const e = eng.current; if (!e || !Number.isInteger(n) || n < 1 || n > coresMax()) return;
+    e.cores = n; setCoresNow(n);
+    try { localStorage.setItem(CORES_KEY, String(n)); } catch { }
+    if (!tr.on) { sizePool(e); setTr(t => ({ ...t, cores: e.pool.length || 1 })); }
+  };
   // over: settings for this training other than the panel's (the agent bridge's train, #363; kept in the panel too)
   const train = async (fresh: boolean, over: Partial<typeof cfg> = {}) => {
     const e = eng.current; if (!e) return;
@@ -203,10 +226,11 @@ export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boo
       e.training = e.T.startTraining({ task: e.task, arm: e.arm, h: cfg.h, control: cfg.control, seed: 1 + Math.floor(Math.random() * 1e6), from: usable && e.T.grow(usable, { task: e.task, h: usable.h ? cfg.h : 0 }), anew: !!usable && usable.task !== e.task });   // a network without a hidden layer stays without
       setTr(t => ({ ...t, gen: 0, best: null, hist: [], perGen: null }));
     }
-    const run = ++e.run, t = e.training, ev = evaluate(e);
+    const run = ++e.run, t = e.training;
     setTr(s => ({ ...s, on: true }));
     while (eng.current === e && e.run === run) {
-      const t0 = performance.now(), before = t.best;
+      if (e.pool.length !== e.cores) sizePool(e);                    // (the cores changed: from this generation)
+      const t0 = performance.now(), before = t.best, ev = evaluate(e), on = e.pool.length || 1;
       await e.T.generation(t, ev);
       if (e.run !== run) break;
       // on the left: the best examined network, and until one has grabbed the network as it stands (to watch it learn)
@@ -214,7 +238,7 @@ export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boo
         const net = t.best ? e.T.trained(t, `Trained here, generation ${t.best.gen}`) : { ...t.net, w: [...t.net.w], name: `In training, generation ${t.gen}`, exam: null };
         e.net = net; setShown(net); setNetInfo({ name: net.name!, weights: net.w.length, h: net.h, exam: net.exam ?? null }); setNetGoes([]);
       }
-      setTr(s => ({ ...s, gen: t.gen, hist: [...t.hist], best: t.best && { done: t.best.exam.done, of: t.best.exam.of, time: t.best.exam.time, gen: t.best.gen }, perGen: (performance.now() - t0) / 1000 }));
+      setTr(s => ({ ...s, gen: t.gen, hist: [...t.hist], best: t.best && { done: t.best.exam.done, of: t.best.exam.of, time: t.best.exam.time, gen: t.best.gen }, perGen: (performance.now() - t0) / 1000, cores: on }));
     }
   };
   const download = () => {
@@ -226,8 +250,8 @@ export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boo
 
   // ---- the agent bridge (#363): what public/sim/bridge.js may do on this page (its `arm` command, its state and
   // screenshot): the same things as the controls here, through them, so the person watching sees each one happen.
-  const now = useRef({ changeArm, changeTask, changeMode, train, stop, place, setSp, pause, putNet, cfg, tr, netInfo, netGoes, hud, speed, mode });
-  now.current = { changeArm, changeTask, changeMode, train, stop, place, setSp, pause, putNet, cfg, tr, netInfo, netGoes, hud, speed, mode };
+  const now = useRef({ changeArm, changeTask, changeMode, train, stop, place, setSp, pause, putNet, setCores, cores, cfg, tr, netInfo, netGoes, hud, speed, mode });
+  now.current = { changeArm, changeTask, changeMode, train, stop, place, setSp, pause, putNet, setCores, cores, cfg, tr, netInfo, netGoes, hud, speed, mode };
   useEffect(() => {
     if (ready !== 'ok') return;
     const w = window as unknown as { __armBridge?: ArmBridge };
@@ -348,6 +372,9 @@ export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boo
                 <label className="block"><span className="text-xs text-muted-foreground">Hidden units</span>
                   <select className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5" value={cfg.h} disabled={tr.on} onChange={ev => setCfg(c => ({ ...c, h: +ev.target.value }))}>{[0, 4, 8, 16].map(h => <option key={h} value={h}>{h || 'none'}</option>)}</select>
                 </label>
+                <label className="block" title="How many of this computer's cores drive the tries at once: a copy of the physics on each, in the background. More is faster, but leaves less for everything else; the page itself draws on one of its own. During a training, from its next generation"><span className="text-xs text-muted-foreground">Cores</span>
+                  <select className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5" value={cores || ''} disabled={!cores} onChange={ev => setCores(+ev.target.value)}>{Array.from({ length: coresMax() }, (_, k) => <option key={k} value={k + 1}>{k + 1}{k + 1 === coresMax() ? ' (all)' : ''}</option>)}</select>
+                </label>
                 <label className="col-span-2 block"><span className="text-xs text-muted-foreground">It starts from</span>
                   <select className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5" value={cfg.base} disabled={tr.on} onChange={ev => setCfg(c => ({ ...c, base: ev.target.value as typeof cfg.base }))}>
                     <option value="none">nothing</option>
@@ -369,6 +396,7 @@ export function ArmSimView({ signedIn = false, shared = null }: { signedIn?: boo
                 Generation <span className="font-medium text-foreground">{tr.gen}</span>
                 {tr.best ? <> · best <span className="font-medium text-tnn">{tr.best.done} of {tr.best.of}</span>{tr.best.done > 0 && <> in {tr.best.time.toFixed(1)} s</>}</> : tr.gen > 0 && <> · not managed yet</>}
                 {tr.perGen != null && <> · {tr.perGen.toFixed(1)} s a generation on {tr.cores} {tr.cores === 1 ? 'core' : 'cores'}</>}
+                {tr.on && cores && cores !== tr.cores ? <> · {cores} from the next</> : null}
               </p>
               <Chart hist={tr.hist} of={T[task].exam} />
               <p className="mt-2 text-xs text-muted-foreground">Each generation tries 16 variations of the network on four placements. Once one of them has managed the scenario, each generation also takes the exam: the same placements as everyone. The arm on the left is the network as it stands, then the best one examined. Not every training gets there: if nothing has come of it by generation 150, start over.</p>
@@ -388,7 +416,13 @@ const header = (net: ArmNet) => ({ kind: net.kind, ...(net.arm && { arm: net.arm
 /** The goes shared out over the workers a few at a time (lib/arm/train.mjs shareOut); here, on the page, when there are none. */
 function evaluate(e: Engine): Evaluate {
   if (!e.pool.length) return async (head, goes) => e.T.runGoes(e.M, head, goes);
-  return e.T.shareOut(e.pool.length, (i, head, goes) => new Promise<Go[]>(yes => { const id = e.nextId++; e.wait.set(id, yes); e.pool[i].postMessage({ id, head, goes }); }));
+  // the pool as it is now: one let go mid-way finishes the part it has, and what would have been its next goes to one still there
+  const pool: PoolWorker[] = e.pool.slice();
+  return e.T.shareOut(pool.length, (i, head, goes) => {
+    const w: PoolWorker | undefined = !pool[i].dead ? pool[i] : e.pool[i % Math.max(1, e.pool.length)];
+    if (!w) return Promise.resolve(e.T.runGoes(e.M, head, goes));
+    return new Promise<Go[]>(yes => { const id = e.nextId++; e.wait.set(id, yes); w.open = (w.open ?? 0) + 1; w.postMessage({ id, head, goes }); });
+  });
 }
 
 /** How many of the exam's placements the network of each generation managed (cyan), and, fainter, how its tries scored: that moves long before the first grab. */
@@ -407,7 +441,7 @@ function Chart({ hist, of }: { hist: [number, number, number, number][]; of: num
 }
 
 // ---- the agent bridge's view of this page (#363)
-type Now = { changeArm(a: ArmKey): void; changeTask(t: TaskKey): void; changeMode(m: Mode): void; train(fresh: boolean, over?: Record<string, unknown>): Promise<void>; stop(): void; place(i: number): void; setSp(s: number): void; pause(): void; putNet(net: ArmNet | null, name?: string): void;
+type Now = { changeArm(a: ArmKey): void; changeTask(t: TaskKey): void; changeMode(m: Mode): void; train(fresh: boolean, over?: Record<string, unknown>): Promise<void>; stop(): void; place(i: number): void; setSp(s: number): void; pause(): void; putNet(net: ArmNet | null, name?: string): void; setCores(n: number): void; cores: number;
   cfg: { h: number; control: 'hand' | 'joints'; base: string }; tr: { on: boolean; gen: number; best: unknown; hist: [number, number, number, number][]; cores: number; perGen: number | null };
   netInfo: { name: string } | null; netGoes: (number | null)[]; hud: { idx: number; t: number; done: number | null; stage: number; of: number; paused: boolean; shut: boolean }; speed: number; mode: Mode };
 export interface ArmBridge { state(): unknown; shot(o: { maxWidth?: number; quality?: number }): { dataUrl: string; width: number; height: number }; call(fn: string, args?: Record<string, unknown>): Promise<unknown> }
@@ -422,6 +456,7 @@ const netOf = (n: ArmNet | null) => n && { name: n.name ?? null, arm: n.arm ?? '
  *   config { h?, control?, base? }  the training's settings, as the Train tab has them (base: none, hand, net or a scenario)
  *   train { fresh?, h?, control?, base? }  start (or carry on) a training here, in the browser's workers; it runs until stop
  *   stop {}                pause the training
+ *   cores { n }            how many of this computer's cores train (1 to all of them, #366; during a training, from its next generation)
  *   history { from? }      the training's generations: [generation, done, time, the tries' average score]
  *   exam {}                the network on the left takes the scenario's exam (its placements, the same for everyone)
  *   net {}                 the network on the left, whole (its file: weights to the last digit)
@@ -438,7 +473,7 @@ function armBridge(eng: () => Engine | null, now: () => Now): ArmBridge {
       page: 'arm', arm: e.arm, arms: Object.keys(ARMS), task: e.task, tasks: Object.keys(TASKS), mode: e.mode,
       placement: { i: e.idx, of: e.places.length, t: +n.hud.t.toFixed(2), done: n.hud.done, placed: n.hud.of > 1 ? `${Math.min(n.hud.stage, n.hud.of)} of ${n.hud.of}` : null, paused: e.paused, speed: e.speed },
       net: e.net && { ...netOf(e.net), shownAs: n.netInfo?.name ?? null, here: n.netGoes.length ? { done: n.netGoes.filter(g => g != null).length, of: n.netGoes.length } : null },
-      training: { on: tr.on, gen: tr.gen, best: tr.best, perGen: tr.perGen && +tr.perGen.toFixed(2), cores: tr.cores, config: n.cfg, last: tr.hist.slice(-8) },
+      training: { on: tr.on, gen: tr.gen, best: tr.best, perGen: tr.perGen && +tr.perGen.toFixed(2), cores: tr.cores, coresChosen: n.cores, coresMax: coresMax(), config: n.cfg, last: tr.hist.slice(-8) },
     };
   };
   const fns: Record<string, (a: Record<string, unknown>) => unknown> = {
@@ -454,6 +489,7 @@ function armBridge(eng: () => Engine | null, now: () => Now): ArmBridge {
       return { training: true, task: E().task, arm: E().arm, config: { ...n.cfg, ...over } };
     },
     stop: () => { now().stop(); return { training: false }; },
+    cores: a => { const x = Number(a.n); if (!Number.isInteger(x) || x < 1 || x > coresMax()) throw new Error(`n: 1 to ${coresMax()}`); now().setCores(x); return { cores: x, max: coresMax() }; },
     history: a => ({ hist: now().tr.hist.slice(Math.max(0, Number(a.from) | 0)) }),
     exam: async () => {
       const e = E(); if (!e.net) throw new Error('No network on the left');

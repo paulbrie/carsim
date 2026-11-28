@@ -631,6 +631,26 @@ file):
   stack knocked over goes back (a job already counted stays done while its cube is where it goes: a stack shaken as the
   next cube is set on it is not knocked over, and "let go of" is "not between the fingers or they are open", #361). A new scenario is an entry there (`{ cube, lift }`, `{ cube, to: 'tray' }` or
   `{ cube, on }` jobs), its dice in `examPlacements`, and it is on the page.
+- **Scenarios of one's own** (#365, `lib/arm/scenario.mjs`; the editor under the picture is `components/arm-scenario.tsx`):
+  **Your own** beside the three: up to 8 objects (cube, box, ball or cylinder, each its size in cm, its colour of ten named
+  ones, how many), 1 to 4 trays (a name, a colour, where: degrees round from straight ahead and cm out, a width and a
+  depth; each turned to face the arm) and **rules**, a line each, `what → tray`, the first that fits an object deciding
+  (`red → A`, `ball or cube → B`, `not blue → A`, `wider than 5 cm → B`, `big → A` (against the others), `anything else →
+  stays`); a time limit and how many placements the exam has. `checkScenario` says what is wrong (a word it can't read,
+  a tray that doesn't exist, an object wider than the fingers open, trays that overlap, a tray too small for what it is
+  sent, no room on the table) and what each object will do; the page puts it on the table once it can be run. A scenario
+  is a file (`kind: 'armsim-scenario'`); compiled (`compileScenario`, cached) it is one of core's TASKS: its jobs are
+  `{ cube, to: tray, slot }` in the objects' order, each object to a place of its own in its tray (`slot`: the notes lead
+  there, so the second is not set down on the first; anywhere in the tray counts), with each object's own figures
+  (`items`: where core used a cube's 2.5 cm and 5 cm; the built-in scenarios use `CUBE_ITEM`, the same numbers, so their
+  exams are unchanged) and its own MuJoCo bodies (a ball rolls, a box lies with its narrower side across the fingers:
+  turned for each arm, `across`; `multiccd`, or a cylinder's side held along a line slips out). Its exam's placements are
+  seeded by the scenario itself (`scenarioKey`: not its name), so they are the same for everyone with the same file. A
+  network for it is `task: 'custom'` with its `scenario`, listed and saved under `custom:<key>` (`netKey`): a change of
+  any figure or rule is another scenario. It starts with the arm's sorting network (`networks/sort.json`, trained on Sort
+  by colour) and trains like the others (from it, from the start written by hand...). Three variants to start from
+  (`EXAMPLES`: Sort by colour, Balls and boxes, Big and small); the one being edited and those kept are in the browser
+  (`carsim.arm.scenario`, `carsim.arm.scenarios`). From the command line: `node scripts/arm/train.mjs my-scenario.json 0 hand 1 60 out.json 0 lib/arm/networks/sort.json`.
 - **A network** is `{ task, control, roll, inputs, h, w }` (`blank`, `notNet`, `forward`: the car's layout, W1, b1, W2,
   b2, all through tanh). Inputs (`INPUTS`) are in the arm's own frame (outwards, up, sideways) and about **the cube to
   move now**, so one small network without memory can do a scenario of several jobs: when a cube is placed, it is shown
@@ -686,7 +706,8 @@ file):
   (`lib/arm/load.mjs`). Node imports the package.
 - `lib/arm/networks/`: the networks the page starts with: `grab.json` (100 weights, 20 of 20), `tray.json` and
   `stack.json` (32 weights each, no hidden layer) for the desk arm, `b601-grab.json`, `b601-tray.json` and
-  `b601-stack.json` for the B601 (tray 20 of 20, stack 10 of 10); a test takes their exams.
+  `b601-stack.json` for the B601 (tray 20 of 20, stack 10 of 10); `sort.json` and `b601-sort.json`, what one's own scenario
+  starts with (#365: each arm's stack network trained on Sort by colour: 9 of 10 on the desk arm); a test takes their exams.
 - **Saved networks** (#362, `lib/arm/store.mjs`, table `arm_networks`; `components/arm-saved.tsx` beside the sim): signed in,
   the network on show is saved under a name, for its arm and scenario, with the exam as the page ran it (`{ done, of, time }`,
   as a car network's best lap is its browser's: shown, not ranked); anyone lists them (the best exams first, names as the

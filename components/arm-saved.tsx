@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/client/maps';
 import { withBase } from '@/lib/base-path';
-import type { ArmKey, ArmNet, TaskKey } from '@/lib/arm/core.mjs';
+import { netKey, type ArmKey, type ArmNet } from '@/lib/arm/core.mjs';
 import type { ArmExam, ArmNetSummary } from '@/lib/arm/store.mjs';
 
 type Saved = Omit<ArmNetSummary, 'owner'> & { mine: boolean };
@@ -26,8 +26,9 @@ export async function shareNet(id: string, name: string) {
   catch { toast.error('Could not copy the link', { description: url }); }
 }
 
-export function ArmSaved({ arm, task, signedIn, net, exam, defaultName, onLoad, onSaved, savedOn }: {
-  arm: ArmKey; task: TaskKey; signedIn: boolean;
+export function ArmSaved({ arm, task, taskName, signedIn, net, exam, defaultName, onLoad, onSaved, savedOn }: {
+  /** task: the key networks are listed under (a scenario's, or custom:<one's own scenario's key>, #365: lib/arm/core.mjs netKey); taskName: its name */
+  arm: ArmKey; task: string; taskName?: string; signedIn: boolean;
   /** the network on show (null: none), and its exam as this page ran it (null: not yet) */
   net: ArmNet | null; exam: ArmExam | null; defaultName: string;
   /** a saved one put on show: the network, its line under the sim, its id and its own name */
@@ -43,13 +44,13 @@ export function ArmSaved({ arm, task, signedIn, net, exam, defaultName, onLoad, 
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
-    try { setList((await api<{ networks: Saved[] }>(`/api/arm/networks?arm=${arm}&task=${task}`)).networks); }
+    try { setList((await api<{ networks: Saved[] }>(`/api/arm/networks?arm=${arm}&task=${encodeURIComponent(task)}`)).networks); }
     catch (e) { setList([]); setMsg({ ok: false, text: `The saved networks could not load: ${(e as Error).message}` }); }
   }, [arm, task]);
   useEffect(() => { setList(null); setMsg(null); void load(); }, [load]);
   useEffect(() => { setName(defaultName.slice(0, 60)); }, [defaultName]);
 
-  const mineToSave = !!net && (net.arm ?? 'desk') === arm && net.task === task;
+  const mineToSave = !!net && (net.arm ?? 'desk') === arm && netKey(net) === task;
   const save = async () => {
     if (!net || !name.trim()) return;
     setBusy(true); setMsg(null);
@@ -91,7 +92,7 @@ export function ArmSaved({ arm, task, signedIn, net, exam, defaultName, onLoad, 
 
       <div className="mt-3">
         {list == null ? <p className="text-xs text-muted-foreground">Loading…</p>
-          : !list.length ? <p className="text-xs text-muted-foreground">None saved for this arm and scenario yet.</p>
+          : !list.length ? <p className="text-xs text-muted-foreground">None saved for this arm and {task.startsWith('custom:') ? <>this very scenario (“{taskName}”, as it is now)</> : 'scenario'} yet.</p>
             : (
               <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
                 {list.map(n => (

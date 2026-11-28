@@ -182,6 +182,13 @@ See README.md for the layout. Notes:
   written apart: a change of method there is not one here, and the other way round. MuJoCo reaches the page from
   `public/arm/vendor` (copied on install by `scripts/vendor-three.mjs`, as three.js for the car's sim), not through the
   bundler. Headless checks: the page's engine is `window.__arm` (`__arm.sim`, `__arm.training`, `__arm.pool`).
+  Scenarios of one's own (#365, `lib/arm/scenario.mjs`): core takes a scenario as a key of TASKS or a scenario's file
+  (`taskOf`; a network's: `netTask`, `task: 'custom'` with its `scenario`), so anything that did `TASKS[task]` goes through
+  `taskOf`. Core's cube figures became each object's (`IT[i]`: `hz`, `foot`, `wide`, `inn`, `innZ`, `touchGap`); the
+  built-in scenarios' are `CUBE_ITEM`, which must stay core's old constants to the last digit (their exams), and their
+  trays, scene and placements keep their old code paths (only `T.custom` takes the new ones). A change to how a scenario is
+  compiled (its slots, its placements' dice, the objects' masses, the rules' reading) changes the exams of the networks
+  saved for such scenarios, and of `sort.json` / `b601-sort.json` (re-examine them: a test compares).
   A saved network's link is `/arm/<id>` (#364): the page is `components/arm-page.tsx` for both routes, and the sim knows
   the saved network on show only while it is that very object (`saved.net === shown`): a new way of putting a network on
   show goes through `putNet` (and a saved one sets `saved` too), or the Share button and the address bar go stale.

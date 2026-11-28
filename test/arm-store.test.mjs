@@ -62,3 +62,17 @@ test('arm networks: deleted by whoever saved them or the super admin; so many ea
   await assert.rejects(s.create({ name: 'one more', net, owner: 'google:3', ownerName: 'Cy' }), e => e.status === 409);
   assert.equal(await s.get('nope'), null);
 });
+
+test('arm networks for one\'s own scenario (#365): saved with it, listed under its key, its exam checked against it', async () => {
+  const { EXAMPLES, scenarioKey } = await import('../lib/arm/scenario.mjs');
+  const s = new ArmNetStore(T.db), sc = EXAMPLES[0], net = blank(sc, { h: 0 }), base = { owner: 'google:1', ownerName: 'Ann' };
+  const a = await s.create({ name: 'sorter', net, exam: { done: 3, of: sc.exam, time: 200 }, ...base });
+  assert.equal(a.task, `custom:${scenarioKey(sc)}`);
+  const back = await s.get(a.id);
+  assert.equal(back.net.task, 'custom'); assert.deepEqual(back.net.scenario, sc);
+  assert.deepEqual((await s.list({ task: a.task })).map(n => n.name), ['sorter']);
+  assert.deepEqual(await s.list({ task: `custom:${scenarioKey({ ...sc, limit: 41 })}` }), []);     // another scenario, another list
+  await assert.rejects(s.create({ name: 'x', net, exam: { done: 3, of: 20, time: 10 }, ...base }), e => e.status === 400 && /of: 10/.test(e.message));
+  await assert.rejects(s.create({ name: 'x', net: { ...net, scenario: undefined }, ...base }), e => e.status === 400 && /scenario/.test(e.message));
+  await assert.rejects(s.create({ name: 'x', net: { ...net, scenario: { ...sc, rules: 'red → Z' } }, ...base }), e => e.status === 400 && /Rule 1/.test(e.message));
+});

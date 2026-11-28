@@ -217,7 +217,8 @@ On the arm sim's page (`/arm`), `state` and `screenshot` are the arm's (the arm,
 
 | `arm { fn, args }` | Arguments | Answer |
 | --- | --- | --- |
-| `arm`, `task`, `mode` | `key`: `desk` or `b601`; `grab`, `tray` or `stack`; `mode`: `watch`, `hand` or `train` | the arm or scenario switched (its own networks with it) |
+| `arm`, `task`, `mode` | `key`: `desk` or `b601`; `grab`, `tray`, `stack` or `custom` (the driver's own scenario); `mode`: `watch`, `hand` or `train` | the arm or scenario switched (its own networks with it) |
+| `scenario` | `spec?` | the driver's own scenario: with `spec` (`{ kind: 'armsim-scenario', name, objects: [{ shape: cube, box, ball or cylinder, size: [cm...], color, n }], trays: [{ name, color, at: [degrees, cm], size: [width, depth] }], rules: 'red → A\nanything → B', limit, exam }`) that one is put on the table; without, the one being edited, what is wrong with it and where each object goes |
 | `config` | `h?`, `control?` (`hand`, `joints`), `base?` (`none`, `hand`, `net` or a scenario) | the training's settings |
 | `train` | `fresh?` and the same as `config` | a training starts in the driver's browser (its cores), and runs until `stop` |
 | `stop`, `history` | `from?` | the training paused; its generations: `[generation, done, time, the tries' average score]` |

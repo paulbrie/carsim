@@ -266,7 +266,7 @@ test('the arm’s own sin, cos, tanh, atan2, acos, log and hypot: Node’s to th
 test('what a drive and a training are made of asks the engine for nothing it may answer in its own way', () => {
   // Math's that every engine must give alike (exact, or correctly rounded): anything else goes through lib/arm/math.mjs
   const exact = new Set(['abs', 'min', 'max', 'round', 'floor', 'ceil', 'trunc', 'sign', 'sqrt', 'imul', 'fround', 'PI']);
-  for (const file of ['core.mjs', 'train.mjs', 'math.mjs', 'worker.mjs']) {
+  for (const file of ['core.mjs', 'train.mjs', 'math.mjs', 'worker.mjs', 'scenario.mjs']) {
     const src = readFileSync(new URL(`../lib/arm/${file}`, import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
     const used = [...new Set([...src.matchAll(/\bMath\.(\w+)/g)].map(x => x[1]))].filter(n => !exact.has(n));
     assert.deepEqual(used, [], `lib/arm/${file} uses Math.${used.join(', Math.')}`);

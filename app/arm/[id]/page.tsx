@@ -2,7 +2,7 @@ import { cache } from 'react';
 import { notFound } from 'next/navigation';
 import { auth } from '@/auth';
 import { ArmPage } from '@/components/arm-page';
-import { ARMS, TASKS } from '@/lib/arm/core.mjs';
+import { ARMS, taskName } from '@/lib/arm/core.mjs';
 import { armNetStore } from '@/lib/arm/store.mjs';
 import { publicName } from '@/lib/format';
 
@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: Ctx) {
   const a = await network((await params).id);
   if (!a) return { title: 'The arm (preview)' };
   const title = `${a.name} · an arm network`, ex = examText(a.exam);
-  const description = `A network of ${a.weights} weights by ${publicName(a.ownerName, false)} for ${ARMS[a.arm].name} · ${TASKS[a.task].name}${ex ? `: ${ex} in its exam` : ''}. Watch it in the arm sim, try the same placements by hand, train your own.`;
+  const description = `A network of ${a.weights} weights by ${publicName(a.ownerName, false)} for ${ARMS[a.arm].name} · ${taskName(a.net)}${ex ? `: ${ex} in its exam` : ''}. Watch it in the arm sim, try the same placements by hand, train your own.`;
   return { title, description, openGraph: { title, description } };
 }
 

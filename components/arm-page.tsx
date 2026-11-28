@@ -7,7 +7,7 @@ import { SiteNav } from '@/components/site-nav';
 import { SiteFooter } from '@/components/site-footer';
 import { ArmSimView, type SharedArmNet } from '@/components/arm-sim';
 import { withBase } from '@/lib/base-path';
-import { ARM, ARMS, GRIP_N, INPUTS, TASKS, type TaskKey } from '@/lib/arm/core.mjs';
+import { ARM, ARMS, GRIP_N, INPUTS, TASKS, taskName, type TaskKey } from '@/lib/arm/core.mjs';
 
 /** The page; shared: the saved network the link opened (app/arm/[id]/page.tsx), its maker's name as this visitor may see it. */
 export async function ArmPage({ shared = null }: { shared?: SharedArmNet | null }) {
@@ -29,7 +29,7 @@ export async function ArmPage({ shared = null }: { shared?: SharedArmNet | null 
 
         {shared && (
           <p className="mt-6 text-sm text-muted-foreground">
-            Shared with you: <span className="font-medium text-tnn">{shared.name}</span> by {shared.by}, for {ARMS[shared.net.arm ?? 'desk'].name} · {TASKS[shared.net.task].name}.
+            Shared with you: <span className="font-medium text-tnn">{shared.name}</span> by {shared.by}, for {ARMS[shared.net.arm ?? 'desk'].name} · {taskName(shared.net)}.
           </p>
         )}
         <div className={shared ? 'mt-4' : 'mt-8'}><ArmSimView signedIn={!!user} shared={shared} /></div>
@@ -81,7 +81,7 @@ export async function ArmPage({ shared = null }: { shared?: SharedArmNet | null 
                 {' '}Its wrist bends at most 90°, so with the hand straight down the forearm can’t point up much: on a 12 cm riser, it reaches every cube and stacks four.
                 {' '}A network is trained for one arm; the desk arm’s, put on this one as it is, still picks up 13 of 20.
               </li>
-              <li><span className="font-medium text-foreground">The scenarios.</span> {(Object.keys(TASKS) as TaskKey[]).map((k, i) => <span key={k}>{i > 0 && ' '}<span className="text-foreground">{TASKS[k].name}</span>: {TASKS[k].about.replace(/\.$/, '')} ({TASKS[k].limit} s, {TASKS[k].exam} placements).</span>)}</li>
+              <li><span className="font-medium text-foreground">The scenarios.</span> {(Object.keys(TASKS) as TaskKey[]).map((k, i) => <span key={k}>{i > 0 && ' '}<span className="text-foreground">{TASKS[k].name}</span>: {TASKS[k].about.replace(/\.$/, '')} ({TASKS[k].limit} s, {TASKS[k].exam} placements).</span>)} <span className="text-foreground">Your own</span>: cubes, boxes, balls and cylinders of the sizes and colours you choose, trays where you want them, and rules for which goes where (“red → A”, “ball → B”).</li>
               <li><span className="font-medium text-foreground">The exam.</span> The score is how many placements it managed, then the time they took; a failed one counts its whole limit.</li>
               <li><span className="font-medium text-foreground">The same everywhere.</span> A network’s exam gives the same numbers in this browser and on a server, to the millisecond.</li>
             </ul>
